@@ -1,6 +1,10 @@
 [tool.uv.workspace]
 members = ["yajna", "sspoc"]
 
+[tool.uv.sources]
+yajna = { workspace = true }
+sspoc = { workspace = true }
+
 [project]
 name = "yajna-workspace"
 version = "0.1.0"
@@ -10,7 +14,10 @@ authors = [
     { name = "Ankur Kumar", email = "ank@leoank.me" }
 ]
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+  "yajna",
+  "sspoc"
+]
 
 [project.optional-dependencies]
 dev = [
@@ -27,7 +34,3 @@ dev = [
   "nbdev",
   "nbdotrun"
 ]
-
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
