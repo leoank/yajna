@@ -1,5 +1,5 @@
 [tool.uv.workspace]
-members = ["yajna"]
+members = ["yajna", "sspoc"]
 
 [project]
 name = "yajna-workspace"
