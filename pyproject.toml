@@ -1,0 +1,33 @@
+[tool.uv.workspace]
+members = ["yajna"]
+
+[project]
+name = "yajna-workspace"
+version = "0.1.0"
+description = "Yajna Workspace"
+readme = "README.md"
+authors = [
+    { name = "Ankur Kumar", email = "ank@leoank.me" }
+]
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+  "pytest",
+  "ruff",
+  "build",
+  "twine",
+  "jupytext",
+  "ipython",
+  "jupyterlab",
+  "jupyterlab-quarto",
+  "jupyter-collaboration",
+  "jupyterlab-horizon-theme",
+  "nbdev",
+  "nbdotrun"
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
