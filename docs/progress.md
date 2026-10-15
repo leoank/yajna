@@ -8,6 +8,14 @@ link the file.
 
 ## 2026-10-15
 
+- **2026-10-15 15:15** Phase 0 decision records written: `docs/decisions/` ADR-0001 to
+  ADR-0015 with an index. Covers the Phase 0 conventions (markdown as truth, journal
+  plus pages, frontmatter and schema, entities and IDs, layout, tasks, `qmd` first,
+  Python, two-stage protocols) and resolves the architecture's open questions: single
+  author, dry-lab code starts here, plain ELN exporter, personal Google account owns
+  synced docs, server-side transcription with photos as log attachments or `ART`.
+  Large data storage deferred (ADR-0013). `docs/architecture.md` section 12 now points
+  at the records.
 - **2026-10-15 11:12** Microfluidic compiler design written: `docs/microfluidic-compiler.md` v0.1.
   Surveys MMFT (simulator, designers, OpenSLAice), OpenMFDA, CIDAR tools, Octara,
   protocol compilers (BioCoder, BioScript, Puddle, Columba) and MSLA fabrication limits,

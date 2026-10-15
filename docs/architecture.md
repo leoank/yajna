@@ -795,23 +795,20 @@ good enough to not break it.
 
 ## 12. Open questions
 
-- **Where will large data actually live?** LMB storage, a lab NAS, NFS on a GPU cluster,
-  cloud, or a mix determines the git-annex remote setup and whether the server proxies data.
-- **Will the lab require an institutional ELN?** If so, this system needs an exporter from day
-  one of Phase 1 rather than later.
-- **Single author or many?** The design assumes one human author plus agents. Lab members
-  contributing would mostly change the log file naming (already per author) and auth.
-- **How much of the dry-lab code lives here?** AutoGo keeps code and experiments in one repo.
-  Small analyses yes. Full ML projects might be better as separate repos referenced by `MAT`
-  and `RUN` pages, with this repo as the notebook.
-- **Does `qmd` make the SQLite indexer unnecessary for Phase 1?** Possibly, if `qmd` exposes
-  frontmatter filtering well enough. Try `qmd` alone first; build the indexer when the first
-  structured query it cannot answer shows up.
-- **Which Google account owns the synced docs?** Your LMB account is the obvious choice
-  but ties the docs to the institution. A lab shared drive would survive you leaving but may
-  need admin approval. Decide before the first publish, because the doc IDs persist.
-- **Voice and photo capture** on the phone: on-device transcription versus server-side, and
-  whether photos are `ART` entities or inline log attachments. Defer to Phase 4.
+Resolved on 2026-10-15 and recorded in `docs/decisions/`:
+
+- Large data storage: deferred to Phase 2, leaning git-annex (ADR-0013).
+- Institutional ELN: a plain one-way exporter, built at the start of Phase 1 (ADR-0010).
+- Authors: one human plus agents (ADR-0008).
+- Dry-lab code: starts under `projects/` here, moves to its own repo when it matures (ADR-0009).
+- `qmd` versus the SQLite indexer: `qmd` alone until a structured query it cannot answer
+  appears (ADR-0007).
+- Google account for synced docs: the personal account (ADR-0011).
+- Voice and photo capture: server-side transcription; photos and audio are inline log
+  attachments by default and `ART` artifacts when they are a run's result (ADR-0012).
+
+Nothing remains open at the architecture level. New questions go in the decision records
+index as `proposed` entries.
 
 ## 13. Sources and what changed in v0.2
 
