@@ -108,7 +108,11 @@ def new(vault: Vault) -> Path:
             lambda k: k in kinds, error_message=f"one of {', '.join(kinds)}"),
             default=kinds[0] if etype == "run" else "reagent")
 
-    path = create(vault, etype, title, project, experiment, kind)
+    code = False
+    if etype == "project":
+        code = ask("scaffold projects/<slug>/ with a flake? (y/N)").lower().startswith("y")
+
+    path = create(vault, etype, title, project, experiment, kind, code)
     _offer_editor(path)
     return path
 

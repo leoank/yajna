@@ -20,8 +20,11 @@ TASK_RE = re.compile(r"^\s*- \[( |x|X)\] (.+?)\s*$")
 # --- new ------------------------------------------------------------------------------
 
 def create(vault: Vault, etype: str, title: str | None, project: str | None = None,
-           experiment: str | None = None, kind: str | None = None) -> Path:
-    """Allocate an ID, fill the template, write the page. Returns the new path."""
+           experiment: str | None = None, kind: str | None = None, code: bool = False) -> Path:
+    """Allocate an ID, fill the template, write the page. Returns the new path.
+
+    `code` scaffolds `projects/<slug>/` with its own flake for a project.
+    """
     etype = ALIASES.get(etype.lower(), etype.lower())
     if etype not in ENTITIES:
         raise SystemExit(f"unknown entity type {etype!r}; one of {', '.join(ENTITIES)}")
@@ -41,6 +44,8 @@ def create(vault: Vault, etype: str, title: str | None, project: str | None = No
         raise SystemExit(f"a {etype} needs --project PRJ-xxxx (or --experiment EXP-xxxx)")
     if project:
         vault.find(project)  # must exist
+    if code and etype != "project":
+        raise SystemExit("--code only applies to projects")
 
     kind = kind or {"run": "bench", "material": "reagent"}.get(etype, "")
     ident = vault.allocate(prefix)
@@ -51,6 +56,7 @@ def create(vault: Vault, etype: str, title: str | None, project: str | None = No
         id=ident, title=title, created=now.date().isoformat(), author=vault.author,
         project=project or "null", experiment=experiment or "null", kind=kind, slug=slug,
         now=now.isoformat(timespec="minutes"), date=now.date().isoformat(),
+        code=f"projects/{slug}" if code else "null",
     )
 
     if etype == "project":
@@ -63,7 +69,24 @@ def create(vault: Vault, etype: str, title: str | None, project: str | None = No
         path = vault.lab / subdir / name
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text)
+    if code:
+        scaffold_code(vault, slug, id=ident, title=title)
     return path
+
+
+def scaffold_code(vault: Vault, slug: str, **fields) -> Path:
+    """Create projects/<slug>/ with a flake and README; git-add it so Nix can see it."""
+    code_dir = vault.root / "projects" / slug
+    if code_dir.exists():
+        raise SystemExit(f"{code_dir.relative_to(vault.root)} already exists")
+    code_dir.mkdir(parents=True)
+    for name in ("flake.nix", "README.md"):
+        (code_dir / name).write_text(vault.render(f"code/{name}", slug=slug, **fields))
+    try:  # Nix only sees tracked files; outside a checkout this is a no-op
+        subprocess.run(["git", "add", str(code_dir)], cwd=vault.root, capture_output=True)
+    except FileNotFoundError:
+        pass
+    return code_dir
 
 
 def cmd_new(vault: Vault, args) -> int:
@@ -71,7 +94,7 @@ def cmd_new(vault: Vault, args) -> int:
         from . import tui
         path = tui.new(vault)
     else:
-        path = create(vault, args.type, args.title, args.project, args.experiment, args.kind)
+        path = create(vault, args.type, args.title, args.project, args.experiment, args.kind, args.code)
     print(path.relative_to(vault.root))
     return 0
 
@@ -247,6 +270,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--project", help="PRJ-xxxx for project-scoped entities")
     s.add_argument("--experiment", help="EXP-xxxx (runs); implies --project")
     s.add_argument("--kind", help="run kind (bench, compute, assembly, calibration) or material kind")
+    s.add_argument("--code", action="store_true", help="project: also scaffold projects/<slug>/ with a flake")
     s.set_defaults(fn=cmd_new)
 
     s = sub.add_parser("log", help="append a timestamped line to today's log")

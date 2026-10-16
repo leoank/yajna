@@ -168,7 +168,8 @@ class Vault:
     def render(self, template: str, **fields) -> str:
         from string import Template
 
-        text = (self.templates / f"{template}.md").read_text()
+        name = template if "." in template else f"{template}.md"
+        text = (self.templates / name).read_text()
         return Template(text).safe_substitute(fields)
 
     # --- log ------------------------------------------------------------------------

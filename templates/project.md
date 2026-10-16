@@ -4,6 +4,7 @@ type: project
 schema_version: 1
 title: $title
 status: active            # active | paused | concluded | archived
+code: $code               # projects/<name> here, or a repository URL once it moves out
 created: $created
 author: $author
 tags: []

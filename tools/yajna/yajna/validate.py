@@ -122,6 +122,9 @@ def validate(vault: Vault) -> tuple[list[str], int]:
         )
         if not named_by_id:
             problems.add(page.path, f"filename does not start with id {pid}", vault.root)
+        code = page.meta.get("code")
+        if isinstance(code, str) and "://" not in code and not (vault.root / code).is_dir():
+            problems.add(page.path, f"code directory {code} does not exist", vault.root)
 
     # Links and references need the full ID set.
     keys = refs.bib_keys(vault)

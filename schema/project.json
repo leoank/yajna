@@ -58,6 +58,13 @@
         "concluded",
         "archived"
       ]
+    },
+    "code": {
+      "description": "Where the code lives: a path under projects/ while it is in this repo, a repository URL after it moves out",
+      "type": [
+        "string",
+        "null"
+      ]
     }
   },
   "additionalProperties": true

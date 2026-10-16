@@ -8,17 +8,12 @@ link the file.
 
 ## 2026-10-16
 
-- **2026-10-16 10:17** References: ADR-0016 (Zotero for capture, Better BibTeX keys,
-  `references/library.bib` committed, pandoc citations, reading notes under
-  `lab/references/`), the `reference` schema and template, `yajna ref <key> [--note]`,
-  and a validate check that every citation key exists in the `.bib`.
-- **2026-10-16 10:34** Zotero library synced and Better BibTeX installed. Read the nine
-  items and four flat collections through the local API, exported a `.bib` snapshot into
-  `references/library.bib` (`tools/zotero/export.sh`), and wrote the reorganisation as
-  `tools/zotero/plan.json` with `tools/zotero/organize.py` to apply it through the Web API.
-  The local API refuses writes and BBT's JSON-RPC only registers collection-level
-  auto-exports, so applying the plan and the library-level auto-export wait on an API key
-  and one click in Zotero.
+- **2026-10-16 15:21** Software projects: `code` field on project pages (path under
+  `projects/` or a URL), `yajna new project --code` scaffolds `projects/<slug>/` with a
+  flake and README from `templates/code/`, validate checks the directory exists, and the
+  root flake exposes `checks.project-<name>` for every `projects/*/flake.nix`, evaluated
+  with the root's `nixpkgs`. Pushed the repo to github:leoank/yajna; the previous contents
+  are on branch `v1`.
 - **2026-10-16 15:07** Library reorganised by running `organize.py` twice (plan v1: roots,
   topic renames, tags, pinned keys; plan v2: `hackernews` renamed to `Reading` as the flat
   feed for web material, Better Notes item moved there, the Sonarr article kept once with
@@ -26,6 +21,17 @@ link the file.
   deleted). `organize.py` gained `remove_collections`, `remove_tags`, `link_attachments`
   and `delete_collections`. Re-read the library and refreshed `references/library.bib`
   (9 entries; the Sonarr post is `therealloSomeoneTorrentSites`, unpinned).
+- **2026-10-16 10:34** Zotero library synced and Better BibTeX installed. Read the nine
+  items and four flat collections through the local API, exported a `.bib` snapshot into
+  `references/library.bib` (`tools/zotero/export.sh`), and wrote the reorganisation as
+  `tools/zotero/plan.json` with `tools/zotero/organize.py` to apply it through the Web API.
+  The local API refuses writes and BBT's JSON-RPC only registers collection-level
+  auto-exports, so applying the plan and the library-level auto-export wait on an API key
+  and one click in Zotero.
+- **2026-10-16 10:17** References: ADR-0016 (Zotero for capture, Better BibTeX keys,
+  `references/library.bib` committed, pandoc citations, reading notes under
+  `lab/references/`), the `reference` schema and template, `yajna ref <key> [--note]`,
+  and a validate check that every citation key exists in the `.bib`.
 
 ## 2026-10-15
 

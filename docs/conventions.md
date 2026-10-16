@@ -106,6 +106,22 @@ That writes a `RUN` page (kind `compute`, status `done`, the repo commit recorde
 appends a row to `experiments/EXP-0007/results.tsv`, adding columns as new keys appear. The
 TSV is tracked in git.
 
+## Software projects
+
+Dry-lab code lives beside the vault, not in it (ADR-0009):
+
+```
+yajna new project "Toy model" --code     # also creates projects/toy-model/ with a flake
+cd projects/toy-model && nix develop     # the project's own environment
+```
+
+The project page gets `code: projects/toy-model`; `yajna validate` fails if that directory
+disappears. The root `nix flake check` evaluates every `projects/*/flake.nix` with the
+root's `nixpkgs`, so a project flake that adds its own inputs breaks the root check: keep
+new inputs at the root instead. Nix only sees tracked files, so `git add` the directory
+(the scaffold does this) before the first `nix develop`. When the code moves to its own
+repository, set `code` to that URL and record the move in the progress log.
+
 ## Protocols
 
 A `PRO` page is free markdown except `## Steps`, an ordered list where each step may end

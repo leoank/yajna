@@ -15,6 +15,7 @@ of this repo (a uv workspace with the `sspoc` package) are preserved on the `v1`
 | `lab/` | The vault: projects, experiments, runs, protocols, materials, equipment, builds, agent sessions, daily log, reading notes |
 | `schema/` | JSON Schema for every page type's frontmatter and for protocol steps |
 | `templates/` | Page templates filled by `yajna new` |
+| `projects/` | Dry-lab code, one directory and flake per project, scaffolded by `yajna new project --code` |
 | `references/` | `library.bib`, a Better BibTeX snapshot of the Zotero library |
 | `tools/yajna/` | The `yajna` CLI and interactive TUI (Python) |
 | `tools/zotero/` | Export the `.bib` and reorganise the Zotero library from a plan |

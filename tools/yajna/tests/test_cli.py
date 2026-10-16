@@ -130,6 +130,16 @@ class CliTest(unittest.TestCase):
         self.assertIn("kind: compute", run.read_text())
         self.assertIn("experiment: EXP-0001", run.read_text())
 
+    def test_interactive_project_with_code(self):
+        from yajna import tui
+        answers = iter(["project", "Toy model", "y"])
+        tui.ask = lambda message, completer=None, validator=None, default="": next(answers)
+        code, out = self.run_cli("new")
+        self.assertEqual(code, 0, out)
+        self.assertIn("PRJ-0001-toy-model/README.md", out)
+        self.assertIn("code: projects/toy-model", (self.tmp / out.strip()).read_text())
+        self.assertTrue((self.tmp / "projects/toy-model/flake.nix").is_file())
+
     def test_id_completer(self):
         from prompt_toolkit.document import Document
         from yajna import tui
@@ -160,6 +170,24 @@ class CliTest(unittest.TestCase):
         self.assertIn("citation @nobody2020 not in references/library.bib", out)
         self.assertNotIn("shih2015cloning not in", out)
         code, out = self.run_cli("ref", "nobody2020")
+        self.assertEqual(code, 1)
+
+    def test_project_code_scaffold(self):
+        code, out = self.run_cli("new", "project", "Toy model", "--code")
+        self.assertEqual(code, 0, out)
+        page = self.tmp / out.strip()
+        self.assertIn("code: projects/toy-model", page.read_text())
+        self.assertTrue((self.tmp / "projects/toy-model/flake.nix").is_file())
+        readme = (self.tmp / "projects/toy-model/README.md").read_text()
+        self.assertIn("[[PRJ-0001]]", readme)
+        self.assertIn("lab/projects/PRJ-0001-toy-model/README.md", readme)
+        code, out = self.run_cli("validate")
+        self.assertEqual(code, 0, out)
+        shutil.rmtree(self.tmp / "projects/toy-model")
+        code, out = self.run_cli("validate")
+        self.assertEqual(code, 1)
+        self.assertIn("code directory projects/toy-model does not exist", out)
+        code, out = self.run_cli("new", "protocol", "P", "--code")
         self.assertEqual(code, 1)
 
     def test_missing_project_is_an_error(self):

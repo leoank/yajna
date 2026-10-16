@@ -7,6 +7,19 @@
     let
       systems = [ "aarch64-darwin" "x86_64-darwin" "x86_64-linux" "aarch64-linux" ];
       forAll = f: nixpkgs.lib.genAttrs systems (system: f nixpkgs.legacyPackages.${system});
+      # Dry-lab code under projects/<name>/ carries its own flake (ADR-0009). Each one is
+      # evaluated here with the root's inputs, so a broken project flake fails the root
+      # check; a project that adds inputs of its own must take them from the root too.
+      projectNames = nixpkgs.lib.attrNames (nixpkgs.lib.filterAttrs
+        (name: kind: kind == "directory" && builtins.pathExists (./projects + "/${name}/flake.nix"))
+        (if builtins.pathExists ./projects then builtins.readDir ./projects else { }));
+      projectChecks = pkgs: nixpkgs.lib.listToAttrs (map (name: {
+        name = "project-${name}";
+        value = ((import (./projects + "/${name}/flake.nix")).outputs {
+          self = { outPath = ./projects + "/${name}"; };
+          inherit nixpkgs;
+        }).devShells.${pkgs.system}.default;
+      }) projectNames);
     in {
       packages = forAll (pkgs: rec {
         yajna = pkgs.python3Packages.buildPythonApplication {
@@ -40,7 +53,7 @@
           };
         });
 
-      checks = forAll (pkgs: {
+      checks = forAll (pkgs: projectChecks pkgs // {
         validate = pkgs.runCommand "yajna-validate" {
           nativeBuildInputs = [ self.packages.${pkgs.system}.yajna ];
         } ''
