@@ -75,17 +75,13 @@ def create(vault: Vault, etype: str, title: str | None, project: str | None = No
 
 
 def scaffold_code(vault: Vault, slug: str, **fields) -> Path:
-    """Create projects/<slug>/ with a flake and README; git-add it so Nix can see it."""
+    """Create projects/<slug>/ with a flake and README."""
     code_dir = vault.root / "projects" / slug
     if code_dir.exists():
         raise SystemExit(f"{code_dir.relative_to(vault.root)} already exists")
     code_dir.mkdir(parents=True)
     for name in ("flake.nix", "README.md"):
         (code_dir / name).write_text(vault.render(f"code/{name}", slug=slug, **fields))
-    try:  # Nix only sees tracked files; outside a checkout this is a no-op
-        subprocess.run(["git", "add", str(code_dir)], cwd=vault.root, capture_output=True)
-    except FileNotFoundError:
-        pass
     return code_dir
 
 

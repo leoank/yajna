@@ -61,8 +61,9 @@ URL once the code has moved to its own repo).
 yajna new project "<title>" --code
 ```
 
-creates the `PRJ` page and `projects/<slug>/` with a flake and README, and stages them so
-Nix can see them. Then `yajna new experiment "<question>" --project PRJ-xxxx` for the first
+creates the `PRJ` page and `projects/<slug>/` with a flake and README. `git add` the new
+directory before `nix develop` there, since Nix only sees tracked files. Then
+`yajna new experiment "<question>" --project PRJ-xxxx` for the first
 experiment; fill `Question`, `Hypothesis and predictions`, `Plan` and `Success criteria`
 before the first run. Small analyses stay in this repo for good; a project graduates to its
 own repository only by the author's decision (ADR-0009), recorded in `docs/progress.md`.

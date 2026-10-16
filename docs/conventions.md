@@ -119,7 +119,7 @@ The project page gets `code: projects/toy-model`; `yajna validate` fails if that
 disappears. The root `nix flake check` evaluates every `projects/*/flake.nix` with the
 root's `nixpkgs`, so a project flake that adds its own inputs breaks the root check: keep
 new inputs at the root instead. Nix only sees tracked files, so `git add` the directory
-(the scaffold does this) before the first `nix develop`. When the code moves to its own
+before the first `nix develop`. When the code moves to its own
 repository, set `code` to that URL and record the move in the progress log.
 
 ## Protocols
