@@ -97,6 +97,17 @@ class CliTest(unittest.TestCase):
         self.assertEqual(code, 0, out)
         self.assertIn("valid", out)
 
+    def test_title_with_colon_and_unfinished_agent_page_validate(self):
+        self.run_cli("new", "project", "P")
+        code, out = self.run_cli("new", "experiment", "Hook: hold and answer", "--project", "PRJ-0001")
+        self.assertEqual(code, 0, out)
+        self.assertIn('title: "Hook: hold and answer"\n', (self.tmp / out.strip()).read_text())
+        code, out = self.run_cli("new", "agent", "Spike session")
+        self.assertEqual(code, 0, out)
+        self.assertIn("finished: null\n", (self.tmp / out.strip()).read_text())
+        code, out = self.run_cli("validate")
+        self.assertEqual(code, 0, out)
+
     def test_validate_catches_problems(self):
         self.run_cli("new", "project", "P")
         code, out = self.run_cli("new", "experiment", "E", "--project", "PRJ-0001")

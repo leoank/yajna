@@ -10,6 +10,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import yaml
+
 from . import refs
 from . import validate as _validate
 from .vault import ALIASES, ENTITIES, PROJECT_SCOPED, Vault, find_root, slugify
@@ -18,6 +20,17 @@ TASK_RE = re.compile(r"^\s*- \[( |x|X)\] (.+?)\s*$")
 
 
 # --- new ------------------------------------------------------------------------------
+
+def yaml_scalar(value: str) -> str:
+    """Return `value` as it may follow `key: ` in frontmatter: plain when YAML reads it back
+    unchanged, double-quoted otherwise (a colon in a title is the usual case)."""
+    try:
+        if yaml.safe_load(f"k: {value}") == {"k": value}:
+            return value
+    except yaml.YAMLError:
+        pass
+    return json.dumps(value, ensure_ascii=False)
+
 
 def create(vault: Vault, etype: str, title: str | None, project: str | None = None,
            experiment: str | None = None, kind: str | None = None, code: bool = False) -> Path:
@@ -53,7 +66,7 @@ def create(vault: Vault, etype: str, title: str | None, project: str | None = No
     now = vault.now()
     text = vault.render(
         template,
-        id=ident, title=title, created=now.date().isoformat(), author=vault.author,
+        id=ident, title=yaml_scalar(title), created=now.date().isoformat(), author=vault.author,
         project=project or "null", experiment=experiment or "null", kind=kind, slug=slug,
         now=now.isoformat(timespec="minutes"), date=now.date().isoformat(),
         code=f"projects/{slug}" if code else "null",
