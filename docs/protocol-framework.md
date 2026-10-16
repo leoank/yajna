@@ -214,7 +214,7 @@ metadata = {
     "id": "PRO-0012",
     "name": "Heat-shock transformation of chemically competent E. coli",
     "version": 4,
-    "author": "ankit",
+    "author": "ank",
 }
 
 def add_parameters(p):

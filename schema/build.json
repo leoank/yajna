@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://yajna.local/schema/v1/build.json",
+  "title": "build",
+  "type": "object",
+  "required": [
+    "id",
+    "type",
+    "schema_version",
+    "created",
+    "author",
+    "title",
+    "revision",
+    "status"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^BLD-\\d{4,}$"
+    },
+    "type": {
+      "const": "build"
+    },
+    "schema_version": {
+      "const": 1
+    },
+    "created": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "author": {
+      "type": "string",
+      "pattern": "^(agent:)?[a-z][a-z0-9_-]*$"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "review": {
+      "enum": [
+        "pending",
+        "approved"
+      ]
+    },
+    "session": {
+      "type": "string",
+      "pattern": "^AGS-\\d{8}-[a-z2-7]{4}$"
+    },
+    "title": {
+      "type": "string"
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "project": {
+      "type": "string",
+      "pattern": "^PRJ-\\d{4,}$"
+    },
+    "status": {
+      "enum": [
+        "designing",
+        "ordering",
+        "assembling",
+        "testing",
+        "deployed",
+        "retired"
+      ]
+    },
+    "sources": {
+      "type": "string"
+    },
+    "produces": {
+      "type": "string",
+      "pattern": "^EQP-\\d{4,}$"
+    },
+    "parts": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^MAT-\\d{4,}$"
+      }
+    },
+    "tests": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^EXP-\\d{4,}$"
+      }
+    }
+  },
+  "additionalProperties": true
+}

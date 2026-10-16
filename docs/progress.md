@@ -6,8 +6,40 @@ modification stamps and document changelogs, so they carry a date and a rough ti
 Append an entry whenever a document, tool or dataset lands; keep each to a few lines and
 link the file.
 
+## 2026-10-16
+
+- **2026-10-16 10:17** References: ADR-0016 (Zotero for capture, Better BibTeX keys,
+  `references/library.bib` committed, pandoc citations, reading notes under
+  `lab/references/`), the `reference` schema and template, `yajna ref <key> [--note]`,
+  and a validate check that every citation key exists in the `.bib`.
+- **2026-10-16 10:34** Zotero library synced and Better BibTeX installed. Read the nine
+  items and four flat collections through the local API, exported a `.bib` snapshot into
+  `references/library.bib` (`tools/zotero/export.sh`), and wrote the reorganisation as
+  `tools/zotero/plan.json` with `tools/zotero/organize.py` to apply it through the Web API.
+  The local API refuses writes and BBT's JSON-RPC only registers collection-level
+  auto-exports, so applying the plan and the library-level auto-export wait on an API key
+  and one click in Zotero.
+- **2026-10-16 15:07** Library reorganised by running `organize.py` twice (plan v1: roots,
+  topic renames, tags, pinned keys; plan v2: `hackernews` renamed to `Reading` as the flat
+  feed for web material, Better Notes item moved there, the Sonarr article kept once with
+  its Hacker News discussion as a linked-URL attachment, duplicate trashed, `Topics/tools`
+  deleted). `organize.py` gained `remove_collections`, `remove_tags`, `link_attachments`
+  and `delete_collections`. Re-read the library and refreshed `references/library.bib`
+  (9 entries; the Sonarr post is `therealloSomeoneTorrentSites`, unpinned).
+
 ## 2026-10-15
 
+- **2026-10-15 23:23** Interactive mode for the CLI: `yajna` alone opens a command menu,
+  `yajna new` without a type walks through type, title, project, experiment and kind
+  with tab completion over existing pages by ID or title, and `yajna log` without text
+  prompts for a line where `[[` completes IDs. Built on prompt_toolkit in
+  `tools/yajna/yajna/tui.py`; verified through a pty-driven run and unit tests.
+- **2026-10-15 16:09** Phase 0 built. `schema/` v1 (eleven entity schemas plus the
+  protocol step attributes), `templates/` per entity, `lab/` skeleton with
+  `counters.yaml`, `yajna.toml`, the `yajna` CLI under `tools/yajna/` (`new`, `log`,
+  `result`, `tasks`, `validate`) with end-to-end tests, `flake.nix` with a dev shell,
+  the package and two checks (`validate`, `tests`), and `docs/conventions.md`. `qmd`
+  now indexes `lab/` as the collection `yajna`. `nix flake check` passes.
 - **2026-10-15 15:15** Phase 0 decision records written: `docs/decisions/` ADR-0001 to
   ADR-0015 with an index. Covers the Phase 0 conventions (markdown as truth, journal
   plus pages, frontmatter and schema, entities and IDs, layout, tasks, `qmd` first,

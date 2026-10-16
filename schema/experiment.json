@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://yajna.local/schema/v1/experiment.json",
+  "title": "experiment",
+  "type": "object",
+  "required": [
+    "id",
+    "type",
+    "schema_version",
+    "created",
+    "author",
+    "title",
+    "project",
+    "status"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^EXP-\\d{4,}$"
+    },
+    "type": {
+      "const": "experiment"
+    },
+    "schema_version": {
+      "const": 1
+    },
+    "created": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "author": {
+      "type": "string",
+      "pattern": "^(agent:)?[a-z][a-z0-9_-]*$"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "review": {
+      "enum": [
+        "pending",
+        "approved"
+      ]
+    },
+    "session": {
+      "type": "string",
+      "pattern": "^AGS-\\d{8}-[a-z2-7]{4}$"
+    },
+    "title": {
+      "type": "string"
+    },
+    "project": {
+      "type": "string",
+      "pattern": "^PRJ-\\d{4,}$"
+    },
+    "status": {
+      "enum": [
+        "planned",
+        "active",
+        "paused",
+        "concluded",
+        "abandoned"
+      ]
+    },
+    "outcome": {
+      "enum": [
+        null,
+        "positive",
+        "negative",
+        "inconclusive",
+        "infra"
+      ]
+    },
+    "influenced_by": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^EXP-\\d{4,}$"
+      }
+    },
+    "protocols": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^PRO-\\d{4,}(@\\d+)?$"
+      }
+    },
+    "materials": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^MAT-\\d{4,}$"
+      }
+    },
+    "builds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^BLD-\\d{4,}$"
+      }
+    }
+  },
+  "additionalProperties": true
+}

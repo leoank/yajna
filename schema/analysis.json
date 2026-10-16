@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://yajna.local/schema/v1/analysis.json",
+  "title": "analysis",
+  "type": "object",
+  "required": [
+    "id",
+    "type",
+    "schema_version",
+    "created",
+    "author",
+    "title",
+    "project",
+    "status"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^ANA-\\d{4,}$"
+    },
+    "type": {
+      "const": "analysis"
+    },
+    "schema_version": {
+      "const": 1
+    },
+    "created": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "author": {
+      "type": "string",
+      "pattern": "^(agent:)?[a-z][a-z0-9_-]*$"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "review": {
+      "enum": [
+        "pending",
+        "approved"
+      ]
+    },
+    "session": {
+      "type": "string",
+      "pattern": "^AGS-\\d{8}-[a-z2-7]{4}$"
+    },
+    "title": {
+      "type": "string"
+    },
+    "project": {
+      "type": "string",
+      "pattern": "^PRJ-\\d{4,}$"
+    },
+    "experiments": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^EXP-\\d{4,}$"
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^ART-\\d{8}-[a-z2-7]{4}$"
+      }
+    },
+    "code": {
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "planned",
+        "active",
+        "done",
+        "abandoned"
+      ]
+    }
+  },
+  "additionalProperties": true
+}

@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://yajna.local/schema/v1/artifact.json",
+  "title": "artifact",
+  "type": "object",
+  "required": [
+    "id",
+    "type",
+    "schema_version",
+    "created",
+    "author",
+    "title",
+    "store",
+    "path"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^ART-\\d{8}-[a-z2-7]{4}$"
+    },
+    "type": {
+      "const": "artifact"
+    },
+    "schema_version": {
+      "const": 1
+    },
+    "created": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "author": {
+      "type": "string",
+      "pattern": "^(agent:)?[a-z][a-z0-9_-]*$"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "review": {
+      "enum": [
+        "pending",
+        "approved"
+      ]
+    },
+    "session": {
+      "type": "string",
+      "pattern": "^AGS-\\d{8}-[a-z2-7]{4}$"
+    },
+    "title": {
+      "type": "string"
+    },
+    "run": {
+      "type": "string",
+      "pattern": "^RUN-\\d{8}-[a-z2-7]{4}$"
+    },
+    "project": {
+      "type": "string",
+      "pattern": "^PRJ-\\d{4,}$"
+    },
+    "hash": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "store": {
+      "enum": [
+        "git",
+        "path",
+        "annex"
+      ]
+    },
+    "path": {
+      "type": "string"
+    },
+    "size": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "media_type": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": true
+}

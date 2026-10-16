@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://yajna.local/schema/v1/log.json",
+  "title": "log",
+  "type": "object",
+  "required": [
+    "type",
+    "schema_version",
+    "date",
+    "author"
+  ],
+  "properties": {
+    "type": {
+      "const": "log"
+    },
+    "schema_version": {
+      "const": 1
+    },
+    "date": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "author": {
+      "type": "string",
+      "pattern": "^(agent:)?[a-z][a-z0-9_-]*$"
+    }
+  },
+  "additionalProperties": true
+}

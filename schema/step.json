@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://yajna.local/schema/v1/step.json",
+  "title": "protocol step attributes",
+  "description": "The attribute block that may trail a step in a protocol's ## Steps list.",
+  "type": "object",
+  "properties": {
+    "duration": {
+      "type": "string",
+      "pattern": "^(\\d+h)?(\\d+m)?(\\d+s)?$",
+      "minLength": 2
+    },
+    "wait": {
+      "type": "boolean"
+    },
+    "materials": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^MAT-\\d{4,}$"
+      }
+    },
+    "equipment": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^EQP-\\d{4,}$"
+      }
+    },
+    "volume": {
+      "type": "string"
+    },
+    "temp": {
+      "type": "string"
+    },
+    "hazard": {
+      "type": "string"
+    },
+    "check": {
+      "type": "string"
+    },
+    "actor": {
+      "enum": [
+        "human",
+        "robot",
+        "instrument",
+        "agent"
+      ]
+    }
+  },
+  "additionalProperties": true
+}

@@ -1,0 +1,5 @@
+# Repo-level configuration for the yajna CLI.
+author = "ank"      # the human author handle written into every page
+vault = "lab"         # the notebook directory, relative to this file
+timezone = "Europe/London"
+bibliography = "references/library.bib"

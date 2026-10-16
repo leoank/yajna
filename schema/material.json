@@ -1,0 +1,120 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://yajna.local/schema/v1/material.json",
+  "title": "material",
+  "type": "object",
+  "required": [
+    "id",
+    "type",
+    "schema_version",
+    "created",
+    "author",
+    "title",
+    "kind",
+    "status"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^MAT-\\d{4,}$"
+    },
+    "type": {
+      "const": "material"
+    },
+    "schema_version": {
+      "const": 1
+    },
+    "created": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "author": {
+      "type": "string",
+      "pattern": "^(agent:)?[a-z][a-z0-9_-]*$"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "review": {
+      "enum": [
+        "pending",
+        "approved"
+      ]
+    },
+    "session": {
+      "type": "string",
+      "pattern": "^AGS-\\d{8}-[a-z2-7]{4}$"
+    },
+    "title": {
+      "type": "string"
+    },
+    "kind": {
+      "enum": [
+        "strain",
+        "plasmid",
+        "cell_line",
+        "reagent",
+        "stock",
+        "library",
+        "antibody",
+        "dataset",
+        "model",
+        "checkpoint",
+        "part",
+        "other"
+      ]
+    },
+    "status": {
+      "enum": [
+        "in_stock",
+        "low",
+        "out",
+        "ordered"
+      ]
+    },
+    "location": {
+      "type": "string"
+    },
+    "quantity": {
+      "type": "number"
+    },
+    "unit": {
+      "type": "string"
+    },
+    "concentration": {
+      "type": "string"
+    },
+    "lot": {
+      "type": "string"
+    },
+    "expires": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "source": {
+      "type": "string"
+    },
+    "supplier": {
+      "type": "string"
+    },
+    "part_number": {
+      "type": "string"
+    },
+    "url": {
+      "type": "string"
+    },
+    "lead_time": {
+      "type": "string"
+    },
+    "parent": {
+      "type": "string",
+      "pattern": "^MAT-\\d{4,}$"
+    }
+  },
+  "additionalProperties": true
+}

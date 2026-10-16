@@ -208,7 +208,7 @@ status: active            # planned | active | paused | concluded | abandoned
 outcome: null             # null | positive | negative | inconclusive | infra
 influenced_by: [EXP-0003]
 created: 2026-10-14
-author: ankit
+author: ank
 protocols: [PRO-0012]
 materials: [MAT-0210, MAT-0198]
 tags: [imaging, sulfolobus]
@@ -239,7 +239,7 @@ Example daily log (`lab/log/2026/2026-10-14.md`). Entries are appended, never re
 ---
 type: log
 date: 2026-10-14
-author: ankit
+author: ank
 schema_version: 1
 ---
 

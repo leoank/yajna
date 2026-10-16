@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://yajna.local/schema/v1/reference.json",
+  "title": "reference",
+  "description": "A reading note about one paper, keyed by its Better BibTeX citation key.",
+  "type": "object",
+  "required": [
+    "type",
+    "schema_version",
+    "citekey",
+    "title",
+    "created",
+    "author"
+  ],
+  "properties": {
+    "type": {
+      "const": "reference"
+    },
+    "schema_version": {
+      "const": 1
+    },
+    "citekey": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9:_-]*$"
+    },
+    "title": {
+      "type": "string"
+    },
+    "authors": {
+      "type": "string"
+    },
+    "year": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "doi": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "status": {
+      "enum": [
+        "to-read",
+        "skimmed",
+        "read"
+      ]
+    },
+    "role": {
+      "enum": [
+        "method",
+        "background",
+        "key-result",
+        "tool"
+      ]
+    },
+    "created": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "author": {
+      "type": "string",
+      "pattern": "^(agent:)?[a-z][a-z0-9_-]*$"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "additionalProperties": true
+}

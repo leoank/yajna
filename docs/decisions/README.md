@@ -22,3 +22,4 @@ one rather than an edit.
 | [0013](ADR-0013-large-data-storage.md) | Large data storage, leaning git-annex | deferred |
 | [0014](ADR-0014-two-stage-protocols.md) | Protocols jotted as text first, codified later | accepted |
 | [0015](ADR-0015-python-for-cli-and-indexer.md) | Python for the CLI and indexer | accepted |
+| [0016](ADR-0016-references.md) | References: Zotero for capture, citation keys as identity, notes in the vault | accepted |

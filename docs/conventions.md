@@ -1,0 +1,172 @@
+# Conventions: how to write an entry
+
+The cheat sheet for Phase 0. The reasoning is in `docs/architecture.md` and the decisions in
+`docs/decisions/`; this page only says what to do.
+
+## The vault
+
+Everything under `lab/` is the notebook. Pages are markdown with YAML frontmatter.
+`yajna validate` checks every page against `schema/`; run it before committing, CI runs it
+too (`nix flake check`).
+
+Enter the tooling with `nix develop` at the repo root; `yajna` is then on the path.
+
+## Interactive mode
+
+Run `yajna` with no arguments for a menu, or leave a command's arguments off:
+
+```
+yajna              # menu: new, log, tasks, validate, quit
+yajna new          # asks type, title, project or experiment, kind
+yajna log          # asks for one line
+```
+
+Tab completes everywhere: entity types, kinds, and existing pages by ID or by title, so
+typing `arch` at a project prompt offers `PRJ-0001` with its title alongside. In a log
+line, type `[[` and the first letters of an ID or title to insert the link. When `$EDITOR`
+is set, a new page offers to open in it.
+
+## IDs and links
+
+- Every entity page has an `id` and the filename starts with it: `EXP-0007-escrt-timing.md`.
+  The slug is decoration; renaming the file never breaks a link.
+- Curated entities get counter IDs from `yajna new`: `PRJ`, `EXP`, `PRO`, `MAT`, `ANA`,
+  `EQP`, `BLD`, four digits, allocated from `lab/counters.yaml`.
+- Volume entities get a date and a random suffix: `RUN-20261015-k7f3`, `ART-...`, `AGS-...`.
+- Link with `[[EXP-0007]]` or `[[EXP-0007|the timing experiment]]`. Pin a protocol version
+  with `[[PRO-0012@3]]`. A link to an ID that does not exist fails validation.
+- Never reuse or hand-edit an ID.
+
+## Creating pages
+
+```
+yajna new project "Archaeal division under confinement"
+yajna new experiment "ESCRT timing" --project PRJ-0001
+yajna new run --experiment EXP-0007 --kind bench
+yajna new protocol "Sulfolobus transformation"
+yajna new material "Strain xyz" --kind strain
+yajna new equipment "Spinning disk"
+yajna new build "Bench camera rig" --project PRJ-0004
+yajna new analysis "Ring constriction timing" --project PRJ-0001
+yajna new artifact "Time-lapse 2026-10-15" --project PRJ-0001
+yajna new agent "Plate layout draft"
+```
+
+Each command fills the template from `templates/`, prints the path, and leaves the rest to
+you. Where things go:
+
+| Entity | Path |
+|--------|------|
+| `PRJ` | `lab/projects/PRJ-0001-<slug>/README.md` |
+| `EXP`, `RUN`, `ANA`, `ART` | `lab/projects/PRJ-0001-*/{experiments,runs,analyses,artifacts}/` |
+| `PRO`, `MAT`, `EQP`, `BLD`, `AGS` | `lab/{protocols,materials,equipment,builds,agents}/` |
+| log | `lab/log/<year>/<date>.md`, one per day per author |
+
+Experiment-local and run-local files (scripts, `results.tsv`, figures, `events.jsonl`) go in
+a sidecar directory named by the bare ID next to the page: `experiments/EXP-0007/`.
+
+## The daily log
+
+```
+yajna log "Started induction for [[EXP-0007]] with [[MAT-0210]], 0.2 mM. #bench"
+yajna log --time 14:20 "Cells look stressed at 0.2 mM. Halving next time. Note for [[PRO-0012]]."
+```
+
+Lines are `- HH:MM text`, appended, never reordered. Link anything you mention. The day file
+is created with its frontmatter on first use. An agent logs with `--author agent:<name>`,
+which goes to a separate file for the same day so that merges stay trivial.
+
+Photos and audio that document the process go in `lab/log/<year>/<date>/` and are embedded
+from the entry. If they are a result of a run they become an `ART` page instead (ADR-0012).
+
+## Experiments
+
+Fill `Question`, `Hypothesis and predictions`, `Plan` and `Success criteria` before the
+first run. Set `status` as it moves: `planned`, `active`, `paused`, `concluded`,
+`abandoned`. When it concludes, set `outcome` (`positive`, `negative`, `inconclusive`,
+`infra`) and write `Conclusion` once, by hand. Record which earlier experiment motivated
+this one in `influenced_by`; the dead ends are the useful part.
+
+## Dry-lab runs
+
+Have the script print one line:
+
+```
+===RESULT=== {"loss": 0.42, "steps": 3000, "tag": "baseline"}
+```
+
+then:
+
+```
+python train.py 2>&1 | tee run.log
+yajna result --experiment EXP-0007 run.log
+```
+
+That writes a `RUN` page (kind `compute`, status `done`, the repo commit recorded) and
+appends a row to `experiments/EXP-0007/results.tsv`, adding columns as new keys appear. The
+TSV is tracked in git.
+
+## Protocols
+
+A `PRO` page is free markdown except `## Steps`, an ordered list where each step may end
+with an attribute block in YAML flow syntax:
+
+```markdown
+## Steps
+1. Thaw [[MAT-0210]] on ice. {duration: 15m, materials: [MAT-0210], check: "tube on ice"}
+2. Add 200 uL of buffer to each tube. {duration: 5m, materials: [MAT-0042], volume: 200uL}
+3. Spin at 4000 g. {duration: 10m, equipment: [EQP-0007], hazard: "balance the rotor"}
+4. Incubate at 37C. {duration: 2h, wait: true, equipment: [EQP-0002]}
+```
+
+Known attributes: `duration` (`15m`, `2h`, `1h30m`, `90s`), `wait`, `materials`,
+`equipment`, `volume`, `temp`, `hazard`, `check`, `actor`. Unknown keys are allowed.
+Steps are numbered 1..n without gaps; a step's stable address is `PRO-0012@3.s4`
+(protocol, version, step). Bump `version` whenever a step changes and say why under
+`## Notes`.
+
+`stage: text` is the default. Once a codified version exists (`docs/protocol-framework.md`),
+set `stage: codified` and `source:`; from then on the steps are generated, not edited.
+
+## Materials
+
+Keep `status` (`in_stock`, `low`, `out`, `ordered`), `location` (freezer, rack, box,
+position), `quantity` and `unit` current; a planning agent resolves material lists against
+them. Hardware parts are materials with `kind: part`, `supplier`, `part_number`, `url`,
+`lead_time`.
+
+## References
+
+Papers live in Zotero; the library exports to `references/library.bib` and the citation
+key is the identity (ADR-0016). Cite from any page with pandoc syntax:
+
+```
+Builds on the cloning chip of [@shih2015cloning] and the valve design in @gong2016valves.
+```
+
+`yajna validate` fails on a key that is not in the `.bib`. `yajna ref shih2015cloning`
+shows the entry and every page that cites it; `--note` creates the reading note
+`lab/references/shih2015cloning.md`, where the digested meaning of the paper for this work
+goes. File the paper in Zotero under `Projects/PRJ-0001 <slug>` for each project it serves
+and under a topic; tag it `to-read`, `skimmed` or `read` and by role.
+
+## Tasks
+
+Any `- [ ]` on any page is a task. Put it next to the thing it is about. Loose ones go in
+`lab/tasks.md`. `yajna tasks` lists every open one with its page and section; `--done`
+includes ticked ones.
+
+## Search
+
+`qmd` indexes `lab/` as the collection `yajna`:
+
+```
+qmd search "induction stressed"          # keyword
+qmd query "when did the chamber take long to equilibrate"   # hybrid, with reranking
+```
+
+## Agents
+
+Agents write through the same commands with `--author agent:<name>` and record an `AGS`
+page per session. Curated pages (`EXP`, `PRO`, `MAT`) edited by an agent carry
+`review: pending` in frontmatter until a human removes it.

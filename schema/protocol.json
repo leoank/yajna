@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://yajna.local/schema/v1/protocol.json",
+  "title": "protocol",
+  "type": "object",
+  "required": [
+    "id",
+    "type",
+    "schema_version",
+    "created",
+    "author",
+    "title",
+    "version",
+    "stage",
+    "status"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^PRO-\\d{4,}$"
+    },
+    "type": {
+      "const": "protocol"
+    },
+    "schema_version": {
+      "const": 1
+    },
+    "created": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "author": {
+      "type": "string",
+      "pattern": "^(agent:)?[a-z][a-z0-9_-]*$"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "review": {
+      "enum": [
+        "pending",
+        "approved"
+      ]
+    },
+    "session": {
+      "type": "string",
+      "pattern": "^AGS-\\d{8}-[a-z2-7]{4}$"
+    },
+    "title": {
+      "type": "string"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "stage": {
+      "enum": [
+        "text",
+        "codified"
+      ]
+    },
+    "source": {
+      "type": "string"
+    },
+    "kind": {
+      "enum": [
+        "bench",
+        "assembly",
+        "compute"
+      ]
+    },
+    "status": {
+      "enum": [
+        "draft",
+        "active",
+        "deprecated"
+      ]
+    },
+    "materials": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^MAT-\\d{4,}$"
+      }
+    },
+    "equipment": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^EQP-\\d{4,}$"
+      }
+    },
+    "supersedes": {
+      "type": "string",
+      "pattern": "^PRO-\\d{4,}$"
+    }
+  },
+  "additionalProperties": true
+}
