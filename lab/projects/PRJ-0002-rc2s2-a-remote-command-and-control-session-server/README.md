@@ -15,12 +15,23 @@ There are a lot of existing ways to drive agents remotely.
 We do not want to reinvent that, what we are looking for is a highly custom and integrated command and control center.
 This should involve writing a server that is aware of all the running agentic session. It should be able to intercept and intervene.
 The server should maintain records of all the runs and node health metrics.
-There should be multiple clients like: android, iOS, web and custom integrations into another app
+We also need small wrappers for claude, antigravity cli, pi and other agent harness to implement the server features.
+There should be multiple clients like: android, iOS, web and custom integrations into another app.
 
 ## Open questions
 -
+- Remaining after phase 0: see the end of `projects/rc2s2-a-remote-command-and-control-session-server/docs/architecture.md`.
 
 ## What not to try again
 -
 
 ## Experiments
+- [[EXP-0001]]
+- [[EXP-0002]]
+- [[EXP-0003]]
+- [[EXP-0004]]
+- [[EXP-0005]]
+- [[EXP-0006]]
+- [[EXP-0007]]
+- [[EXP-0008]]
+- [[EXP-0009]]

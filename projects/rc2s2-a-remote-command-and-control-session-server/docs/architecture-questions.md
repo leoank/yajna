@@ -32,6 +32,8 @@ to watch and step in from the phone, or do you want to launch sessions from
 the phone?
 
 **Answer:**
+I'll go with option a,b and d. Most of my sessions will be interactive in terminal which I would like to prompt and control using my phone.
+I'll also be launching sessions from my phone. I am okay with deferring option b for phase 2.
 
 ## 2. What "intervene" must mean in phase 1
 
@@ -49,6 +51,7 @@ Recommendation: approve/deny, answer question, and interrupt in phase 1.
 Prompt and spawn in phase 2.
 
 **Answer:**
+Go with your recommendation, but also include promting if it is not a lot of work.
 
 ## 3. Topology
 
@@ -61,6 +64,9 @@ your tailnet?
 
 **Answer:**
 
+one small rust node daemon per node sounds good. Does it also help to plan for wrappers where the agent harness doesn't expose hooks similar to claude?
+The hub will live on a machine on my tailnet.
+
 ## 4. Network and auth
 
 Strictly single-user on a Tailscale network, or reachable over the public
@@ -70,6 +76,9 @@ Recommendation: tailnet only, pre-shared token per node and per client, TLS
 terminated by the hub. This decides how much auth work goes into phase 1.
 
 **Answer:**
+go with your recommendation. We eventually want to connect to multiple tailnets simultaneously.
+We will the use the tsnet library: https://tailscale.com/docs/features/tsnet or something similar to
+create connection between daemon, hub and clients.
 
 ## 5. Protocol
 
@@ -82,6 +91,8 @@ kinds of clients are planned.
 Sub-question: should node-to-hub and client-to-hub share the same protocol?
 
 **Answer:**
+Go with your recommendation. For your sub question - they won't necessarily be the same.
+The client can essentially access multiple daemons through the hub. The hub will expose more functionality to the client.
 
 ## 6. Storage and records
 
@@ -94,6 +105,7 @@ retention limit for now.
 Sub-question: Postgres instead?
 
 **Answer:**
+go with your recommendation. We will migrate to postgres eventually.
 
 ## 7. Node health
 
@@ -106,6 +118,8 @@ Recommendation: snapshot every 30 seconds, kept as a time series in the same
 SQLite file.
 
 **Answer:**
+track CPU, memory, disk, network, running claude processes, usage and rate limit state and gpu (if available). we need a time series.
+eventually we will move to a proper monitoring and alerting infra that I am building separately.
 
 ## 8. Push notifications
 
@@ -118,6 +132,7 @@ The phone must wake when a session is blocked on you. Options:
 Recommendation: self-hosted ntfy on the hub machine.
 
 **Answer:**
+go with your recommendation.
 
 ## 9. Android stack
 
@@ -128,6 +143,7 @@ Recommendation: self-hosted ntfy on the hub machine.
 Recommendation: UniFFI core plus Compose. More setup in phase 1.
 
 **Answer:**
+go with your recommendation.
 
 ## 10. Agent abstraction
 
@@ -137,6 +153,7 @@ hard-code Claude Code and refactor later?
 Recommendation: thin adapter trait, single implementation.
 
 **Answer:**
+go with your recommendation
 
 ## 11. Policy
 
@@ -146,6 +163,7 @@ a given node?
 Recommendation: human only in phase 1, rules later.
 
 **Answer:**
+go with your recommendation
 
 ## 12. The custom integrations
 
@@ -153,6 +171,9 @@ Which app do you want to integrate into first? Is one of them this yajna lab,
 for example linking sessions to a PRJ id? This shapes the public API.
 
 **Answer:**
+No. For now keep it simple. I want to see running session and interact with them.
+I also want to launch sessions inside specific directories from my client.
+We will focus on integrations later.
 
 ## 13. Deployment and repo layout
 
@@ -163,6 +184,8 @@ node, proto, and client core, plus an android directory.
 Does that match what you expect?
 
 **Answer:**
+Yes, but the create the nixos modules and home-manager service in the project folder.
+We will migrate it later.
 
 ## 14. What existing remote-driving tools fall short on
 
@@ -171,3 +194,7 @@ Name the gap in one or two lines so the architecture doc is honest about what
 rc2s2 adds.
 
 **Answer:**
+
+Most of the existing apps focus on single agent harness with a single account.
+rc2s2 will be multi agent, simultaneous multi account with nodes on multiple tailnets.
+eventually rc2s2 will recieve msgs from other clients or run scrape jobs and based on the msg/result start background agents. sessions.
