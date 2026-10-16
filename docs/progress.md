@@ -8,6 +8,11 @@ link the file.
 
 ## 2026-10-16
 
+- **2026-10-16 17:25** Project flakes switched to explicit relative-path inputs of the root
+  flake (`inputs.<slug> = { url = "path:./projects/<slug>"; ... }`, added by the scaffold)
+  instead of directory scanning, so projects can declare their own inputs and locks. The
+  scaffold template now uses flake-parts; `projects/rc2s2-*/flake.nix` re-rendered from it
+  and locked. ADR-0009 records the change.
 - **2026-10-16 15:21** Software projects: `code` field on project pages (path under
   `projects/` or a URL), `yajna new project --code` scaffolds `projects/<slug>/` with a
   flake and README from `templates/code/`, validate checks the directory exists, and the

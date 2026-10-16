@@ -116,11 +116,18 @@ cd projects/toy-model && nix develop     # the project's own environment
 ```
 
 The project page gets `code: projects/toy-model`; `yajna validate` fails if that directory
-disappears. The root `nix flake check` evaluates every `projects/*/flake.nix` with the
-root's `nixpkgs`, so a project flake that adds its own inputs breaks the root check: keep
-new inputs at the root instead. Nix only sees tracked files, so `git add` the directory
-before the first `nix develop`. When the code moves to its own
-repository, set `code` to that URL and record the move in the progress log.
+disappears. The project flake is built on flake-parts and is a normal flake: add whatever
+inputs it needs and commit its own `flake.lock`. The scaffold also registers the directory
+as an input of the root flake (`inputs.toy-model`, with `nixpkgs` following the root), so
+the root `nix flake check` builds every project's dev shell. After scaffolding:
+
+```
+git add projects/toy-model      # Nix only sees tracked files
+nix flake lock ./projects/toy-model && nix flake lock .
+```
+
+Both lock files travel with the commit. When the code moves to its own repository, set
+`code` to that URL, drop the root input, and record the move in the progress log.
 
 ## Protocols
 

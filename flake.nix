@@ -3,23 +3,21 @@
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
-  outputs = { self, nixpkgs }:
+  # Dry-lab projects (ADR-0009): one input per projects/<name>/, each a flake with its own
+  # lock and inputs; nixpkgs follows the root so everything shares one pin. The line is
+  # added by `yajna new project --code`; run `nix flake lock` afterwards.
+  # projects: registered by yajna new project --code
+  inputs.rc2s2-a-remote-command-and-control-session-server = { url = "path:./projects/rc2s2-a-remote-command-and-control-session-server"; inputs.nixpkgs.follows = "nixpkgs"; };
+
+  outputs = { self, nixpkgs, ... }@inputs:
     let
       systems = [ "aarch64-darwin" "x86_64-darwin" "x86_64-linux" "aarch64-linux" ];
       forAll = f: nixpkgs.lib.genAttrs systems (system: f nixpkgs.legacyPackages.${system});
-      # Dry-lab code under projects/<name>/ carries its own flake (ADR-0009). Each one is
-      # evaluated here with the root's inputs, so a broken project flake fails the root
-      # check; a project that adds inputs of its own must take them from the root too.
-      projectNames = nixpkgs.lib.attrNames (nixpkgs.lib.filterAttrs
-        (name: kind: kind == "directory" && builtins.pathExists (./projects + "/${name}/flake.nix"))
-        (if builtins.pathExists ./projects then builtins.readDir ./projects else { }));
-      projectChecks = pkgs: nixpkgs.lib.listToAttrs (map (name: {
+      projects = removeAttrs inputs [ "self" "nixpkgs" ];
+      projectChecks = pkgs: nixpkgs.lib.mapAttrs' (name: flake: {
         name = "project-${name}";
-        value = ((import (./projects + "/${name}/flake.nix")).outputs {
-          self = { outPath = ./projects + "/${name}"; };
-          inherit nixpkgs;
-        }).devShells.${pkgs.system}.default;
-      }) projectNames);
+        value = flake.devShells.${pkgs.system}.default;
+      }) projects;
     in {
       packages = forAll (pkgs: rec {
         yajna = pkgs.python3Packages.buildPythonApplication {

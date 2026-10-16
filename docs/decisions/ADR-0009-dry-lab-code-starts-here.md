@@ -24,3 +24,7 @@ reference it by repository URL and commit, and the moved history is preserved wi
   repo's commit, afterwards it is the external repo's.
 - Small analyses never leave. The threshold for moving is a judgement call, recorded in the
   progress log when it happens.
+- Each project is registered explicitly as a relative-path input of the root flake
+  (2026-10-16). An earlier version evaluated project flakes by reading `projects/`, which
+  forbade project-level inputs; explicit inputs let a project bring its own (uv2nix, CUDA
+  overlays) and keep its own lock, at the cost of one line in `flake.nix` per project.

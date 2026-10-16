@@ -48,9 +48,9 @@ URL once the code has moved to its own repo).
 1. Read the project page: current belief, open questions, what not to try again.
 2. Read its experiments and the latest runs; `results.tsv` under each experiment's sidecar
    directory is the quick view.
-3. Work inside `projects/<name>/` with `nix develop` there. The project flake pins its own
-   environment; do not add inputs to it, add them at the root (the root check evaluates
-   project flakes with the root's `nixpkgs`).
+3. Work inside `projects/<name>/` with `nix develop` there. The project flake (flake-parts)
+   pins its own environment and may add inputs; its `nixpkgs` follows the root. Run
+   `nix flake lock` there after changing inputs and commit the lock.
 4. Record a run by printing one `===RESULT=== {...}` line and piping the output through
    `yajna result`. The RUN page records the commit, which is the dry-lab protocol version.
 5. Log what you did and what you learned, link the pages, update the `AGS` page.
@@ -61,8 +61,10 @@ URL once the code has moved to its own repo).
 yajna new project "<title>" --code
 ```
 
-creates the `PRJ` page and `projects/<slug>/` with a flake and README. `git add` the new
-directory before `nix develop` there, since Nix only sees tracked files. Then
+creates the `PRJ` page and `projects/<slug>/` with a flake-parts flake and README, and
+registers the directory as an input of the root flake. Then `git add` the directory (Nix
+only sees tracked files) and run `nix flake lock ./projects/<slug> && nix flake lock .`;
+both lock files are committed. Then
 `yajna new experiment "<question>" --project PRJ-xxxx` for the first
 experiment; fill `Question`, `Hypothesis and predictions`, `Plan` and `Success criteria`
 before the first run. Small analyses stay in this repo for good; a project graduates to its

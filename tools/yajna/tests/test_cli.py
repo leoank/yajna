@@ -184,8 +184,13 @@ class CliTest(unittest.TestCase):
         self.assertEqual(code, 1)
 
     def test_project_code_scaffold(self):
+        from yajna.cli import PROJECTS_MARK
+        (self.tmp / "flake.nix").write_text("{\n" + PROJECTS_MARK + "}\n")
         code, out = self.run_cli("new", "project", "Toy model", "--code")
         self.assertEqual(code, 0, out)
+        self.assertIn('inputs.toy-model = { url = "path:./projects/toy-model"; inputs.nixpkgs.follows',
+                      (self.tmp / "flake.nix").read_text())
+        self.assertIn("flake-parts", (self.tmp / "projects/toy-model/flake.nix").read_text())
         page = self.tmp / out.strip()
         self.assertIn("code: projects/toy-model", page.read_text())
         self.assertTrue((self.tmp / "projects/toy-model/flake.nix").is_file())

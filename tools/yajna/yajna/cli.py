@@ -87,14 +87,24 @@ def create(vault: Vault, etype: str, title: str | None, project: str | None = No
     return path
 
 
+PROJECTS_MARK = "# projects: registered by yajna new project --code\n"
+
+
 def scaffold_code(vault: Vault, slug: str, **fields) -> Path:
-    """Create projects/<slug>/ with a flake and README."""
+    """Create projects/<slug>/ with a flake and README and register it in the root flake."""
     code_dir = vault.root / "projects" / slug
     if code_dir.exists():
         raise SystemExit(f"{code_dir.relative_to(vault.root)} already exists")
     code_dir.mkdir(parents=True)
     for name in ("flake.nix", "README.md"):
         (code_dir / name).write_text(vault.render(f"code/{name}", slug=slug, **fields))
+    root_flake = vault.root / "flake.nix"
+    if root_flake.is_file() and PROJECTS_MARK in root_flake.read_text():
+        line = (f'  inputs.{slug} = {{ url = "path:./projects/{slug}"; '
+                'inputs.nixpkgs.follows = "nixpkgs"; };\n')
+        root_flake.write_text(root_flake.read_text().replace(PROJECTS_MARK, PROJECTS_MARK + line))
+        print(f"registered input {slug} in flake.nix; next: git add projects/{slug} && nix flake lock",
+              file=sys.stderr)
     return code_dir
 
 
