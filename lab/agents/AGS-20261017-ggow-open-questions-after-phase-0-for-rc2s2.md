@@ -6,9 +6,9 @@ title: Open questions after phase 0 for rc2s2
 model: claude-fable-5-1
 harness: claude-code 2.1.302
 started: 2026-10-17T13:20+01:00
-finished: 2026-10-17T14:20+01:00
-created_entities: [RUN-20261017-5jwo, RUN-20261017-tnz7, RUN-20261017-syvm, RUN-20261017-nm55, RUN-20261017-nn7f, RUN-20261017-dqyz, RUN-20261017-trj6, RUN-20261017-ho7k, RUN-20261017-ejq2]
-edited_entities: [EXP-0002, EXP-0004, EXP-0005, EXP-0007, EXP-0008]
+finished: 2026-10-17T19:22+01:00
+created_entities: [RUN-20261017-5jwo, RUN-20261017-tnz7, RUN-20261017-syvm, RUN-20261017-nm55, RUN-20261017-nn7f, RUN-20261017-dqyz, RUN-20261017-trj6, RUN-20261017-ho7k, RUN-20261017-ejq2, RUN-20261017-mm42]
+edited_entities: [EXP-0001, EXP-0002, EXP-0003, EXP-0004, EXP-0005, EXP-0006, EXP-0007, EXP-0008, EXP-0009]
 outcome: done             # done | failed | aborted | pending
 created: 2026-10-17
 author: ank
@@ -39,4 +39,15 @@ answers are arrays of labels and free text is any string ([[RUN-20261017-nm55]],
 seatbelt boundary with loopback TCP denied ([[RUN-20261017-syvm]]); only `/usage` writes
 `cachedUsageUtilization`, and the usage endpoint answers a bearer request directly
 ([[RUN-20261017-trj6]], [[RUN-20261017-ho7k]]). The owner's Android tsnet decision was
-recorded. No open questions remain from phase 0. Nothing was committed.
+recorded. No open questions remain from phase 0.
+
+Continued later the same day after the owner's review. The owner asked whether one account
+can run many sessions, as their terminals do; the answer from the code read is yes, as long
+as they share one credential store, so the leasing section of the architecture doc was
+rewritten: a slot is leased to a node, not a session, any number of sessions share it, and a
+node holds one slot per account. The owner had set `review: done` on eight experiment pages,
+which the schema rejects; changed to `approved` at their request. Committed as `7f5d8f4`.
+The two-session refresh test was planned as [[RUN-20261017-mm42]] with scripts and deferred,
+since it needs a fresh browser login (`2f1f257`). Last, a handoff document for the next
+agent, `docs/HANDOFF.md` in the code directory, since the project is about to graduate to
+its own repository.
