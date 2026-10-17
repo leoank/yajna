@@ -1,4 +1,0 @@
-{
-  "egress": "allow",
-  "timeoutMs": 10000
-}

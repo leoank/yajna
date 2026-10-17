@@ -16,8 +16,8 @@ from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
 
-ROOT = Path(__file__).resolve().parents[2]
-CORPUS = ROOT / "corpus"
+# Run from the lab root: the corpus lives beside its lab/, not in the tooling repo.
+CORPUS = Path.cwd() / "corpus"
 RAW = CORPUS / "raw"
 OUT = CORPUS / "protocols"
 UA = "yajna-corpus/0.1 (academic research; contact via repo)"
@@ -568,7 +568,7 @@ def write_protocol(source, ident, meta, md, origin):
         if k in meta:
             fm.insert(-4, f"{k}: {yaml_str(meta[k])}")
     path.write_text("\n".join(fm) + md.rstrip() + "\n")
-    print("wrote", path.relative_to(ROOT))
+    print("wrote", path.relative_to(Path.cwd()))
     return path
 
 

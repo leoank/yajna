@@ -17,7 +17,7 @@ Enter the tooling with `nix develop` at the repo root; `yajna` is then on the pa
 
 ```toml
 shape = "lab"             # or "project"
-namespace = "yajna"       # this repo's name in links from other repos
+namespace = "manthan"     # this repo's name in links from other repos
 author = "ank"
 vault = "lab"
 timezone = "Europe/London"
@@ -27,7 +27,7 @@ bibliography = "references/library.bib"
 rc2s2 = "github:leoank/rc2s2"
 ```
 
-`yajna init lab [dir]` creates this repo's layout (`--namespace` and `--author` default to
+`yajna init lab [dir]` creates a lab's layout (`--namespace` and `--author` default to
 the directory name and `$USER`). `yajna init project "<title>"`, run at the
 root of a code repo, adds `yajna.toml` and `lab/` inside it: `lab/README.md` is the
 project page (`PRJ-0001`, `code: .`) and `experiments/`, `runs/`, `analyses/`,

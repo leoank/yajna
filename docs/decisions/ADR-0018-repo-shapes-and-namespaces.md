@@ -20,7 +20,7 @@ ADR-0004 states that IDs are global, which is true inside one repo and false acr
 
 `yajna init` creates one of two repo shapes, recorded as `shape` in `yajna.toml`:
 
-- `lab`: this repo's shape. `lab/` holds `projects/PRJ-*/`, the shared `protocols/`,
+- `lab`: the notebook repo's shape (`leoank/manthan`). `lab/` holds `projects/PRJ-*/`, the shared `protocols/`,
   `materials/`, `equipment/`, `builds/`, `agents/`, `log/`, `references/`, `tasks.md` and
   `counters.yaml`.
 - `project`: one project in its own repo. The repo root is the code tree itself, what

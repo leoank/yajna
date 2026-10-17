@@ -1,6 +1,0 @@
-{
-  "egress": "deny",
-  "ingress": "allow",
-  "hostLoopback": "allow",
-  "timeoutMs": 10000
-}

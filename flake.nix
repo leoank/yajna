@@ -1,23 +1,12 @@
 {
-  description = "yajna: a markdown-first lab notebook and its tooling";
+  description = "yajna: tooling for a markdown-first lab notebook";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
-  # Dry-lab projects (ADR-0009): one input per projects/<name>/, each a flake with its own
-  # lock and inputs; nixpkgs follows the root so everything shares one pin. The line is
-  # added by `yajna new project --code`; run `nix flake lock` afterwards.
-  # projects: registered by yajna new project --code
-  inputs.rc2s2-a-remote-command-and-control-session-server = { url = "path:./projects/rc2s2-a-remote-command-and-control-session-server"; inputs.nixpkgs.follows = "nixpkgs"; };
-
-  outputs = { self, nixpkgs, ... }@inputs:
+  outputs = { self, nixpkgs, ... }:
     let
       systems = [ "aarch64-darwin" "x86_64-darwin" "x86_64-linux" "aarch64-linux" ];
       forAll = f: nixpkgs.lib.genAttrs systems (system: f nixpkgs.legacyPackages.${system});
-      projects = removeAttrs inputs [ "self" "nixpkgs" ];
-      projectChecks = pkgs: nixpkgs.lib.mapAttrs' (name: flake: {
-        name = "project-${name}";
-        value = flake.devShells.${pkgs.system}.default;
-      }) projects;
     in {
       packages = forAll (pkgs: rec {
         # The yajna CLI (ADR-0017): one static binary with schema/ and templates/ embedded.
@@ -53,7 +42,7 @@
           };
         });
 
-      checks = forAll (pkgs: projectChecks pkgs // {
+      checks = forAll (pkgs: {
         # buildRustPackage runs `cargo test`: the CLI's unit and integration tests.
         yajna = self.packages.${pkgs.system}.yajna;
         yajna-nvim = pkgs.runCommand "yajna-nvim-tests" {
@@ -61,13 +50,6 @@
         } ''
           export HOME=$TMPDIR
           nvim --headless -u NONE --cmd "set rtp+=${self}/tools/yajna.nvim" -l ${self}/tools/yajna.nvim/tests/run.lua
-          touch $out
-        '';
-        validate = pkgs.runCommand "yajna-validate" {
-          nativeBuildInputs = [ self.packages.${pkgs.system}.yajna ];
-        } ''
-          cd ${self}
-          yajna --root . validate
           touch $out
         '';
       });

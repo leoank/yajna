@@ -1,3 +1,0 @@
-mxc-spike: '/bin/echo' 'hi-from-nix-built'
-hi-from-nix-built
-mxc-spike: exited 0

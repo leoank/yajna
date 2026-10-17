@@ -25,7 +25,7 @@ contract is files.
   takes over the `tools/yajna/` name in the commit that deletes the Python CLI, once it
   passes parity. The lab is kept in this repo for quick iteration and moves to its own
   `lab`-shaped repo later, taking `lab/`, `projects/`, `references/` and `yajna.toml`
-  with it.
+  with it (done on 2026-10-17: `leoank/manthan`, split out with its history).
 - Parity is defined by tests, not by reading: the Python test suite is ported as
   integration tests that drive the binary against a scratch vault, and a scripted session
   (`new`, `log`, `result`, `ref`, `validate`) run through both CLIs must produce the same

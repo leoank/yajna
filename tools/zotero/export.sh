@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Snapshot the whole Zotero library into references/library.bib through Better BibTeX's
-# JSON-RPC (Zotero must be running with the local API enabled).
+# Snapshot the whole Zotero library into references/library.bib of the lab repo in the
+# current directory through Better BibTeX's JSON-RPC (Zotero must be running with the
+# local API enabled). Run it from the lab root.
 set -euo pipefail
-cd "$(dirname "$0")/../.."
+[ -f yajna.toml ] || { echo "run from a lab root (no yajna.toml here)" >&2; exit 1; }
 keys=$(curl -s -X POST http://localhost:23119/better-bibtex/json-rpc -H 'Content-Type: application/json' \
   -d '{"jsonrpc":"2.0","method":"item.search","params":[""],"id":1}' \
   | python3 -c 'import json,sys; print(json.dumps([i["citation-key"] for i in json.load(sys.stdin)["result"] if i.get("citation-key")]))')

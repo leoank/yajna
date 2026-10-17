@@ -8,6 +8,15 @@ link the file.
 
 ## 2026-10-17
 
+- **2026-10-17 18:30** The lab moved out (ADR-0017's deferred step): `lab/`, `projects/`,
+  `references/`, `corpus/` and `yajna.toml` became the private repo `leoank/manthan`
+  with their history (`git filter-repo`), namespace `manthan`, a root flake that takes
+  `yajna` as an input for the dev shell and the validate check, and its own README and
+  AGENTS.md. This repo keeps the tooling only: no project inputs or validate check in
+  the flake, `tools/zotero` and `tools/corpus` run from a lab root (the Zotero plan is
+  the lab's `references/zotero-plan.json`), README and AGENTS.md rewritten for a public
+  tooling repo. rc2s2's branch was merged first so nothing was left behind.
+
 - **2026-10-17 17:40** Phase 0c: `tools/yajna.nvim/`, a Neovim plugin in plain Lua. In a
   markdown buffer under a `yajna.toml`, `gf` and `<C-]>` follow `[[ID]]`, `[[ID@3|label]]`,
   `[[ns/ID]]` (through the `[repos]` path) and `@citekey` (reading note, else the `.bib`

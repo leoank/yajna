@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Apply plan.json to the Zotero library through the Web API.
+"""Apply a plan (the lab's references/zotero-plan.json) to the Zotero library through the Web API.
 
 Needs ZOTERO_API_KEY (read/write) and ZOTERO_USER_ID in the environment. Idempotent:
 collections that exist are reused, tags already present are kept, pinned keys are not
 rewritten, linked attachments are added once. Items listed under "trash" are only
 trashed with --trash; collections under "delete_collections" are deleted only when empty.
 
-Usage: organize.py [--dry-run] [--trash]
+Usage: organize.py <plan.json> [--dry-run] [--trash]
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ import urllib.request
 from pathlib import Path
 
 API = "https://api.zotero.org"
-PLAN = Path(__file__).with_name("plan.json")
+PLAN = Path(next((a for a in sys.argv[1:] if not a.startswith("--")), "zotero-plan.json"))
 
 
 class Zotero:

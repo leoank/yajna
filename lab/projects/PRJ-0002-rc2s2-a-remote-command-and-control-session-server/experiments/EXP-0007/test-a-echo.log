@@ -1,3 +1,0 @@
-mxc-spike: '/bin/echo' 'hi'
-hi
-mxc-spike: exited 0

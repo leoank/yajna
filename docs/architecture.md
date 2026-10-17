@@ -190,12 +190,13 @@ yajna/
   talks/                     # presentation sources
   projects/                  # code for dry-lab projects, each its own flake or subdir
   hardware/<name>/           # design sources per build: cad/, pcb/ (KiCad), firmware/, flake.nix
-  tools/                     # every yajna tool: CLI (Rust from Phase 0b), indexer, server, apps
   yajna.toml                 # shape = "lab", namespace, author, [repos]
   flake.nix
 ```
 
-That is the `lab` shape. A graduated project (ADR-0018) is the `project` shape: the same
+That is the `lab` shape, `leoank/manthan` for this notebook; every yajna tool (CLI, indexer,
+server, apps) lives in the public `leoank/yajna` repo under `tools/` and is consumed as a
+flake input. A graduated project (ADR-0018) is the `project` shape: the same
 vault conventions with one project and no shared entities. The former `projects/<slug>/`
 directory becomes the root of the new repo and the notebook moves in with the code:
 

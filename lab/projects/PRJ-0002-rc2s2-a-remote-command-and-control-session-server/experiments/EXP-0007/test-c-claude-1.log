@@ -1,3 +1,0 @@
-mxc-spike: 'claude' '-p' 'reply with the single word ok'
-EPERM: operation not permitted, open '/tmp/claude-501'
-mxc-spike: exited 1
