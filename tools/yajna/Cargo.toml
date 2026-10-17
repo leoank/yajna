@@ -2,7 +2,7 @@
 name = "yajna"
 version = "0.2.0"
 edition = "2021"
-description = "The yajna lab-notebook command: new, log, result, tasks, ref, validate"
+description = "The yajna lab-notebook command: new, log, result, tasks, ref, validate, index, timeline, tree, site"
 license = "MIT"
 default-run = "yajna"
 
@@ -17,7 +17,9 @@ fastrand = "2"
 inquire = "0.9"
 jiff = { version = "0.2", features = ["tzdb-bundle-always"] }
 jsonschema = { version = "0.59", default-features = false }
+pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
 regex = "1"
+rusqlite = { version = "0.40", features = ["bundled"] }
 rust-embed = "8"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }

@@ -80,6 +80,16 @@ pub fn run(vault: &Vault, cmd: &Cmd, prompter: &mut dyn Prompter) -> Res<i32> {
         Cmd::Tasks { done } => cmd_tasks(vault, *done),
         Cmd::Ref { key, note } => cmd_ref(vault, key, *note),
         Cmd::Validate => cmd_validate(vault),
+        Cmd::Index => crate::query::cmd_index(vault),
+        Cmd::Show { id } => crate::query::cmd_show(vault, id),
+        Cmd::Timeline { id } => crate::query::cmd_timeline(vault, id),
+        Cmd::Tree { project } => crate::query::cmd_tree(vault, project.as_deref()),
+        Cmd::Runs {
+            experiment,
+            by,
+            desc,
+        } => crate::query::cmd_runs(vault, experiment, by.as_deref(), *desc),
+        Cmd::Site { out } => crate::site::cmd_site(vault, out.as_deref()),
         Cmd::Graduate {
             project,
             to,

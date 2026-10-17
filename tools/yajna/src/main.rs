@@ -1,7 +1,10 @@
 mod cli;
 mod commands;
+mod index;
 mod init;
+mod query;
 mod refs;
+mod site;
 mod tui;
 mod validate;
 mod vault;

@@ -1,0 +1,16 @@
+# Every push and pull request: the flake's checks (the CLI's tests in the sandbox, the
+# Neovim plugin's headless tests) and the package build, through Nix.
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@v16
+      - uses: DeterminateSystems/magic-nix-cache-action@v9
+      - run: nix flake check -L
+      - run: nix build -L .#yajna

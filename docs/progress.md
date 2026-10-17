@@ -8,6 +8,17 @@ link the file.
 
 ## 2026-10-17
 
+- **2026-10-17 21:10** Phase 1 in the CLI (ADR-0019): `yajna index` builds a SQLite cache
+  outside the repo (`entity`, `link`, `log_entry`, `mention`, `run_result`, `task`,
+  `citation`) from a valid vault; `show`, `timeline` ("everything I did with MAT-0210"),
+  `tree` (experiments by theme with outcome, runs and influence), `runs --by <metric>`
+  ("all runs for EXP-0007 by metric") and `site` read it and rebuild it when stale. The
+  site is one HTML page per entity with `[[links]]` and `@citekeys` resolved, backlinks,
+  log mentions, runs with metrics, and the AutoGo-style experiment tree as inline SVG on
+  each project page. `.github/workflows/ci.yml` runs `nix flake check` on every push here
+  and in manthan. Three integration tests cover index, queries and site; on the lab the
+  index holds 45 entities and 229 links and the site renders 48 pages.
+
 - **2026-10-17 18:30** The lab moved out (ADR-0017's deferred step): `lab/`, `projects/`,
   `references/`, `corpus/` and `yajna.toml` became the private repo `leoank/manthan`
   with their history (`git filter-repo`), namespace `manthan`, a root flake that takes

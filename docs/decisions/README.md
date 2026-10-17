@@ -13,7 +13,7 @@ one rather than an edit.
 | [0004](ADR-0004-entities-and-id-scheme.md) | Entity set; counter IDs for curated, date plus suffix for volume entities | accepted |
 | [0005](ADR-0005-repository-layout.md) | Repository layout, `lab/` as the vault | accepted |
 | [0006](ADR-0006-tasks-as-checkboxes.md) | Tasks are markdown checkboxes | accepted |
-| [0007](ADR-0007-search-qmd-first.md) | `qmd` for search; SQLite indexer only when a query needs it | accepted |
+| [0007](ADR-0007-search-qmd-first.md) | `qmd` for search; SQLite indexer only when a query needs it | accepted, indexer built under 0019 |
 | [0008](ADR-0008-single-author.md) | One human author plus agents | accepted |
 | [0009](ADR-0009-dry-lab-code-starts-here.md) | Dry-lab code starts in `projects/`, graduates to its own repo | accepted |
 | [0010](ADR-0010-eln-exporter.md) | A plain one-way exporter satisfies the ELN requirement | accepted |
@@ -25,3 +25,4 @@ one rather than an edit.
 | [0016](ADR-0016-references.md) | References: Zotero for capture, citation keys as identity, notes in the vault | accepted |
 | [0017](ADR-0017-rust-single-binary-cli.md) | The CLI becomes a single Rust binary with embedded schemas and templates | accepted |
 | [0018](ADR-0018-repo-shapes-and-namespaces.md) | Two repo shapes (`lab`, `project`), namespaced cross-repo links, graduation procedure | accepted |
+| [0019](ADR-0019-index-and-site-as-caches.md) | The SQLite index and the static site are caches outside the repo, rebuilt when stale | accepted |

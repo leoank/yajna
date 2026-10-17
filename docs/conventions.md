@@ -264,6 +264,29 @@ qmd search "induction stressed"          # keyword
 qmd query "when did the chamber take long to equilibrate"   # hybrid, with reranking
 ```
 
+## Queries and the site
+
+Structured questions are answered from the SQLite index, a cache outside the repo that
+every query rebuilds when a page is newer than it (ADR-0019). The vault must validate
+first; an invalid vault has no index.
+
+```
+yajna show EXP-0007          # frontmatter, links out and in, how many log lines mention it
+yajna timeline MAT-0210      # everything recorded about it, oldest first: creation, pages that
+                             #   link it (runs with their metrics), every log line mentioning it
+yajna tree PRJ-0001          # experiments by theme (the first tag), with status/outcome, run
+                             #   counts and `<- EXP-xxxx` for influenced_by
+yajna runs EXP-0007 --by loss [--desc]   # runs with their results.tsv metrics, sorted
+yajna site [--out dir]       # one HTML page per entity, the log, tasks, and on each project
+                             #   page the experiment tree: themes as rows, outcome as colour,
+                             #   creation order as the solid line, influenced_by dotted
+yajna index                  # force a rebuild and print the table sizes
+```
+
+Tags carry the tree: put the theme first (`tags: [timing, confinement]`). `outcome`
+colours the node (positive green, negative red, inconclusive amber, infra grey, open
+white). `influenced_by` draws the dotted edges.
+
 ## Agents
 
 Agents write through the same commands with `--author agent:<name>` and record an `AGS`

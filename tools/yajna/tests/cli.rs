@@ -87,7 +87,8 @@ impl Vault {
             .arg(&self.root)
             .args(args)
             .env_remove("EDITOR")
-            .env_remove("YAJNA_ANSWERS");
+            .env_remove("YAJNA_ANSWERS")
+            .env("YAJNA_CACHE", self.root.join(".cache"));
         for (k, v) in env {
             cmd.env(k, v);
         }
@@ -735,6 +736,271 @@ fn graduate_moves_code_and_notebook() {
         .code,
         1
     );
+}
+
+/// A lab with two themed experiments, runs with metrics, a protocol, a material, a
+/// reading note and log lines: what the index, the queries and the site are tested on.
+fn indexed_lab() -> Vault {
+    let v = vault();
+    fs::create_dir_all(v.root.join("references")).unwrap();
+    fs::write(v.root.join("references/library.bib"), BIB).unwrap();
+    assert_eq!(v.run(&["new", "project", "Archaeal division"]).code, 0);
+    assert_eq!(v.run(&["new", "protocol", "Transformation"]).code, 0);
+    let out = v.run(&["new", "material", "Strain xyz", "--kind", "strain"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let out = v.run(&["new", "experiment", "ESCRT timing", "--project", "PRJ-0001"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let e1 = v.path(&out);
+    fs::write(
+        &e1,
+        v.read(&e1)
+            .replace("status: planned", "status: concluded")
+            .replace("outcome: null", "outcome: positive")
+            .replace("tags: []", "tags: [timing]")
+            .replace("materials: []", "materials: [MAT-0001]")
+            .replace("protocols: []", "protocols: [PRO-0001@1]")
+            + "\nBuilds on [@shih2015cloning]; see [[PRO-0001|the protocol]].\n\n- [ ] repeat at 37C\n",
+    )
+    .unwrap();
+    let out = v.run(&[
+        "new",
+        "experiment",
+        "ESCRT timing under confinement",
+        "--project",
+        "PRJ-0001",
+    ]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let e2 = v.path(&out);
+    fs::write(
+        &e2,
+        v.read(&e2)
+            .replace("tags: []", "tags: [timing]")
+            .replace("influenced_by: []", "influenced_by: [EXP-0001]"),
+    )
+    .unwrap();
+    let out = v.run(&[
+        "new",
+        "experiment",
+        "Membrane tension",
+        "--project",
+        "PRJ-0001",
+    ]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let e3 = v.path(&out);
+    fs::write(&e3, v.read(&e3).replace("tags: []", "tags: [mechanics]")).unwrap();
+    for (loss, lr) in [("0.42", "0.01"), ("0.31", "0.001"), ("0.35", "0.003")] {
+        let out = v.run_with(
+            &["result", "--experiment", "EXP-0001"],
+            Some(&format!(
+                "===RESULT=== {{\"loss\": {loss}, \"lr\": {lr}}}\n"
+            )),
+            &[],
+        );
+        assert_eq!(out.code, 0, "{}", out.stderr);
+    }
+    assert_eq!(v.run(&["ref", "shih2015cloning", "--note"]).code, 0);
+    assert_eq!(
+        v.run(&[
+            "log",
+            "Thawed [[MAT-0001]] for [[EXP-0001]]",
+            "--date",
+            "2026-10-15",
+            "--time",
+            "09:10"
+        ])
+        .code,
+        0
+    );
+    assert_eq!(
+        v.run(&[
+            "log",
+            "--author",
+            "agent:planner",
+            "--date",
+            "2026-10-16",
+            "--time",
+            "11:00",
+            "Drafted [[EXP-0002]]"
+        ])
+        .code,
+        0
+    );
+    assert_eq!(v.run(&["validate"]).code, 0);
+    v
+}
+
+#[test]
+fn index_is_a_rebuilt_cache_of_a_valid_vault() {
+    let v = indexed_lab();
+    let out = v.run(&["index"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(out.stdout.contains("10 entities"), "{}", out.stdout);
+    assert!(
+        out.stdout.contains("3 runs results") || out.stdout.contains("6 run results"),
+        "{}",
+        out.stdout
+    );
+    assert!(out.stdout.contains("2 log entries"), "{}", out.stdout);
+    assert!(out.stdout.contains("3 mentions"), "{}", out.stdout);
+    let db = walk(&v.root.join(".cache"))
+        .into_iter()
+        .find(|p| p.extension().map(|e| e == "sqlite").unwrap_or(false))
+        .expect("index file");
+    let built = db.metadata().unwrap().modified().unwrap();
+    // a later page makes the index stale; the next query rebuilds it
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    assert_eq!(v.run(&["new", "equipment", "Spinning disk"]).code, 0);
+    let out = v.run(&["show", "EQP-0001"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(out.stdout.contains("Spinning disk"), "{}", out.stdout);
+    assert!(
+        db.metadata().unwrap().modified().unwrap() > built,
+        "index rebuilt"
+    );
+    // an invalid vault has no index
+    fs::write(
+        v.root.join("lab/equipment/EQP-0001-spinning-disk.md"),
+        "---\nid: EQP-0001\ntype: equipment\n---\n",
+    )
+    .unwrap();
+    let out = v.run(&["index"]);
+    assert_eq!(out.code, 1);
+    assert!(out.stderr.contains("problem"), "{}", out.stderr);
+}
+
+#[test]
+fn show_timeline_tree_runs() {
+    let v = indexed_lab();
+    let out = v.run(&["show", "MAT-0001"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(
+        out.stdout.contains("EXP-0001  (materials)"),
+        "{}",
+        out.stdout
+    );
+    assert!(out.stdout.contains("log mentions: 1"), "{}", out.stdout);
+
+    // "everything I did with MAT-0001": the experiment that lists it and the log line
+    let out = v.run(&["timeline", "MAT-0001"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(
+        out.stdout.contains("created material MAT-0001 by tester"),
+        "{}",
+        out.stdout
+    );
+    // the log line is dated before the page was created, so it comes first
+    assert!(out.stdout.starts_with("2026-10-15 09:10"), "{}", out.stdout);
+    assert!(
+        out.stdout
+            .contains("2026-10-15 09:10 [tester] Thawed [[MAT-0001]] for [[EXP-0001]]"),
+        "{}",
+        out.stdout
+    );
+    assert!(
+        out.stdout
+            .contains("experiment EXP-0001 (materials)  ESCRT timing"),
+        "{}",
+        out.stdout
+    );
+    let out = v.run(&["timeline", "EXP-0001"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert_eq!(out.stdout.matches("run RUN-").count(), 3, "{}", out.stdout);
+    assert!(out.stdout.contains("loss=0.31"), "{}", out.stdout);
+    assert!(
+        out.stdout.contains("experiment EXP-0002 (influenced_by)"),
+        "{}",
+        out.stdout
+    );
+
+    let out = v.run(&["tree", "PRJ-0001"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(out.stdout.contains("\ntiming\n"), "{}", out.stdout);
+    assert!(out.stdout.contains("\nmechanics\n"), "{}", out.stdout);
+    assert!(out.stdout.contains("concluded/positive"), "{}", out.stdout);
+    assert!(out.stdout.contains("(3 runs)"), "{}", out.stdout);
+    assert!(
+        out.stdout.contains("EXP-0002") && out.stdout.contains("<- EXP-0001"),
+        "{}",
+        out.stdout
+    );
+
+    // "all runs for EXP-0001 by metric"
+    let out = v.run(&["runs", "EXP-0001", "--by", "loss"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let rows: Vec<&str> = out.stdout.lines().skip(1).collect();
+    assert_eq!(rows.len(), 3, "{}", out.stdout);
+    assert!(rows[0].ends_with("0.31\t0.001"), "{}", out.stdout);
+    assert!(rows[2].contains("0.42"), "{}", out.stdout);
+    let out = v.run(&["runs", "EXP-0001", "--by", "loss", "--desc"]);
+    assert!(
+        out.stdout.lines().nth(1).unwrap().contains("0.42"),
+        "{}",
+        out.stdout
+    );
+    assert_eq!(v.run(&["runs", "EXP-0001", "--by", "nothing"]).code, 1);
+    assert_eq!(v.run(&["runs", "PRO-0001"]).code, 1);
+    assert_eq!(v.run(&["show", "EXP-0099"]).code, 1);
+}
+
+#[test]
+fn site_renders_tree_links_and_log() {
+    let v = indexed_lab();
+    let out_dir = v.root.join("site");
+    let out = v.run(&["site", "--out", out_dir.to_str().unwrap()]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(out.stdout.contains("page(s)"), "{}", out.stdout);
+    let project = v.read(&out_dir.join("PRJ-0001.html"));
+    assert!(project.contains("<svg"), "tree on the project page");
+    assert!(
+        project.contains("stroke-dasharray"),
+        "influence edge is dotted"
+    );
+    assert!(
+        project.contains("fill=\"#4caf50\""),
+        "positive outcome is green"
+    );
+    assert!(
+        project.contains(">timing<") && project.contains(">mechanics<"),
+        "{project}"
+    );
+    let exp = v.read(&out_dir.join("EXP-0001.html"));
+    assert!(
+        exp.contains("<a href=\"PRO-0001.html\">the protocol</a>"),
+        "{exp}"
+    );
+    assert!(
+        exp.contains("<a href=\"ref-shih2015cloning.html\">@shih2015cloning</a>"),
+        "{exp}"
+    );
+    assert!(
+        exp.contains("<a href=\"MAT-0001.html\""),
+        "material in the frontmatter table"
+    );
+    assert!(
+        exp.contains("<h2>Runs</h2>") && exp.contains("0.31"),
+        "{exp}"
+    );
+    assert!(
+        exp.contains("<h2>Log</h2>") && exp.contains("Thawed"),
+        "{exp}"
+    );
+    let mat = v.read(&out_dir.join("MAT-0001.html"));
+    assert!(
+        mat.contains("Linked from") && mat.contains("EXP-0001.html"),
+        "{mat}"
+    );
+    assert!(out_dir.join("ref-shih2015cloning.html").is_file());
+    let log = v.read(&out_dir.join("log.html"));
+    assert!(
+        log.contains("agent:planner") && log.contains("<a href=\"EXP-0002.html\">"),
+        "{log}"
+    );
+    assert!(v
+        .read(&out_dir.join("tasks.html"))
+        .contains("repeat at 37C"));
+    assert!(v
+        .read(&out_dir.join("index.html"))
+        .contains("Archaeal division"));
 }
 
 fn walk(dir: &Path) -> Vec<PathBuf> {

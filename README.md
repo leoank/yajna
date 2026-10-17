@@ -35,6 +35,10 @@ yajna log "Started the first growth curve."
 yajna result --experiment EXP-0007 train.log     # ===RESULT=== line → RUN page + results.tsv
 yajna ref shih2015cloning --note
 yajna validate         # schema, IDs, links, citations
+yajna timeline MAT-0210                          # everything recorded about a material
+yajna tree PRJ-0001                              # experiments by theme, outcome, runs, influence
+yajna runs EXP-0007 --by loss                    # an experiment's runs ordered by a metric
+yajna site                                       # static site with the experiment tree
 yajna graduate PRJ-0002 --to github:leoank/rc2s2  # a project moves to its own repo
 ```
 
@@ -55,7 +59,7 @@ nix flake check        # the CLI's tests in the sandbox, the plugin's headless t
 ## Documents
 
 - `docs/architecture.md`: the system design and why markdown is the write model.
-- `docs/decisions/`: ADRs 0001–0018, indexed in `docs/decisions/README.md`.
+- `docs/decisions/`: ADRs 0001–0019, indexed in `docs/decisions/README.md`.
 - `docs/protocol-framework.md`, `docs/protocol-corpus.md`, `docs/microfluidic-compiler.md`:
   protocols as code, the published-protocol corpus, and a chip backend for them.
 - `docs/progress.md`: dated build log.
@@ -65,5 +69,6 @@ nix flake check        # the CLI's tests in the sandbox, the plugin's headless t
 
 Phase 0 built the conventions, schemas, templates and CLI; phase 0b made the CLI a
 portable Rust binary with `init`, namespaced links and `graduate`; phase 0c added the
-Neovim plugin. The lab moved to its own repo on 2026-10-17. Next phases are laid out in
+Neovim plugin. The lab moved to its own repo on 2026-10-17. Phase 1 added the SQLite
+index, the query commands and the static site. Next phases are laid out in
 `docs/architecture.md`.

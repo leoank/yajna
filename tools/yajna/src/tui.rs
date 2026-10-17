@@ -390,11 +390,15 @@ pub fn log_entry(vault: &Vault, p: &mut dyn Prompter) -> Res<String> {
 
 /// Loop: pick a command, run it with prompts, until quit.
 pub fn menu(vault: &Vault, p: &mut dyn Prompter) -> Res<i32> {
-    let choices: Vec<String> = ["new", "log", "ref", "tasks", "validate", "quit"]
-        .iter()
-        .map(|s| s.to_string())
-        .collect();
-    println!("yajna: new, log, ref, tasks, validate, quit (tab completes)");
+    let choices: Vec<String> = [
+        "new", "log", "ref", "tasks", "validate", "show", "timeline", "tree", "runs", "quit",
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .collect();
+    println!(
+        "yajna: new, log, ref, tasks, validate, show, timeline, tree, runs, quit (tab completes)"
+    );
     loop {
         let allowed = choices.clone();
         let Ok(choice) = p.ask(

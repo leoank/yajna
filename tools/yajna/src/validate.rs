@@ -62,7 +62,7 @@ fn schema_errors(validator: &Validator, instance: &Value, fallback: &str) -> Vec
 }
 
 /// IDs inside a frontmatter value, recursively: (local IDs, (namespace, ID) pairs).
-fn ids_in(value: &Value, local: &mut BTreeSet<String>, namespaced: &mut Vec<(String, String)>) {
+pub fn ids_in(value: &Value, local: &mut BTreeSet<String>, namespaced: &mut Vec<(String, String)>) {
     match value {
         Value::String(s) => {
             for c in NS_ID_RE.captures_iter(s) {

@@ -840,7 +840,8 @@ Resolved on 2026-10-15 and recorded in `docs/decisions/`:
 - Authors: one human plus agents (ADR-0008).
 - Dry-lab code: starts under `projects/` here, moves to its own repo when it matures (ADR-0009).
 - `qmd` versus the SQLite indexer: `qmd` alone until a structured query it cannot answer
-  appears (ADR-0007).
+  appears (ADR-0007). Two did on 2026-10-17, timelines and runs by metric; the indexer
+  and site exist as caches outside the repo (ADR-0019).
 - Google account for synced docs: the personal account (ADR-0011).
 - Voice and photo capture: server-side transcription; photos and audio are inline log
   attachments by default and `ART` artifacts when they are a run's result (ADR-0012).

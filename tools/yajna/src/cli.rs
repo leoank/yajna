@@ -8,7 +8,7 @@ use clap::{Parser, Subcommand};
 #[command(
     name = "yajna",
     version,
-    about = "The yajna command: init, new, log, result, tasks, ref, validate, graduate.",
+    about = "The yajna command: init, new, log, result, tasks, ref, validate, index, show, timeline, tree, runs, site, graduate.",
     disable_help_subcommand = true
 )]
 pub struct Cli {
@@ -90,6 +90,32 @@ pub enum Cmd {
     },
     /// check every page against the schemas, IDs and links
     Validate,
+    /// rebuild the SQLite index (a cache outside the repo; queries rebuild it when stale)
+    Index,
+    /// one entity: frontmatter, links out, links in, log mentions
+    Show { id: String },
+    /// everything that happened to an entity, in date order: log mentions, pages that link it, runs
+    Timeline { id: String },
+    /// a project's experiments by theme with status, outcome, runs and influence
+    Tree {
+        /// PRJ-xxxx; omitted in a project repo
+        project: Option<String>,
+    },
+    /// an experiment's runs with their metrics from results.tsv
+    Runs {
+        experiment: String,
+        /// metric to sort by (ascending; --desc for descending)
+        #[arg(long)]
+        by: Option<String>,
+        #[arg(long)]
+        desc: bool,
+    },
+    /// render the static site from the index
+    Site {
+        /// output directory (default: <cache>/<repo>/site)
+        #[arg(long)]
+        out: Option<PathBuf>,
+    },
     /// move a code-bearing project into its own repo, notebook included (ADR-0018)
     Graduate {
         /// PRJ-xxxx of the project
