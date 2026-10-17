@@ -4,15 +4,15 @@ type: experiment
 schema_version: 1
 title: Hook round trip, holding a PermissionRequest and answering it from another process
 project: PRJ-0002
-status: active           # planned | active | paused | concluded | abandoned
-outcome: null             # null | positive | negative | inconclusive | infra
+status: concluded           # planned | active | paused | concluded | abandoned
+outcome: infra             # null | positive | negative | inconclusive | infra
 influenced_by: []
 created: 2026-10-16
 author: ank
 protocols: []
 materials: []
 tags: []
-review: pending
+review: approved
 ---
 
 ## Question
@@ -88,4 +88,6 @@ Spike code: `projects/rc2s2-a-remote-command-and-control-session-server/spikes/0
 - [[RUN-20261016-qnhz]] headless, allow after 8 s
 
 ## Conclusion
-Written once, by a human, when status becomes `concluded`.
+- It is possible to hold the calude code permission dialog using the PermissionRequest hook and asnwer it using a different process.
+- There are some edge cases, like handling sessions in not already trusted foldes, as these dialogs cannot be driven by the Pty.
+

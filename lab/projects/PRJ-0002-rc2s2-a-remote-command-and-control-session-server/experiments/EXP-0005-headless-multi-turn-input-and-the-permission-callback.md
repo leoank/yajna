@@ -4,15 +4,15 @@ type: experiment
 schema_version: 1
 title: Headless multi-turn input and the permission callback
 project: PRJ-0002
-status: active           # planned | active | paused | concluded | abandoned
-outcome: null             # null | positive | negative | inconclusive | infra
+status: concluded           # planned | active | paused | concluded | abandoned
+outcome: infra             # null | positive | negative | inconclusive | infra
 influenced_by: []
 created: 2026-10-16
 author: ank
 protocols: []
 materials: []
 tags: []
-review: pending
+review: approved
 ---
 
 ## Question
@@ -57,16 +57,32 @@ target. `--resume <id>` works on any session id regardless of how it started.
   `attach` at a terminal.
 - **Session discovery** without hooks: `~/.claude/sessions/*.json` lists interactive sessions
   with pid, cwd, idle or busy status and a messaging socket path. The socket carries a key and
-  a peer protocol used by Claude Code's own session-to-session messaging; its protocol is not
-  documented and was not probed. Lead for later: it may be an injection path that avoids the
-  PTY.
+  a peer protocol used by Claude Code's own session-to-session messaging.
+- **The messaging socket is a prompt path** ([[RUN-20261017-ejq2]], protocol write-up in
+  `spikes/10-messaging-socket/PROTOCOL.md`): newline-delimited JSON over the `AF_UNIX`
+  socket named in the registry. A daemon of the same user connects and writes
+  `{"type":"user","message":{"role":"user","content":"..."}}` (optionally preceded by
+  `{"type":"auth","token":...}` from `~/.claude/sessions/<pid>.<hash>.key`; auth was not
+  enforced here) and the session takes the text as a user turn wrapped in a
+  `<cross-session-message>` banner, acting on it without any terminal input. Delivery is
+  gated by the *receiver's* permission mode: a prompting-mode session accepts, a
+  bypass-permissions session holds the message for approval in the terminal (an OS
+  notification fires) unless `crossSessionInbound: accept` is set. Messages queue and drain
+  at the next tool boundary; `priority: "now"` jumps the queue but nothing interrupts, and
+  there is no cancel type. Receipts (`control/peer_message_status` with `held | denied |
+  expired | delivered | refused | dropped`) and idle notices go only to a reply socket owned
+  by the sending pid. So prompts can go over the socket; interrupts stay on the PTY.
 - Every turn re-emits `system/init` and a `rate_limit_event` in the stream, so spawned sessions
   give fresh rate-limit state for free ([[EXP-0002]]).
 
 ## Runs
+- [[RUN-20261017-ejq2]] messaging socket: protocol, auth, delivery in default and bypass mode
 - [[RUN-20261016-45yh]] two turns over stdin
 - [[RUN-20261016-lkbz]] headless resume of a terminal session
 - [[RUN-20261016-ekdf]] background sessions and the registry
 
 ## Conclusion
-Written once, by a human, when status becomes `concluded`.
+- For spawned sessions `--input-format stream-json` keep one process alive across
+several user turns
+- permission callback surface headless through the PermissionRequest hook
+- session started in a terminal can be resumed headless

@@ -4,15 +4,15 @@ type: experiment
 schema_version: 1
 title: PTY injection for prompt, interrupt and keyboard-activity detection
 project: PRJ-0002
-status: active           # planned | active | paused | concluded | abandoned
-outcome: null             # null | positive | negative | inconclusive | infra
+status: concluded           # planned | active | paused | concluded | abandoned
+outcome: infra             # null | positive | negative | inconclusive | infra
 influenced_by: []
 created: 2026-10-16
 author: ank
 protocols: []
 materials: []
 tags: []
-review: pending
+review: approved
 ---
 
 ## Question
@@ -66,4 +66,6 @@ Spike code: `spikes/01-hooks/pty_driver.py` (a `pty.fork` driver with scripted s
 - [[RUN-20261016-2g2t]] interrupt, Ctrl-U, fresh prompt answered
 
 ## Conclusion
-Written once, by a human, when status becomes `concluded`.
+- A pty can inject a prompt and an Escape without breaking the terminal.
+- A pty can also observe keyboard and drive permission hold time, but there are nuances around parsing terminal state.
+
