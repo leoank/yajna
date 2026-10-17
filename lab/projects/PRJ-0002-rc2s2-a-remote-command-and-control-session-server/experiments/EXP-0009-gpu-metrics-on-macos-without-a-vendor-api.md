@@ -4,15 +4,15 @@ type: experiment
 schema_version: 1
 title: GPU metrics on macOS without a vendor API
 project: PRJ-0002
-status: active           # planned | active | paused | concluded | abandoned
-outcome: null             # null | positive | negative | inconclusive | infra
+status: concluded           # planned | active | paused | concluded | abandoned
+outcome: infra             # null | positive | negative | inconclusive | infra
 influenced_by: []
 created: 2026-10-16
 author: ank
 protocols: []
 materials: []
 tags: []
-review: pending
+review: approved
 ---
 
 ## Question
@@ -91,4 +91,4 @@ NVIDIA (`utilization_rates`, `memory_info`), sysfs `gpu_busy_percent` /
 - [[RUN-20261016-bs6e]] idle vs Metal load, ioreg and Rust IOKit timings
 
 ## Conclusion
-Written once, by a human, when status becomes `concluded`.
+- use iokit

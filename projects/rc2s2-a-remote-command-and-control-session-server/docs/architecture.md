@@ -16,7 +16,7 @@ What it adds over existing remote-driving tools:
 
 - **Many harnesses, many accounts.** Existing tools tie one agent harness to one account.
   rc2s2 treats the harness as an adapter and the account as a credential the hub owns
-  and leases to a node for one session.
+  and leases to a node for as many sessions as the node wants to run under it.
 - **Many networks.** The hub, the nodes and the clients may each sit on different
   tailnets. Every part embeds its own Tailscale identity, so nothing depends on the
   host's network setup.
@@ -86,9 +86,13 @@ facts come from hooks and the transcript, and the PTY is only a channel for inpu
   macOS comes from IOKit `IOAccelerator` `PerformanceStatistics` (device utilisation, memory
   in use, recovery count) in under 100 µs per sample through `io-kit-sys`; Linux uses NVML or
   the amdgpu sysfs files ([[EXP-0009]]). Rate-limit state ([[EXP-0002]]): spawned sessions
-  report it in every `rate_limit_event`; for interactive sessions the only on-disk source is
-  `cachedUsageUtilization` in `~/.claude.json`, refreshed rarely, so the daemon shows it with
-  its age and may fire a minimal headless probe when it is stale.
+  report it in every `rate_limit_event`; for a leased slot the daemon polls
+  `GET /api/oauth/usage` with the slot's token at a 60 s cadence and reports the result in
+  its health samples, and the hub does the same for slots it is holding idle
+  ([[RUN-20261017-ho7k]]); for a person's own login on a node the only on-disk source is
+  `cachedUsageUtilization` in `~/.claude.json`, which nothing but `/usage` writes
+  ([[RUN-20261017-trj6]]), so the daemon shows it with its age and runs
+  `claude -p "/usage"` there when it is stale, a 4 s call with no model turn.
 - **Hub link.** One outbound gRPC bidirectional stream, reconnecting with backoff. The
   daemon buffers events while disconnected so a hub restart loses nothing.
 - **Spawner (phase 2).** Starts headless sessions with streamed JSON input and output in
@@ -185,10 +189,19 @@ state directory and a scratch directory, with `CLAUDE_CONFIG_DIR` and `CLAUDE_CO
 pointing at them, since claude ignores `TMPDIR` for its own temp files; a `PATH` of the
 claude wrapper plus `/usr/bin:/bin`; outbound network; no home directory and no keychain.
 
-The hook endpoint crosses the boundary as a unix socket inside the state directory, not as
-loopback TCP: on seatbelt, allowing loopback means allowing all inbound traffic, and it is
-incompatible with a proxy-only egress policy. Claude Code's HTTP hooks need a TCP URL, so the
-daemon provides a tiny command hook inside the sandbox that forwards over the socket.
+The hook endpoint crosses the boundary as a unix socket, not as loopback TCP: on seatbelt,
+allowing loopback means allowing all inbound traffic, and it is incompatible with a
+proxy-only egress policy. Claude Code's HTTP hooks need a TCP URL, so the settings inside
+the sandbox use a command hook, `/usr/bin/curl --unix-socket <state dir>/hooks/hook.sock
+--data-binary @- http://hook/hook`, and the daemon listens on that socket. This runs
+([[RUN-20261017-syvm]]): with `hostLoopback: deny` the TCP loopback is refused while the
+unix socket carries Stop and a held PermissionRequest, with the allow applied, in about six
+seconds per turn. One seatbelt subtlety matters for the policy mapping: under
+`egress: allow` the profile's unfiltered outbound rule also covers AF_UNIX, so the sandbox
+can connect to any host unix socket that is not under a read-only or denied path, which
+includes other sessions' `/tmp/cc-socks/*.sock`; the profile therefore denies `/tmp/cc-socks`
+and the daemon's own socket directory explicitly, or uses `egress: deny` plus the proxy, under
+which only sockets under read-write paths connect.
 
 An interactive session started by hand runs on the host with your own privileges.
 rc2s2 observes and gates it but does not confine it; confinement is only for sessions
@@ -209,17 +222,45 @@ The threat model is a single trusted operator; the store exists so that secrets 
 land in the event log, in a sandbox that should not see them, on a client, or in a
 backup of the database in the clear.
 
-Leasing, tested in [[EXP-0008]]: when a node spawns a session under account `work`, it asks
-the hub for a lease. The hub checks a grant table, account by node, and returns the secret
-with a time limit. The daemon writes it as `.credentials.json` into the session's state
-directory and starts claude with `CLAUDE_CONFIG_DIR` pointing there; with that variable set
-claude ignores the host keychain, uses the file, and writes nothing back to the keychain.
-At session end the daemon reads the file back, since an OAuth refresh would have rotated the
-tokens in place, returns the newest version to the hub, and deletes the directory. A node
-never holds a credential outside a live session. Clients never receive credentials at all;
-the phone sees labels and chooses among them. Whether a refresh in the lease revokes the
-hub's copy is still untested; until it is, the hub refuses two concurrent leases of one
-account when the access token is near expiry.
+Leasing, tested in [[EXP-0008]]: the hub holds credentials; a node borrows one for a
+while. When a node is asked to run a session under account `work` and does not already hold
+that account, the daemon asks the hub for a lease. The hub returns the secret with a time
+limit and the daemon writes it as `.credentials.json` into a **slot directory** on the node,
+one directory per account per node. Every session of that account on that node, headless or
+interactive, is started with `CLAUDE_CONFIG_DIR` pointing at that directory; with the
+variable set claude ignores the host keychain and uses the directory's own store. Any number
+of sessions run under one lease at once. A node holds one slot per account it is running,
+so several accounts on one node are several directories with several leases, and a session
+picks its account by picking the directory. The lease ends when the last session exits and
+an idle timeout passes, or when the hub recalls it: the daemon reads the credential back,
+since the sessions may have refreshed it, returns it to the hub and wipes the directory. A
+node never holds a credential outside a live lease. Clients never receive credentials at
+all; the phone sees labels and chooses among them.
+
+The constraint that shapes this ([[RUN-20261017-5jwo]]): a Claude OAuth credential is a
+*grant*, and a refresh rotates both tokens and revokes the previous pair at once. Two
+*stores* holding one grant are therefore one lease's worth of credential: the first store to
+refresh kills the other, including a person's own interactive login if the grant was copied
+from their keychain. Many *sessions* on one store are fine, and are what a person's several
+terminals do today: the refresh save is a compare-and-swap under a lock file with an
+adopt-the-sibling branch, and every running session re-reads the store when it changes, so
+one session's refresh is picked up by the rest within seconds (code read in
+[[RUN-20261017-5jwo]]; not yet forced in a controlled run with two sessions). Hence the rule:
+a grant lives in exactly one store at a time. In the hub an **account** is a set of
+**slots**, each slot one grant obtained by one `claude auth login` into a slot-specific
+config directory on the hub machine. A slot is leased to at most one node at a time; a
+second node wanting the same account gets another slot, or "account busy, add a slot" on the
+phone. Separate logins are separate grants and do not interfere, so slots refresh
+independently and one person's account can carry as many slots as they are willing to log
+in. On macOS a refreshed set lands in the keychain under
+`Claude Code-credentials-<sha256(configdir)[:8]>` and the file is deleted, so the read-back
+checks that item first; on Linux the file is the store. A sandboxed session needs its slot
+directory read-write for the lock file. A dead slot is easy to spot: claude clears it to
+empty tokens after `invalid_grant`. `claude auth status` with the slot's config directory
+reports `loggedIn` without a turn and is the health probe; `claude auth logout` there
+revokes the grant at the server and is how a slot is retired ([[RUN-20261017-tnz7]]). The
+hub refreshes an idle slot itself before the access token's eight hours run out, so a lease
+always starts with a fresh pair.
 
 Capturing an account: on macOS the live OAuth credential is the login keychain item
 "Claude Code-credentials", while `~/.claude/.credentials.json` may be a stale copy; on Linux
@@ -260,17 +301,30 @@ engine can gate them too; in phase 1 it only records.
 ### Question from Claude
 AskUserQuestion is a tool, so PreToolUse and then PermissionRequest fire with the questions in
 the input. Either hook can answer it ([[EXP-0004]]): return allow with `updatedInput` equal to
-the original input plus an `answers` map from question text to the chosen option label. The
-tool returns at once and no dialog is shown. rc2s2 uses the PermissionRequest path so the
+the original input plus an `answers` map from question text to the answer: one label, an
+array of labels for a multi-select question, or any free text when the person types their
+own answer ([[RUN-20261017-nm55]], [[RUN-20261017-nn7f]]). The tool returns at once and no
+dialog is shown. rc2s2 uses the PermissionRequest path so the
 request is held and released exactly like a permission. The tool does not exist in `-p` mode,
 so spawned sessions never block on it.
 
 ### Prompt and interrupt
-Both go hub to daemon to PTY. The sequence that works ([[EXP-0003]]): Escape to interrupt,
-pause, Ctrl-U to empty the input box (Claude Code refills it with the interrupted prompt),
-text, pause, Enter. No Stop hook fires for an interrupted turn, so the daemon marks the turn
-ended itself. Kill is a signal to the wrapped process. Sessions without the wrapper reject
-prompt and interrupt with a clear reason that the client shows.
+A prompt goes hub to daemon to the session's messaging socket ([[RUN-20261017-ejq2]]):
+`~/.claude/sessions/<pid>.json` names `/tmp/cc-socks/<pid>.sock`, and one newline-delimited
+JSON line `{"type":"user","message":{"role":"user","content":...}}` from a process of the
+same user becomes a user turn, queued behind the current one, with no keystrokes and no
+wrapper. This works for sessions started by hand as well, so prompting does not depend on
+the PTY wrapper at all. A session in bypass-permissions mode holds such messages for
+approval at its terminal, and the daemon reports that state instead of pretending the
+prompt landed; `crossSessionInbound: accept` in the session's settings lifts the hold for
+sessions rc2s2 starts.
+
+An interrupt has no socket message type, so it goes hub to daemon to PTY and needs the
+wrapper. The sequence that works ([[EXP-0003]]): Escape to interrupt, pause, Ctrl-U to
+empty the input box (Claude Code refills it with the interrupted prompt), then, if a new
+prompt follows, text and Enter. No Stop hook fires for an interrupted turn, so the daemon
+marks the turn ended itself. Kill is a signal to the wrapped process. Sessions without the
+wrapper reject interrupt with a clear reason that the client shows.
 
 Every `CLAUDE*` environment variable must be stripped before the wrapper starts a session, and
 the working directory must already be trusted: the trust dialog cannot be driven through the
@@ -280,19 +334,20 @@ moves and the text is unreliable. Hooks and the transcript are the only sources 
 ### Spawn (phase 2, sandboxed in phase 3)
 1. Client picks a node, a directory from that node's allowed roots, an account, and a
    launch profile. The allowed roots are configured on the node and reported to the hub.
-2. Hub checks the grant, leases the credential to the node, and records the session as
-   starting.
-3. Daemon prepares the state directory, writes the credential into it, provisions the
-   sandbox if the profile asks for one, and starts
-   `claude -p --input-format stream-json --output-format stream-json` with
-   `CLAUDE_CONFIG_DIR` pointing at the state directory. One process serves many turns, keeps
+2. Hub checks the grant, leases a slot to the node unless the node already holds one for
+   that account, and records the session as starting.
+3. Daemon prepares the state directory, writes the credential into the account's slot
+   directory if this is a new lease, provisions the sandbox if the profile asks for one,
+   and starts `claude -p --input-format stream-json --output-format stream-json` with
+   `CLAUDE_CONFIG_DIR` pointing at the slot directory. One process serves many turns, keeps
    context, idles between them and exits when stdin closes ([[EXP-0005]]). Permission requests
    arrive through the same PermissionRequest hook as everywhere else and an allow from the
    hook runs the tool ([[EXP-0001]]); no MCP permission tool is needed. Every turn re-emits
    `init` and a `rate_limit_event`.
-4. On exit the daemon reads the leased credential back (it may have refreshed), wipes the
-   state directory, deprovisions a throwaway sandbox or stops a persistent one, and reports
-   the end.
+4. On exit the daemon wipes the state directory, deprovisions a throwaway sandbox or stops
+   a persistent one, and reports the end. When it was the last session on the slot and the
+   idle timeout passes, the daemon reads the credential back (it may have refreshed),
+   returns it to the hub and wipes the slot directory.
 
 Resume works by session id in both directions, so a terminal session can be continued
 headless and a spawned one can be attached at a terminal later. `claude --bg` is the
@@ -346,8 +401,12 @@ The realistic libraries, checked on 2026-10-16:
 - **tailscale-rs**, Tailscale's pure Rust tsnet: clean build, but an experimental
   preview with no TLS certs, weaker NAT traversal, and no Android support yet.
 
-Hub and node take libtailscale in phase 3. The phone stays on the Tailscale app until
-either libtailscale builds for Android under our flake or tailscale-rs supports it.
+Hub and node take libtailscale in phase 3. The phone must embed tsnet as well, decided
+2026-10-17: the Tailscale app on the phone may be joined to a different tailnet than the
+hub's, and the app cannot hold two. Until phase 3 it uses the Tailscale app on the hub's
+tailnet. The Android path is libtailscale cross-built with the NDK inside the client core's
+aar; tailscale-rs is the fallback if it gains Android support first. That cross-build is
+a phase 3 spike of its own.
 
 ## Repository layout
 
@@ -381,7 +440,9 @@ are folded into the sections above. [[EXP-0001]] hook round trip, [[EXP-0002]] t
 shapes and rate limits, [[EXP-0003]] PTY injection, [[EXP-0004]] AskUserQuestion,
 [[EXP-0005]] headless multi-turn, resume and background sessions, [[EXP-0006]] libtailscale
 under Nix, [[EXP-0007]] mxc seatbelt, [[EXP-0008]] credential leasing, [[EXP-0009]] GPU
-metrics on macOS. Throwaway code is under `spikes/`.
+metrics on macOS. Throwaway code is under `spikes/`. The open questions it left were closed
+on 2026-10-17 with follow-up runs on [[EXP-0002]], [[EXP-0004]], [[EXP-0005]], [[EXP-0007]]
+and [[EXP-0008]], the last of which changed the credential model to grants and slots.
 
 ### Phase 1: watch and intervene
 
@@ -405,7 +466,7 @@ one implementation. The credential store exists only for peer tokens.
   `host` profile.
 - Kill any session.
 - Credential store holds agent accounts; leases and grants; several accounts per node,
-  selectable at spawn time.
+  several sessions per lease, selectable at spawn time.
 - Resume a finished session by id.
 - Session history browsing in the client: past runs, their events, cost.
 
@@ -415,6 +476,8 @@ one implementation. The credential store exists only for peer tokens.
   secret policy; persistent workspaces.
 - Embedded tsnet in hub and node through libtailscale; tailnet auth keys in the
   credential store; enrollment bundles; hub on its own tailnet.
+- libtailscale cross-built for Android with the NDK and embedded in the client core, so
+  the phone joins the hub's tailnet regardless of what the Tailscale app is joined to.
 - Policy rules on PreToolUse: auto-allow by tool, node, and path.
 - A second adapter, terminal-level, for a harness without hooks.
 - Health exported to the separate monitoring stack; the hub stops being the long-term
@@ -432,16 +495,5 @@ one implementation. The credential store exists only for peer tokens.
 - Integrations into other apps through the control service.
 
 ## Open questions
-- Whether an OAuth refresh inside a lease revokes the hub's copy of the refresh token. Needs
-  a dedicated account to test ([[EXP-0008]]).
-- Whether the Android app should ever embed tsnet, or whether the Tailscale app is good
-  enough for good.
-  *Answer* We need the Android app to embed tsnet. The local tailscale app might connect to a different tailnet than the hub.
-- How `cachedUsageUtilization` in `~/.claude.json` is refreshed, and whether a daemon probe
-  is acceptable to keep interactive rate-limit state fresh ([[EXP-0002]]).
-- The protocol of Claude Code's per-session messaging socket; if usable, it would replace
-  PTY injection for prompts and interrupts ([[EXP-0005]]).
-- `answers` format for multi-select and free-text AskUserQuestion replies ([[EXP-0004]]).
-- Unix-socket hook forwarding inside a seatbelt sandbox was reasoned about, not run
-  ([[EXP-0007]]).
+None left from phase 0. New ones go here as they come up.
 

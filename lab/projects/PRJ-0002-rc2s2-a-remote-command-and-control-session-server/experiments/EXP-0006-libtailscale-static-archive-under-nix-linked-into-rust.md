@@ -4,15 +4,15 @@ type: experiment
 schema_version: 1
 title: libtailscale static archive under Nix linked into Rust
 project: PRJ-0002
-status: active           # planned | active | paused | concluded | abandoned
-outcome: null             # null | positive | negative | inconclusive | infra
+status: concluded           # planned | active | paused | concluded | abandoned
+outcome: infra             # null | positive | negative | inconclusive | infra
 influenced_by: []
 created: 2026-10-16
 author: ank
 protocols: []
 materials: []
 tags: []
-review: pending
+review: approved
 ---
 
 ## Question
@@ -102,4 +102,5 @@ Recommended derivation shape for the real hub and node crates:
 - [[RUN-20261016-f4kf]] x86_64-linux via remote builder spirit: build, link, run; all green
 
 ## Conclusion
-Written once, by a human, when status becomes `concluded`.
+- libtailscale's static archive can be built with `buildGoModule` and linked into a Rust
+binary under Nix on aarch64-darwin and x86_64-linux.

@@ -4,15 +4,15 @@ type: experiment
 schema_version: 1
 title: Transcript JSONL shapes and where usage and rate-limit state live
 project: PRJ-0002
-status: active           # planned | active | paused | concluded | abandoned
-outcome: null             # null | positive | negative | inconclusive | infra
+status: concluded           # planned | active | paused | concluded | abandoned
+outcome: infra             # null | positive | negative | inconclusive | infra
 influenced_by: []
 created: 2026-10-16
 author: ank
 protocols: []
 materials: []
 tags: []
-review: pending
+review: approved
 ---
 
 ## Question
@@ -108,6 +108,21 @@ Nothing in any transcript line names a rate limit, quota or utilization.
   interactive session; three sessions started in the next six minutes did not refresh
   it while the headless runs in the same window reported utilization moving 0.17 to
   0.23. Treat it as advisory with `fetchedAtMs` as its age.
+- **What writes it** ([[RUN-20261017-trj6]], 2.1.302 code plus a timed session): only the
+  usage loader behind `/usage` (aliases `/cost`, `/stats`, also `claude -p "/usage"`, which
+  makes no model call and takes about 4 s) and the SDK control request
+  `{"subtype": "get_usage", "skip_behaviors": true}`. No timer, no startup fetch, no write
+  from a normal turn or a headless `-p` turn; the refresh seen in the earlier run was a
+  `/usage` in that session. A write is skipped when the stored entry is under 60 s old, a
+  read ignores entries older than one hour, and `/login` or `/logout` deletes the key, so
+  it can be absent. The status line and the stream `rate_limit_event` come from the
+  `anthropic-ratelimit-unified-*` response headers, not from this file.
+- **The endpoint** ([[RUN-20261017-ho7k]]): `GET https://api.anthropic.com/api/oauth/usage`
+  with `Authorization: Bearer <access token>` and `anthropic-beta: oauth-2025-04-20`
+  answers in about 300 ms with the same `utilization` object the file stores (percent
+  values, ISO `resets_at`, `limits[]`, `extra_usage`, `spend`, per-model windows). The
+  token needs the `user:profile` scope. Claude Code backs off for `retry-after` or 5 min
+  on 403/429.
 - Spawned `-p --output-format stream-json --verbose` sessions get a `rate_limit_event`
   per run with `unifiedWindows.{five_hour, seven_day}.{utilization (fraction), resetsAt}`
   and `overageStatus`, straight from the API; this is the only fresh source on the node.
@@ -136,18 +151,25 @@ Nothing in any transcript line names a rate limit, quota or utilization.
    daemon runs anyway; interactive-only nodes, from `~/.claude.json`
    `cachedUsageUtilization` with its `fetchedAtMs` shown as age (the file is rewritten
    about once a minute while a session runs, so watching its mtime is cheap). Keeping it
-   fresh means either letting the daemon fire a minimal `-p` probe and read the event, or
-   calling the usage endpoint with the OAuth credential, which this experiment did not
-   touch. `~/.claude/sessions/<pid>.json` (`status` idle|busy, `cwd`, `sessionId`,
+   fresh: for accounts the hub holds a grant for, the daemon or hub calls the usage
+   endpoint directly at a 60 s or slower cadence; for a person's own login on a node,
+   `claude -p "/usage"` on that node rewrites the cache without a model call, or the
+   `get_usage` control request when a stream-json session is already open.
+   `~/.claude/sessions/<pid>.json` (`status` idle|busy, `cwd`, `sessionId`,
    `/tmp/cc-socks/<pid>.sock`) lists interactive sessions but entries outlive the process.
 
 Recommended daemon approach: one file watcher over `~/.claude/projects` (transcripts plus
 `subagents/`), a usage accumulator keyed by `message.id`, `cost-state` as the settle
-value, stream-json `rate_limit_event` as the rate-limit feed, `~/.claude.json` as the
-fallback with an age, and nothing from `stats-cache.json` or `policy-limits.json`.
+value, stream-json `rate_limit_event` as the rate-limit feed, the usage endpoint for leased
+accounts, `~/.claude.json` as the fallback with an age (absent means unknown), and nothing
+from `stats-cache.json` or `policy-limits.json`.
 
 ## Runs
 - [[RUN-20261016-5haw]] shapes survey, cost-state cross-check, `~/.claude` state files
+- [[RUN-20261017-trj6]] what refreshes `cachedUsageUtilization`: code read and a timed session
+- [[RUN-20261017-ho7k]] the usage endpoint called directly with a leased token
 
 ## Conclusion
-Written once, by a human, when status becomes `concluded`.
+- We found the shape of the transcripts.
+- It is possible to extract usage metrics from it
+- One file watcher per daemon is recommended

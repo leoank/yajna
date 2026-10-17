@@ -4,15 +4,15 @@ type: experiment
 schema_version: 1
 title: mxc seatbelt sandbox around claude under Nix
 project: PRJ-0002
-status: active           # planned | active | paused | concluded | abandoned
-outcome: null             # null | positive | negative | inconclusive | infra
+status: concluded           # planned | active | paused | concluded | abandoned
+outcome: infra             # null | positive | negative | inconclusive | infra
 influenced_by: []
 created: 2026-10-16
 author: ank
 protocols: []
 materials: []
 tags: []
-review: pending
+review: approved
 ---
 
 ## Question
@@ -90,8 +90,17 @@ machine is a stale June copy; the keychain holds the live one.
   per-host allowlist is only possible through a loopback egress proxy the daemon runs, and
   its use is cooperative (`HTTP_PROXY` injected, not transparent redirect).
 - Proxy-only egress requires `hostLoopback: deny`, which also cuts the sandbox off from a
-  loopback hook endpoint. The two cannot coexist over TCP; AF_UNIX sockets are governed by
-  the filesystem policy (connect allowed under a read-write path), untested here.
+  loopback hook endpoint. The two cannot coexist over TCP. **AF_UNIX works instead**
+  ([[RUN-20261017-syvm]]): with `hostLoopback: deny` a command hook
+  `/usr/bin/curl --unix-socket <hooks dir>/hook.sock --data-binary @- http://hook/hook`
+  delivers Stop and PermissionRequest to a host listener and the held allow is applied
+  (PermissionRequest at +2.95 s, Stop 1.36 s after the answer, 6.2 s wall for the turn).
+  The rule from `profile_builder.rs`, confirmed by probes: a read-write path allows
+  `network-bind`/`network-outbound` on its subpath, a read-only or denied path denies it,
+  and under `egress: allow` the unfiltered outbound rule covers AF_UNIX too, so any host
+  socket outside a read-only or denied path is reachable; under `egress: deny` only
+  read-write subpaths connect. `hostLoopback` is IP-only. Socket paths must stay under
+  the 104-byte `sun_path` limit.
 - Inbound is all-or-nothing and not scopeable to 127.0.0.1; `localhost` in a rule means
   every address of the host.
 - No CPU, memory or disk limits; only `timeout_ms`. No persistence lifecycle (process
@@ -105,9 +114,12 @@ machine is a stale June copy; the keychain holds the live one.
 - Audit and learning modes exist for Windows only; macOS policy tuning is by hand.
 
 ## Runs
+- [[RUN-20261017-syvm]] unix-socket hook with loopback TCP denied
 - [[RUN-20261016-eodq]] build: dev shell and nix build
 - [[RUN-20261016-zu4c]] echo and curl under seatbelt
 - [[RUN-20261016-zmpp]] claude -p under seatbelt, eleven attempts
 
 ## Conclusion
-Written once, by a human, when status becomes `concluded`.
+- `mxc-sdk` builds under Nix on macOS
+- seatbelt backend can run `claude`, and
+- sandboxed process can reach a localhost hook endpoint and write a transcript but there are some nuances

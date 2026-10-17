@@ -53,16 +53,35 @@ token and invalidate the copy or the original.
   (`security find-generic-password -s "Claude Code-credentials" -w`); on Linux it is
   `~/.claude/.credentials.json`. The file on this Mac was stale, so enrollment must read the
   keychain, not the file.
-- **Untested: refresh rotation.** If the leased copy refreshes, the new tokens land in the
-  leased file and the hub's copy is stale; whether the old refresh token is revoked is
-  unknown. The hub should therefore read back the leased file at session end and keep the
-  newest `expiresAt`, and the daemon should not run two leases of the same account with an
-  access token near expiry. Needs a controlled test with a dedicated account, not the main one.
+- **A refresh rotates and revokes** ([[RUN-20261017-5jwo]], forced by backdating `expiresAt`
+  in a leased copy of the main account): the token endpoint returned a new access token and a
+  new refresh token, and within a minute every other user of the old pair failed with
+  `authentication_failed`, including the owner's interactive session, which needed `/login`.
+  The old refresh token then answered `invalid_grant` and claude wiped that store to empty
+  tokens. A fresh `/login` is a separate grant: the owner's new login left the lease's
+  rotated pair working. Refresh is attempted when the access token is within five minutes of
+  `expiresAt`; access tokens last eight hours, refresh tokens about thirty days from login,
+  and rotation keeps the refresh expiry.
+- **Where the refreshed pair is saved**: on macOS with `CLAUDE_CONFIG_DIR` set, into a keychain
+  item `Claude Code-credentials-<sha256(configdir)[:8]>`, after which `.credentials.json` is
+  deleted. Read-back on a Mac must look there. The save path inside a seatbelt sandbox without
+  keychain access is still untested.
+- **Grants are independent and revocable** ([[RUN-20261017-tnz7]]): a forced refresh on the
+  lease's own grant left the owner's fresh login untouched, an older pair of the same grant
+  was rejected and wiped, and `claude auth logout` with the slot's config dir revoked the
+  grant at the server (the saved access token got 401 afterwards).
+- **Consequence for the hub**: a credential is a grant and a grant is one session's worth. One
+  account needs one login per concurrent session (slots), the hub leases a slot to one
+  session at a time, reads it back afterwards, and never copies a person's live keychain
+  credential into a lease. `claude auth status` with the slot's config dir is a free health
+  probe (`loggedIn`, `subscriptionType`); `claude auth logout` there is the revoke button.
 - An API key through `ANTHROPIC_API_KEY` or `apiKeyHelper` remains the simpler lease for
   accounts that have one; it was not tested here.
 
 ## Runs
 - [[RUN-20261016-k3cb]] lease of the keychain credential into a temp config dir
+- [[RUN-20261017-5jwo]] forced refresh inside a lease: rotation, revocation, keychain write-back
+- [[RUN-20261017-tnz7]] control: refresh on the lease's own grant, logout revokes
 
 ## Conclusion
 Written once, by a human, when status becomes `concluded`.
