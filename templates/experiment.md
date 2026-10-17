@@ -25,7 +25,7 @@ If H1 is true we expect ... ; if false we expect ...
 ## Success criteria
 
 ## Runs
-Links to RUN pages, or a rendered view of results.tsv.
+Links to RUN pages (or a rendered view of results.tsv for metric-producing experiments).
 
 ## Conclusion
 Written once, by a human, when status becomes `concluded`.

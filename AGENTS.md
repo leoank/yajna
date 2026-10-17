@@ -12,7 +12,7 @@ Everything runs through the flake. Enter with `nix develop` at the root, then:
 ```
 yajna new <type> "<title>" [--project PRJ-xxxx] [--experiment EXP-xxxx] [--kind k] [--code]
 yajna log "<text>" [--author agent:<name>]
-yajna result --experiment EXP-xxxx <run.log>     # ===RESULT=== JSON line → RUN page + results.tsv
+yajna result --experiment EXP-xxxx <run.log>     # metric runs only: ===RESULT=== line → RUN page + results.tsv
 yajna ref <citekey> [--note]
 yajna tasks
 yajna validate
@@ -46,13 +46,15 @@ dry-lab work, a code directory named in its `code` field (a path under `projects
 URL once the code has moved to its own repo).
 
 1. Read the project page: current belief, open questions, what not to try again.
-2. Read its experiments and the latest runs; `results.tsv` under each experiment's sidecar
-   directory is the quick view.
+2. Read its experiments and the latest runs. Where an experiment keeps a `results.tsv` in
+   its sidecar directory, that is the quick view.
 3. Work inside `projects/<name>/` with `nix develop` there. The project flake (flake-parts)
    pins its own environment and may add inputs; its `nixpkgs` follows the root. Run
    `nix flake lock` there after changing inputs and commit the lock.
-4. Record a run by printing one `===RESULT=== {...}` line and piping the output through
-   `yajna result`. The RUN page records the commit, which is the dry-lab protocol version.
+4. Record each result the experiment will rest on as a `RUN` page (`yajna new run
+   --experiment EXP-xxxx --kind compute`): notes, checklist, and the commit it ran at, which
+   is the dry-lab protocol version. Only for experiments that compare numbers across many
+   runs, print one `===RESULT=== {...}` line and pipe the output through `yajna result`.
 5. Log what you did and what you learned, link the pages, update the `AGS` page.
 
 ## New projects

@@ -249,13 +249,16 @@ schema_version: 1
 - 16:00 [agent:planner] Drafted plate layout for tomorrow, see [[AGS-000123]].
 ```
 
-Dry-lab run convention, adopted from AutoGo with small changes:
+Dry-lab run convention. In general a `RUN` of kind `compute` is a hand-written page per
+result an experiment rests on (spike, benchmark, prototype trial), created with `yajna new
+run` and carrying the commit it ran at. Experiments that compare numbers across many runs
+(training sweeps, benchmarks) additionally adopt AutoGo's convention with small changes:
 
 - An `EXP-*/` directory holds the scripts, a `results.tsv` with one row per run, figures, and
   the agent-written `report.md`. The `EXP-*.md` page is the human-curated layer on top.
-- Every run prints one `===RESULT===` JSON line. The CLI parses it into a `RUN` page and a
-  `results.tsv` row. AutoGo leaves `results.tsv` untracked; here it is tracked, because it is
-  small, textual, and the whole point of the notebook.
+- Each such run prints one `===RESULT===` JSON line. The CLI parses it into a `RUN` page and
+  a `results.tsv` row. AutoGo leaves `results.tsv` untracked; here it is tracked, because it
+  is small, textual, and the whole point of the notebook.
 - Per-step telemetry (loss, and for Neural Mechanics style work the per-layer invariants)
   goes to `RUN-*/metrics.jsonl` or `metrics.parquet`, tracked via the data store (5.3) when
   large. The `RUN` page records the flake revision and the git commit of the script.

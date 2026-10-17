@@ -89,7 +89,21 @@ this one in `influenced_by`; the dead ends are the useful part.
 
 ## Dry-lab runs
 
-Have the script print one line:
+A `RUN` of kind `compute` is one execution worth a record: a spike, a benchmark, a prototype
+tried against a question, a simulation, a training job. Most software work records runs by
+hand:
+
+```
+yajna new run --experiment EXP-0007 --kind compute
+```
+
+Write what was done and what came out under `Notes`, tick the checklist, set `status`, and
+put `commit` in the frontmatter so the run points at the code it ran. Run-local files go in
+`runs/RUN-.../` or the experiment's sidecar directory. Not every command you ran is a run;
+one page per result that the experiment's conclusion will rest on.
+
+Experiments that produce comparable numbers across many runs (training sweeps, benchmarks)
+have a shortcut. Have the script print one line:
 
 ```
 ===RESULT=== {"loss": 0.42, "steps": 3000, "tag": "baseline"}
@@ -102,9 +116,9 @@ python train.py 2>&1 | tee run.log
 yajna result --experiment EXP-0007 run.log
 ```
 
-That writes a `RUN` page (kind `compute`, status `done`, the repo commit recorded) and
-appends a row to `experiments/EXP-0007/results.tsv`, adding columns as new keys appear. The
-TSV is tracked in git.
+That writes the `RUN` page (status `done`, the repo commit recorded) and appends a row to
+`experiments/EXP-0007/results.tsv`, adding columns as new keys appear. The TSV is tracked
+in git. Use it only where a flat table of numbers is the natural summary of the experiment.
 
 ## Software projects
 

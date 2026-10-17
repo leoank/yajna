@@ -6,6 +6,15 @@ modification stamps and document changelogs, so they carry a date and a rough ti
 Append an entry whenever a document, tool or dataset lands; keep each to a few lines and
 link the file.
 
+## 2026-10-17
+
+- **2026-10-17 13:17** Dry-lab run convention generalised: a `compute` run is a hand-written
+  `RUN` page per result (spike, benchmark, prototype trial) with the commit recorded; the
+  `===RESULT===` line and `results.tsv` become the shortcut for experiments that compare
+  numbers across many runs, not the rule. Conventions, AGENTS.md, the experiment template
+  and architecture section 4 updated. Repo migrated to a gclb bare-repo layout; all work
+  happens in the `main/` worktree.
+
 ## 2026-10-16
 
 - **2026-10-16 17:25** Project flakes switched to explicit relative-path inputs of the root
