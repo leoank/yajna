@@ -91,6 +91,8 @@ fn init_lab(root: &Path, ns: &str, author: &str) -> Res<()> {
         .collect();
     put(root, "lab/counters.yaml", &counters_text(&zero))?;
     put_if_absent(root, "references/library.bib", "")?;
+    crate::commands::write_skill(root)?;
+    println!("created .claude/skills/yajna/SKILL.md");
     println!("lab {ns} ready; next: yajna new project \"<title>\"");
     Ok(())
 }
@@ -140,6 +142,8 @@ fn scaffold_project_vault(
     let vault = Vault::open(root.to_path_buf())?;
     put(root, "lab/tasks.md", &vault.template("init/tasks.md")?)?;
     put_if_absent(root, "lab/references/library.bib", "")?;
+    crate::commands::write_skill(root)?;
+    println!("created .claude/skills/yajna/SKILL.md");
     Ok(())
 }
 

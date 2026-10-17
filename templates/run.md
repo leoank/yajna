@@ -9,9 +9,14 @@ protocols: []
 status: planned           # planned | in_progress | done | aborted
 created: $created
 author: $author
+script: $script           # executable that re-creates this run, relative to the repo root
 ---
 
 ## Notes
+
+## Reproduce
+Run `script` from the repo root in the project's dev shell at `commit`; it must produce the
+same outputs. Note here what it cannot control.
 
 ## Checklist
 - [ ] 

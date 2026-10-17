@@ -265,7 +265,7 @@ fn enum_values(schema: &str, field: &str) -> Vec<String> {
 
 // --- flows -----------------------------------------------------------------------------
 
-pub fn new(vault: &Vault, p: &mut dyn Prompter) -> Res<PathBuf> {
+pub fn new(vault: &Vault, p: &mut dyn Prompter, author: Option<&str>) -> Res<PathBuf> {
     let mut types: Vec<String> = entity_names()
         .iter()
         .filter(|t| {
@@ -373,6 +373,8 @@ pub fn new(vault: &Vault, p: &mut dyn Prompter) -> Res<PathBuf> {
         experiment.as_deref(),
         kind.as_deref(),
         code,
+        author,
+        None,
     )?;
     offer_editor(&path, p)?;
     Ok(path)

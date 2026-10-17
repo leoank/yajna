@@ -27,6 +27,10 @@ pub struct Templates;
 #[folder = "../../schema"]
 pub struct Schemas;
 
+#[derive(Embed)]
+#[folder = "../../skills"]
+pub struct Skills;
+
 pub struct Entity {
     pub name: &'static str,
     pub prefix: &'static str,
@@ -61,6 +65,8 @@ pub const ENTITIES: &[Entity] = &[
 ];
 pub const PROJECT_SCOPED: &[&str] = &["experiment", "run", "analysis", "artifact"];
 pub const VOLUME_PREFIXES: &[&str] = &["RUN", "ART", "AGS"];
+/// Frontmatter fields that hold paths, not IDs: an ID inside them is a directory name.
+pub const PATH_FIELDS: &[&str] = &["code", "script", "path"];
 const ALIASES: &[(&str, &str)] = &[
     ("agent", "agent_session"),
     ("exp", "experiment"),
@@ -277,6 +283,15 @@ impl Vault {
     pub fn repo_root(&self, ns: &str) -> Option<PathBuf> {
         let p = self.root.join(self.cfg.repos.get(ns)?.path()?);
         p.join(CONFIG_NAME).is_file().then_some(p)
+    }
+
+    /// The author new pages and log lines get: `$YAJNA_AUTHOR` (how an agent names
+    /// itself for a session), else the human handle in yajna.toml.
+    pub fn default_author(&self) -> String {
+        std::env::var("YAJNA_AUTHOR")
+            .ok()
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or_else(|| self.author.clone())
     }
 
     // --- time ------------------------------------------------------------------------

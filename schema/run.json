@@ -129,6 +129,13 @@
       "type": "string",
       "format": "date",
       "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "script": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Path, relative to the repo root, of an executable that re-creates this run"
     }
   },
   "additionalProperties": true

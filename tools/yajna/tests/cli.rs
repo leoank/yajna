@@ -1003,6 +1003,138 @@ fn site_renders_tree_links_and_log() {
         .contains("Archaeal division"));
 }
 
+#[test]
+fn agents_author_their_pages_and_runs_carry_a_script() {
+    let v = vault();
+    v.run(&["new", "project", "P"]);
+    v.run(&["new", "experiment", "E", "--project", "PRJ-0001"]);
+    // --author on new, and YAJNA_AUTHOR as the session-wide default
+    let out = v.run(&["new", "agent", "Plan", "--author", "agent:claude"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(v.read(&v.path(&out)).contains("author: agent:claude\n"));
+    let out = v.run_with(
+        &[
+            "new",
+            "run",
+            "--experiment",
+            "EXP-0001",
+            "--kind",
+            "compute",
+            "--script",
+            "lab/projects/PRJ-0001-p/runs/run.sh",
+        ],
+        None,
+        &[("YAJNA_AUTHOR", "agent:claude")],
+    );
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let page = v.read(&v.path(&out));
+    assert!(page.contains("author: agent:claude\n"), "{page}");
+    assert!(
+        page.contains("script: lab/projects/PRJ-0001-p/runs/run.sh"),
+        "{page}"
+    );
+    assert!(page.contains("## Reproduce"), "{page}");
+    let script = v.root.join("lab/projects/PRJ-0001-p/runs/run.sh");
+    let stub = v.read(&script);
+    assert!(stub.starts_with("#!/usr/bin/env bash"), "{stub}");
+    assert!(
+        stub.contains("Re-creates RUN-") && stub.contains("for EXP-0001"),
+        "{stub}"
+    );
+    // the human's log file stays the human's even when an agent logs
+    let out = v.run_with(
+        &["log", "did a thing", "--time", "10:00"],
+        None,
+        &[("YAJNA_AUTHOR", "agent:claude")],
+    );
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(out.stdout.contains(".agent-claude.md"), "{}", out.stdout);
+    let out = v.run(&["log", "human thing", "--time", "10:01"]);
+    assert!(!out.stdout.contains(".agent-claude.md"), "{}", out.stdout);
+    // result records the script that produced the line, which must exist
+    let out = v.run_with(
+        &[
+            "result",
+            "--experiment",
+            "EXP-0001",
+            "--script",
+            "lab/projects/PRJ-0001-p/runs/run.sh",
+        ],
+        Some("===RESULT=== {\"loss\": 0.1}\n"),
+        &[("YAJNA_AUTHOR", "agent:claude")],
+    );
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let page = v.read(&v.path(&out));
+    assert!(
+        page.contains("author: agent:claude\n")
+            && page.contains("script: lab/projects/PRJ-0001-p/runs/run.sh\n"),
+        "{page}"
+    );
+    let out = v.run_with(
+        &[
+            "result",
+            "--experiment",
+            "EXP-0001",
+            "--script",
+            "nowhere.sh",
+        ],
+        Some("===RESULT=== {\"loss\": 0.1}\n"),
+        &[],
+    );
+    assert_eq!(out.code, 1);
+    assert_eq!(v.run(&["validate"]).code, 0);
+    // a script that disappears fails validation
+    fs::remove_file(&script).unwrap();
+    let out = v.run(&["validate"]);
+    assert_eq!(out.code, 1);
+    assert!(
+        out.stdout
+            .contains("script lab/projects/PRJ-0001-p/runs/run.sh does not exist"),
+        "{}",
+        out.stdout
+    );
+    assert_eq!(
+        v.run(&[
+            "new",
+            "experiment",
+            "X",
+            "--project",
+            "PRJ-0001",
+            "--script",
+            "x.sh"
+        ])
+        .code,
+        1
+    );
+}
+
+#[test]
+fn skill_is_embedded_and_installed() {
+    let v = vault();
+    let out = v.run(&["skill", "--print"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(
+        out.stdout.starts_with("---\nname: yajna\n"),
+        "{}",
+        out.stdout
+    );
+    assert!(out.stdout.contains("YAJNA_AUTHOR=agent:<name>"));
+    let out = v.run(&["skill"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert_eq!(out.stdout.trim(), ".claude/skills/yajna/SKILL.md");
+    assert!(v
+        .read(&v.root.join(".claude/skills/yajna/SKILL.md"))
+        .contains("Reproducible runs"));
+    let fresh = empty();
+    assert_eq!(
+        fresh
+            .run(&["init", "project", "T", "--namespace", "t", "--author", "a"])
+            .code,
+        0
+    );
+    assert!(fresh.root.join(".claude/skills/yajna/SKILL.md").is_file());
+}
+
 fn walk(dir: &Path) -> Vec<PathBuf> {
     let mut out = Vec::new();
     if let Ok(rd) = fs::read_dir(dir) {

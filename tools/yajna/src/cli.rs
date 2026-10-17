@@ -45,6 +45,13 @@ pub enum Cmd {
         /// project: also scaffold projects/<slug>/ with a flake
         #[arg(long)]
         code: bool,
+        /// author handle (default: $YAJNA_AUTHOR, else yajna.toml); agents pass agent:<name>
+        #[arg(long)]
+        author: Option<String>,
+        /// run: the executable that re-creates it, relative to the repo root; a stub is
+        /// written there when the file does not exist
+        #[arg(long)]
+        script: Option<String>,
     },
     /// append a timestamped line to today's log
     Log {
@@ -75,6 +82,9 @@ pub enum Cmd {
         /// free text for the run page
         #[arg(long)]
         note: Option<String>,
+        /// the executable that re-created this run, relative to the repo root
+        #[arg(long)]
+        script: Option<String>,
     },
     /// list open checkboxes across the vault
     Tasks {
@@ -109,6 +119,12 @@ pub enum Cmd {
         by: Option<String>,
         #[arg(long)]
         desc: bool,
+    },
+    /// write the agent skill (how to use yajna and its conventions) into .claude/skills/yajna/
+    Skill {
+        /// print it instead of writing it
+        #[arg(long)]
+        print: bool,
     },
     /// render the static site from the index
     Site {

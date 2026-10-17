@@ -20,6 +20,9 @@ then runs the checked-out source through `cargo run`, so edits take effect immed
   template, `docs/conventions.md` and a test updated in the same change. Pages written
   by the CLI go through templates and text substitution so key order and comments
   survive; do not switch that to serialising a parsed tree.
+- `skills/yajna/SKILL.md` is the agent skill for notebook repos, embedded in the binary and
+  written by `yajna skill` and `yajna init`. It restates `docs/conventions.md` for an
+  agent; change both together.
 - `tools/yajna.nvim/` is the Neovim plugin (plain Lua, no binary). Its headless tests run
   with `nvim --headless -u NONE --cmd "set rtp+=tools/yajna.nvim" -l tools/yajna.nvim/tests/run.lua`
   and as `checks.yajna-nvim`.

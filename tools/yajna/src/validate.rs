@@ -11,6 +11,7 @@ use serde_json::{Map, Value};
 use crate::refs;
 use crate::vault::{
     load_yaml, prefix_to_type, rel, Page, Res, Schemas, Vault, ID_FULL_RE, LINK_RE, NS_ID_RE,
+    PATH_FIELDS,
 };
 
 static STEP_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(\d+)\.\s+(.*?)\s*$").unwrap());
@@ -230,6 +231,11 @@ pub fn validate(vault: &Vault) -> Res<(Vec<String>, usize)> {
         if !named_by_id {
             problems.add(&page.path, format!("filename does not start with id {pid}"));
         }
+        if let Some(script) = meta.get("script").and_then(|v| v.as_str()) {
+            if !vault.root.join(script).is_file() {
+                problems.add(&page.path, format!("script {script} does not exist"));
+            }
+        }
         if let Some(code) = meta.get("code").and_then(|v| v.as_str()) {
             // a path under the repo, or a location (`github:owner/repo`, a URL) after a move
             if !code.contains(':') && !vault.root.join(code).is_dir() {
@@ -266,7 +272,7 @@ pub fn validate(vault: &Vault) -> Res<(Vec<String>, usize)> {
         let mut targets = BTreeSet::new();
         let mut namespaced = Vec::new();
         for (k, v) in meta {
-            if k != "id" {
+            if k != "id" && !PATH_FIELDS.contains(&k.as_str()) {
                 ids_in(v, &mut targets, &mut namespaced);
             }
         }

@@ -15,6 +15,7 @@ itself is a separate, private repo of the `lab` shape (ADR-0018); mine is
 | `schema/` | JSON Schema for every page type's frontmatter and for protocol steps |
 | `templates/` | Page templates filled by `yajna new`, plus the scaffolds for `init` and `new project --code` |
 | `tools/yajna/` | The `yajna` CLI and interactive TUI: one static binary (Rust) with the schemas and templates embedded (ADR-0017) |
+| `skills/yajna/` | The agent skill (how to use yajna and its conventions), embedded in the binary and installed into a repo by `yajna skill` |
 | `tools/yajna.nvim/` | Neovim plugin: follow `[[ID]]` links and `@citekey` citations, find entities, backlinks |
 | `tools/zotero/` | Export a lab's `references/library.bib` from Zotero and reorganise the library from a plan |
 | `tools/corpus/` | Fetch published protocols into a lab's `corpus/` as fixtures for the protocol work |
@@ -46,7 +47,8 @@ Get the binary from this flake: `packages.yajna` (and `packages.yajna-nvim` for 
 plugin) as an input of a lab repo's flake or of a machine config, or
 `nix run github:leoank/yajna -- validate`. Machines without Nix take a binary from the
 GitHub releases (`x86_64-linux` musl, `aarch64-linux`, `aarch64-darwin`,
-`x86_64-darwin`). `docs/conventions.md` is the cheat sheet for writing an entry.
+`x86_64-darwin`). `docs/conventions.md` is the cheat sheet for writing an entry; `yajna skill`
+puts the same rules in front of Claude Code as `.claude/skills/yajna/SKILL.md`.
 
 ## Developing
 

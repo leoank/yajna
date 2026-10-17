@@ -8,6 +8,15 @@ link the file.
 
 ## 2026-10-17
 
+- **2026-10-17 22:00** Agents as authors and reproducible runs: `yajna new` takes
+  `--author`, and `YAJNA_AUTHOR` in the environment is the default author for every
+  command without touching whose log file is whose; run pages carry `script`, the
+  executable that re-creates the run (`--script` on `new run` writes a stub, `result
+  --script` records it, `validate` fails on a missing one), with a `Reproduce` section.
+  The agent skill `skills/yajna/SKILL.md` (how to use yajna, its conventions, authorship,
+  reproducibility) is embedded in the binary; `yajna skill` and `yajna init` write it to
+  `.claude/skills/yajna/SKILL.md`. Conventions updated in "Dry-lab runs" and "Agents".
+
 - **2026-10-17 21:10** Phase 1 in the CLI (ADR-0019): `yajna index` builds a SQLite cache
   outside the repo (`entity`, `link`, `log_entry`, `mention`, `run_result`, `task`,
   `citation`) from a valid vault; `show`, `timeline` ("everything I did with MAT-0210"),

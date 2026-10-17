@@ -167,7 +167,7 @@ pub fn create_note(vault: &Vault, key: &str, fields: &BTreeMap<String, String>) 
             ("year", &year),
             ("doi", &doi),
             ("created", &created),
-            ("author", &vault.author),
+            ("author", &vault.default_author()),
         ],
     )?;
     if let Some(parent) = path.parent() {

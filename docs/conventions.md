@@ -133,6 +133,22 @@ put `commit` in the frontmatter so the run points at the code it ran. Run-local 
 `runs/RUN-.../` or the experiment's sidecar directory. Not every command you ran is a run;
 one page per result that the experiment's conclusion will rest on.
 
+**Every compute run is re-creatable from the repo alone.** The page's `script` field names
+an executable, relative to the repo root, that reproduces it: `yajna new run ... --script
+lab/projects/PRJ-xxxx-<slug>/runs/RUN-<id>/run.sh` records the path and writes a stub there
+when the file is missing. The script runs from the repo root inside the project's dev shell
+(`nix develop ./projects/<slug> -c <script>`) at the page's `commit`, pins its inputs
+(data paths, seeds, versions), writes its outputs beside itself and, for metric runs,
+prints the `===RESULT===` line. What the script cannot control (hardware, network, time)
+goes under `Reproduce` on the page. `yajna validate` fails when `script` points at a
+missing file. A run recorded by an agent always has a script; a human's interactive
+session may leave `script: null` and say why under `Notes`.
+
+**The author of a run is whoever executed it.** An agent records its runs, log lines and
+session pages as `agent:<name>`: `export YAJNA_AUTHOR=agent:claude` for the session, or
+`--author agent:claude` on each command. The human handle in `yajna.toml` is only the
+default for the human.
+
 Experiments that produce comparable numbers across many runs (training sweeps, benchmarks)
 have a shortcut. Have the script print one line:
 
@@ -147,7 +163,8 @@ python train.py 2>&1 | tee run.log
 yajna result --experiment EXP-0007 run.log
 ```
 
-That writes the `RUN` page (status `done`, the repo commit recorded) and appends a row to
+That writes the `RUN` page (status `done`, the repo commit recorded, `--script <path>` for
+the script that produced the line) and appends a row to
 `experiments/EXP-0007/results.tsv`, adding columns as new keys appear. The TSV is tracked
 in git. Use it only where a flat table of numbers is the natural summary of the experiment.
 
@@ -289,6 +306,14 @@ white). `influenced_by` draws the dotted edges.
 
 ## Agents
 
-Agents write through the same commands with `--author agent:<name>` and record an `AGS`
-page per session. Curated pages (`EXP`, `PRO`, `MAT`) edited by an agent carry
-`review: pending` in frontmatter until a human removes it.
+Agents write through the same commands as `agent:<name>` (`YAJNA_AUTHOR` in the
+environment or `--author`) and record an `AGS` page per session listing what they created
+and edited. Curated pages (`EXP`, `PRO`, `MAT`) edited by an agent carry `review: pending`
+in frontmatter until a human removes it. Every compute run an agent records carries a
+`script` that re-creates it (see "Dry-lab runs").
+
+The agent skill that teaches all of this lives in the tooling repo at
+`skills/yajna/SKILL.md` and is embedded in the binary: `yajna skill` writes it to
+`.claude/skills/yajna/SKILL.md` in the current repo (`yajna init` does so too), so every
+lab and project repo carries the current version for Claude Code. `yajna skill --print`
+shows it.

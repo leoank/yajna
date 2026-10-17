@@ -34,9 +34,11 @@ pub fn run(vault: &Vault, cmd: &Cmd, prompter: &mut dyn Prompter) -> Res<i32> {
             experiment,
             kind,
             code,
+            author,
+            script,
         } => {
             let path = match etype {
-                None => tui::new(vault, prompter)?,
+                None => tui::new(vault, prompter, author.as_deref())?,
                 Some(t) => create(
                     vault,
                     t,
@@ -45,6 +47,8 @@ pub fn run(vault: &Vault, cmd: &Cmd, prompter: &mut dyn Prompter) -> Res<i32> {
                     experiment.as_deref(),
                     kind.as_deref(),
                     *code,
+                    author.as_deref(),
+                    script.as_deref(),
                 )?,
             };
             println!("{}", rel(&path, &vault.root));
@@ -69,6 +73,7 @@ pub fn run(vault: &Vault, cmd: &Cmd, prompter: &mut dyn Prompter) -> Res<i32> {
             kind,
             author,
             note,
+            script,
         } => cmd_result(
             vault,
             experiment,
@@ -76,6 +81,7 @@ pub fn run(vault: &Vault, cmd: &Cmd, prompter: &mut dyn Prompter) -> Res<i32> {
             kind,
             author.as_deref(),
             note.as_deref(),
+            script.as_deref(),
         ),
         Cmd::Tasks { done } => cmd_tasks(vault, *done),
         Cmd::Ref { key, note } => cmd_ref(vault, key, *note),
@@ -90,6 +96,7 @@ pub fn run(vault: &Vault, cmd: &Cmd, prompter: &mut dyn Prompter) -> Res<i32> {
             desc,
         } => crate::query::cmd_runs(vault, experiment, by.as_deref(), *desc),
         Cmd::Site { out } => crate::site::cmd_site(vault, out.as_deref()),
+        Cmd::Skill { print } => cmd_skill(vault, *print),
         Cmd::Graduate {
             project,
             to,
@@ -102,7 +109,9 @@ pub fn run(vault: &Vault, cmd: &Cmd, prompter: &mut dyn Prompter) -> Res<i32> {
 
 // --- new -----------------------------------------------------------------------------
 
-/// Allocate an ID, fill the template, write the page. `code` scaffolds `projects/<slug>/`.
+/// Allocate an ID, fill the template, write the page. `code` scaffolds `projects/<slug>/`;
+/// `script` (runs) is recorded and stubbed when the file is missing.
+#[allow(clippy::too_many_arguments)]
 pub fn create(
     vault: &Vault,
     etype: &str,
@@ -111,6 +120,8 @@ pub fn create(
     experiment: Option<&str>,
     kind: Option<&str>,
     code: bool,
+    author: Option<&str>,
+    script: Option<&str>,
 ) -> Res<PathBuf> {
     let etype = canonical_type(etype);
     let Some(ent) = entity(&etype) else {
@@ -156,6 +167,12 @@ pub fn create(
     if code && etype != "project" {
         return Err("--code only applies to projects".to_string());
     }
+    if script.is_some() && etype != "run" {
+        return Err("--script only applies to runs".to_string());
+    }
+    let author = author
+        .map(str::to_string)
+        .unwrap_or_else(|| vault.default_author());
 
     let kind = kind
         .map(str::to_string)
@@ -185,7 +202,7 @@ pub fn create(
             ("id", &ident),
             ("title", &title_field),
             ("created", &date),
-            ("author", &vault.author),
+            ("author", &author),
             ("project", project.as_deref().unwrap_or("null")),
             ("experiment", experiment.unwrap_or("null")),
             ("kind", &kind),
@@ -193,6 +210,7 @@ pub fn create(
             ("now", &now_iso),
             ("date", &date),
             ("code", &code_field),
+            ("script", script.unwrap_or("null")),
         ],
     )?;
 
@@ -224,6 +242,63 @@ pub fn create(
     if code {
         scaffold_code(vault, &slug, &ident, &title)?;
     }
+    if let Some(script) = script {
+        stub_script(vault, script, &ident, experiment.unwrap_or(""))?;
+    }
+    Ok(path)
+}
+
+/// Write the run-script stub at `script` (relative to the root) unless it exists.
+fn stub_script(vault: &Vault, script: &str, id: &str, experiment: &str) -> Res<()> {
+    let path = vault.root.join(script);
+    if path.exists() {
+        return Ok(());
+    }
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let text = vault.render(
+        "run.sh",
+        &[("id", id), ("experiment", experiment), ("script", script)],
+    )?;
+    fs::write(&path, text).map_err(|e| format!("{}: {e}", path.display()))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = fs::set_permissions(&path, fs::Permissions::from_mode(0o755));
+    }
+    eprintln!("wrote {script}; fill it in so the run can be re-created");
+    Ok(())
+}
+
+/// Write the embedded agent skill into the repo (`.claude/skills/yajna/SKILL.md`).
+fn cmd_skill(vault: &Vault, print: bool) -> Res<i32> {
+    let text = skill_text()?;
+    if print {
+        print!("{text}");
+        return Ok(0);
+    }
+    let path = write_skill(&vault.root)?;
+    println!("{}", rel(&path, &vault.root));
+    Ok(0)
+}
+
+pub fn skill_text() -> Res<String> {
+    crate::vault::Skills::get("yajna/SKILL.md")
+        .map(|f| String::from_utf8_lossy(&f.data).into_owned())
+        .ok_or_else(|| "the skill is not embedded in this binary".to_string())
+}
+
+pub fn write_skill(root: &Path) -> Res<PathBuf> {
+    let path = root
+        .join(".claude")
+        .join("skills")
+        .join("yajna")
+        .join("SKILL.md");
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    fs::write(&path, skill_text()?).map_err(|e| format!("{}: {e}", path.display()))?;
     Ok(path)
 }
 
@@ -271,7 +346,9 @@ fn cmd_log(
     let time = time
         .map(str::to_string)
         .unwrap_or_else(|| now.strftime("%H:%M").to_string());
-    let author = author.unwrap_or(&vault.author).to_string();
+    let author = author
+        .map(str::to_string)
+        .unwrap_or_else(|| vault.default_author());
     let path = vault.log_path(&date, Some(&author));
     if !path.exists() {
         if let Some(parent) = path.parent() {
@@ -331,6 +408,7 @@ fn cmd_result(
     kind: &str,
     author: Option<&str>,
     note: Option<&str>,
+    script: Option<&str>,
 ) -> Res<i32> {
     let source = match file {
         Some(f) => fs::read_to_string(f).map_err(|e| format!("{}: {e}", f.display()))?,
@@ -369,10 +447,22 @@ fn cmd_result(
         ("status", "done".into()),
         ("created", Value::String(date_of(&now))),
         ("finished", Value::String(finished.clone())),
-        ("author", author.unwrap_or(&vault.author).into()),
+        (
+            "author",
+            author
+                .map(str::to_string)
+                .unwrap_or_else(|| vault.default_author())
+                .into(),
+        ),
     ];
     if let Some(commit) = git_commit(&vault.root) {
         meta.push(("commit", Value::String(commit)));
+    }
+    if let Some(script) = script {
+        if !vault.root.join(script).is_file() {
+            return Err(format!("script {script} does not exist"));
+        }
+        meta.push(("script", Value::String(script.to_string())));
     }
     let rows: Vec<String> = result
         .iter()
