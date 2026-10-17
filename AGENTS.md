@@ -101,6 +101,9 @@ and must never be exposed or forwarded off the machine. Keys never go in the rep
   `nix build .#yajna` runs the same tests in the sandbox. `schema/` and `templates/` are the
   contract for every page. A schema change needs the template, `docs/conventions.md` and a
   test in `tools/yajna/tests/cli.rs` updated in the same change.
+- `tools/yajna.nvim/` is the Neovim plugin (plain Lua, no binary); its headless tests run
+  with `nvim --headless -u NONE --cmd "set rtp+=tools/yajna.nvim" -l tools/yajna.nvim/tests/run.lua`
+  and as `checks.yajna-nvim`.
 - Releases for machines without Nix: tag `vX.Y.Z` matching `tools/yajna/Cargo.toml` and
   `.github/workflows/release.yml` attaches the four binaries to the GitHub release.
 - Decisions that change the architecture get an ADR in `docs/decisions/` and a row in its

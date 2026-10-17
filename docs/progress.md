@@ -8,6 +8,14 @@ link the file.
 
 ## 2026-10-17
 
+- **2026-10-17 17:40** Phase 0c: `tools/yajna.nvim/`, a Neovim plugin in plain Lua. In a
+  markdown buffer under a `yajna.toml`, `gf` and `<C-]>` follow `[[ID]]`, `[[ID@3|label]]`,
+  `[[ns/ID]]` (through the `[repos]` path) and `@citekey` (reading note, else the `.bib`
+  entry); `<localleader>yf` picks an entity by ID or title; `<localleader>yb` lists
+  backlinks in the quickfix list. Pages are found by filename, so no binary or index is
+  needed. Headless tests in `tests/run.lua`; `packages.yajna-nvim` and `checks.yajna-nvim`
+  in the flake. Architecture §11 gained the 0c row.
+
 - **2026-10-17 17:05** Phase 0b lands in the Rust CLI, now `tools/yajna/` (the Python
   package and `parity.sh` deleted at parity, ADR-0017): `yajna init lab` and `yajna init
   project "<title>"` create either repo shape; `yajna init project --from <lab> PRJ-xxxx`

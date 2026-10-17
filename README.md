@@ -18,6 +18,7 @@ of this repo (a uv workspace with the `sspoc` package) are preserved on the `v1`
 | `projects/` | Dry-lab code, one directory and flake per project, scaffolded by `yajna new project --code` |
 | `references/` | `library.bib`, a Better BibTeX snapshot of the Zotero library |
 | `tools/yajna/` | The `yajna` CLI and interactive TUI: one static binary (Rust) with the schemas and templates embedded (ADR-0017) |
+| `tools/yajna.nvim/` | Neovim plugin: follow `[[ID]]` links and `@citekey` citations, find entities, backlinks |
 | `tools/zotero/` | Export the `.bib` and reorganise the Zotero library from a plan |
 | `tools/corpus/` | Fetch published protocols into `corpus/` as test fixtures |
 | `docs/` | Architecture, conventions, decision records, build progress |
@@ -39,7 +40,8 @@ Elsewhere, `nix profile install github:leoank/yajna` or a binary from the GitHub
 `yajna`. `yajna init lab` starts a notebook like this one; `yajna init project "<title>"`
 at the root of a code repo adds a single-project notebook under `lab/` (ADR-0018).
 
-`docs/conventions.md` is the cheat sheet for writing an entry. Search is `qmd` pointed at
+In Neovim, `tools/yajna.nvim` (also `packages.yajna-nvim`) makes `gf` follow `[[ID]]`
+links and `@citekey` citations. `docs/conventions.md` is the cheat sheet for writing an entry. Search is `qmd` pointed at
 `lab/` (ADR-0007).
 
 ## Documents
@@ -56,4 +58,4 @@ at the root of a code repo adds a single-project notebook under `lab/` (ADR-0018
 Phase 0 is built: schemas, templates, the CLI, the Nix flake, and the reference pipeline
 (Zotero → Better BibTeX → `references/library.bib` → pandoc citations checked by
 `yajna validate`). Phase 0b made the CLI a portable Rust binary with `init`, namespaced
-links and `graduate`. Next phases are laid out in `docs/architecture.md`.
+links and `graduate`; phase 0c added the Neovim plugin for following links. Next phases are laid out in `docs/architecture.md`.

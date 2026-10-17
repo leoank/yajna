@@ -30,6 +30,12 @@
           nativeCheckInputs = [ pkgs.git ]; # the graduate test drives `git subtree`
         };
         default = yajna;
+        # Neovim plugin (phase 0c): follow [[ID]] links and @citekeys, find entities, backlinks.
+        yajna-nvim = pkgs.vimUtils.buildVimPlugin {
+          pname = "yajna.nvim";
+          version = "0.1.0";
+          src = ./tools/yajna.nvim;
+        };
       });
 
       devShells = forAll (pkgs:
@@ -50,6 +56,13 @@
       checks = forAll (pkgs: projectChecks pkgs // {
         # buildRustPackage runs `cargo test`: the CLI's unit and integration tests.
         yajna = self.packages.${pkgs.system}.yajna;
+        yajna-nvim = pkgs.runCommand "yajna-nvim-tests" {
+          nativeBuildInputs = [ pkgs.neovim ];
+        } ''
+          export HOME=$TMPDIR
+          nvim --headless -u NONE --cmd "set rtp+=${self}/tools/yajna.nvim" -l ${self}/tools/yajna.nvim/tests/run.lua
+          touch $out
+        '';
         validate = pkgs.runCommand "yajna-validate" {
           nativeBuildInputs = [ self.packages.${pkgs.system}.yajna ];
         } ''
