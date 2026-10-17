@@ -56,6 +56,7 @@
         "active",
         "paused",
         "concluded",
+        "moved",
         "archived"
       ]
     },
@@ -65,6 +66,10 @@
         "string",
         "null"
       ]
+    },
+    "continued_in": {
+      "type": "string",
+      "description": "namespace/PRJ-xxxx of the project page that continues this one after it moved"
     }
   },
   "additionalProperties": true

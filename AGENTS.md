@@ -71,6 +71,9 @@ both lock files are committed. Then
 experiment; fill `Question`, `Hypothesis and predictions`, `Plan` and `Success criteria`
 before the first run. Small analyses stay in this repo for good; a project graduates to its
 own repository only by the author's decision (ADR-0009), recorded in `docs/progress.md`.
+Graduation follows the list in `docs/conventions.md`: the lab page is marked `moved` and points
+at the new repo, the new repo is a `project`-shaped yajna repo pointing back, and links
+between them are namespaced (`[[rc2s2/EXP-0003]]`, ADR-0018).
 
 Wet-lab work is the same shape without `--code`: protocols are `PRO` pages with numbered
 steps and attribute blocks, materials are `MAT`, bench sessions are `RUN` pages of kind

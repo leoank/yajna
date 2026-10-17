@@ -8,6 +8,16 @@ link the file.
 
 ## 2026-10-17
 
+- **2026-10-17 13:33** Portable CLI designed: ADR-0017 (Rust single binary with embedded
+  schemas and templates, Nix package plus GitHub releases, written at `tools/yajna-rs/`;
+  all yajna tooling stays in this repo and the lab moves out later; supersedes ADR-0015)
+  and ADR-0018 (repo shapes `lab` and `project`, `namespace` and `[repos]` in
+  `yajna.toml`, namespaced links `[[rc2s2/EXP-0003]]`, graduation with a new project
+  status `moved`, `continued_in` and `origin`; the project directory becomes the new
+  repo root with `lab/` inside it, and the project's pages are copied over with IDs kept
+  and outward links namespaced).
+  Architecture sections 4, 6, 9, 10, 11 (phase 0b) and 12 updated; conventions gained
+  "Repo shapes" and "Graduating a project"; `yajna.toml` carries `shape` and `namespace`.
 - **2026-10-17 13:17** Dry-lab run convention generalised: a `compute` run is a hand-written
   `RUN` page per result (spike, benchmark, prototype trial) with the commit recorded; the
   `===RESULT===` line and `results.tsv` become the shortcut for experiments that compare

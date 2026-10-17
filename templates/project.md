@@ -3,7 +3,7 @@ id: $id
 type: project
 schema_version: 1
 title: $title
-status: active            # active | paused | concluded | archived
+status: active            # active | paused | concluded | moved | archived
 code: $code               # projects/<name> here, or a repository URL once it moves out
 created: $created
 author: $author

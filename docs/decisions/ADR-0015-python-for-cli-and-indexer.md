@@ -1,6 +1,6 @@
 # ADR-0015: Python for the CLI and indexer
 
-Status: accepted
+Status: superseded by ADR-0017 (2026-10-17)
 Date: 2026-10-15
 Phase: 0
 Source: `docs/architecture.md` section 6

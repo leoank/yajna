@@ -11,6 +11,31 @@ too (`nix flake check`).
 
 Enter the tooling with `nix develop` at the repo root; `yajna` is then on the path.
 
+## Repo shapes
+
+`yajna.toml` at the repo root says which of two shapes the repo has (ADR-0018):
+
+```toml
+shape = "lab"             # or "project"
+namespace = "yajna"       # this repo's name in links from other repos
+author = "ank"
+vault = "lab"
+timezone = "Europe/London"
+bibliography = "references/library.bib"
+
+[repos]                   # namespaces this repo links to
+rc2s2 = "github:leoank/rc2s2"
+```
+
+`yajna init lab` creates this repo's layout. `yajna init project "<title>"`, run at the
+root of a code repo, adds `yajna.toml` and `lab/` inside it: `lab/README.md` is the
+project page and `experiments/`, `runs/`, `analyses/`, `artifacts/`, `agents/`, `log/`,
+`references/`, `tasks.md` sit beside it. The notebook lives inside the project's source
+tree, never in a folder next to it.
+A project repo has no protocols, materials, equipment or builds of its own; it links to
+the lab's. The commands, IDs, templates and schemas are the same in both shapes, and in a
+project repo `yajna new` never asks for a project.
+
 ## Interactive mode
 
 Run `yajna` with no arguments for a menu, or leave a command's arguments off:
@@ -35,6 +60,9 @@ is set, a new page offers to open in it.
 - Volume entities get a date and a random suffix: `RUN-20261015-k7f3`, `ART-...`, `AGS-...`.
 - Link with `[[EXP-0007]]` or `[[EXP-0007|the timing experiment]]`. Pin a protocol version
   with `[[PRO-0012@3]]`. A link to an ID that does not exist fails validation.
+- Link into another repo with its namespace: `[[rc2s2/EXP-0003]]`, `[[yajna/PRO-0012@3]]`.
+  The namespace must be in `[repos]`; the target is checked only when that repo's `path`
+  is on disk. Frontmatter ID fields accept namespaced IDs too.
 - Never reuse or hand-edit an ID.
 
 ## Creating pages
@@ -140,8 +168,33 @@ git add projects/toy-model      # Nix only sees tracked files
 nix flake lock ./projects/toy-model && nix flake lock .
 ```
 
-Both lock files travel with the commit. When the code moves to its own repository, set
-`code` to that URL, drop the root input, and record the move in the progress log.
+Both lock files travel with the commit.
+
+### Graduating a project
+
+When a code-bearing project is ready for its own repository (ADR-0018):
+
+1. Nothing to conclude first: the project's pages travel with it and active experiments
+   continue under the same IDs.
+2. Move the code with history: `git subtree split -P projects/<slug>` becomes the new
+   repo, so the project directory is its root. Remove the project's input from the lab's
+   `flake.nix` and relock.
+3. On the lab page set `status: moved`, `code: <repository url>`,
+   `continued_in: <namespace>/PRJ-0001`, and put `Continued in [[<namespace>/PRJ-0001]]`
+   as the first line of the body. Add the namespace to `[repos]`.
+4. At the new repo's root run `yajna init project --from ../yajna/main PRJ-0002`: it adds
+   `yajna.toml` with the namespace and `[repos] yajna = "github:leoank/yajna"`, and
+   `lab/` beside the code, then copies the project's notebook in: the project page as
+   `lab/README.md` with `origin: yajna/PRJ-0002`, its `experiments/`, `runs/`,
+   `analyses/` and `artifacts/` with sidecars, the reading notes and `.bib` entries they
+   cite, and `counters.yaml` seeded from the highest copied IDs. IDs stay the same. Links
+   to anything that stays in the lab are rewritten with the namespace
+   (`[[PRO-0012]]` becomes `[[yajna/PRO-0012]]`); links among the copied pages stay bare.
+5. Record the move in the progress log. The lab's copy of the project directory stays
+   as history and is never edited again.
+
+`yajna graduate PRJ-0002 --to github:leoank/rc2s2` does steps 2 to 4 once the Rust CLI
+exists (ADR-0017); until then follow the list by hand, including the link rewrite.
 
 ## Protocols
 

@@ -21,5 +21,7 @@ one rather than an edit.
 | [0012](ADR-0012-voice-and-photo-capture.md) | Server-side transcription; photos are log attachments or artifacts | accepted |
 | [0013](ADR-0013-large-data-storage.md) | Large data storage, leaning git-annex | deferred |
 | [0014](ADR-0014-two-stage-protocols.md) | Protocols jotted as text first, codified later | accepted |
-| [0015](ADR-0015-python-for-cli-and-indexer.md) | Python for the CLI and indexer | accepted |
+| [0015](ADR-0015-python-for-cli-and-indexer.md) | Python for the CLI and indexer | superseded by 0017 |
 | [0016](ADR-0016-references.md) | References: Zotero for capture, citation keys as identity, notes in the vault | accepted |
+| [0017](ADR-0017-rust-single-binary-cli.md) | The CLI becomes a single Rust binary with embedded schemas and templates | accepted |
+| [0018](ADR-0018-repo-shapes-and-namespaces.md) | Two repo shapes (`lab`, `project`), namespaced cross-repo links, graduation procedure | accepted |

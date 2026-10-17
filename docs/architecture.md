@@ -190,9 +190,29 @@ yajna/
   talks/                     # presentation sources
   projects/                  # code for dry-lab projects, each its own flake or subdir
   hardware/<name>/           # design sources per build: cad/, pcb/ (KiCad), firmware/, flake.nix
-  tools/                     # the yajna CLI, indexer, server (may become its own repo)
+  tools/                     # every yajna tool: CLI (Rust from Phase 0b), indexer, server, apps
+  yajna.toml                 # shape = "lab", namespace, author, [repos]
   flake.nix
 ```
+
+That is the `lab` shape. A graduated project (ADR-0018) is the `project` shape: the same
+vault conventions with one project and no shared entities. The former `projects/<slug>/`
+directory becomes the root of the new repo and the notebook moves in with the code:
+
+```
+rc2s2-a-remote-command-and-control-session-server/   # was projects/<slug>/ in the lab
+  flake.nix  README.md  src/  spikes/ ...             # the code tree, unchanged
+  yajna.toml                 # shape = "project", namespace = "rc2s2", [repos] yajna = ...
+  lab/
+    README.md                # the project page, origin: yajna/PRJ-0002
+    experiments/EXP-0001-*.md
+    runs/RUN-*.md
+    analyses/  artifacts/  agents/  log/<year>/  references/
+    tasks.md  counters.yaml
+```
+
+Links across repos are namespaced, `[[yajna/PRO-0012]]` from the project repo and
+`[[rc2s2/EXP-0003]]` from the lab; `[repos]` in `yajna.toml` says where a namespace lives.
 
 Frontmatter is mandatory on entity files and is the only structured part. The body is free
 markdown. Example experiment:
@@ -495,9 +515,12 @@ Components, in the order they will exist:
 1. **Conventions, schemas, templates, `.claude/commands`.** Pure files. Usable with any
    editor on day one. The commands directory mirrors AutoGo's `experiment` and
    `autoresearch` commands, adapted to write `EXP` and `RUN` pages.
-2. **`yajna` CLI.** `new <type>`, `log "text"`, `result` (parse a `===RESULT===` line into a
-   run), `validate`, `index`, `show <ID>`, `timeline <ID>`, `tree <PRJ>`. Allocates IDs, fills
-   templates, runs the indexer. The CLI is what agents call before there is a server.
+2. **`yajna` CLI.** `init lab|project`, `new <type>`, `log "text"`, `result` (parse a
+   `===RESULT===` line into a run), `ref`, `tasks`, `validate`, `graduate`, later `index`,
+   `show <ID>`, `timeline <ID>`, `tree <PRJ>`. Allocates IDs, fills templates, runs the
+   indexer. One static binary with the schemas and templates embedded, so it works in any
+   repo of either shape and on machines without Nix (ADR-0017). The CLI is what agents
+   call before there is a server.
 3. **Search.** `qmd` pointed at `lab/`, via the existing `qmd-reindex` module. No code.
 4. **Indexer.** Library plus command. Markdown in, SQLite out. Owns link resolution and
    schema validation. Everything downstream reads SQLite, never markdown directly.
@@ -515,8 +538,9 @@ Components, in the order they will exist:
    voice, photo of a gel or a plate. Web focuses on reading, reviewing agent changes, editing.
 
 Language: the file formats and the SQLite schema are the contract, so implementation language
-is swappable. Start with Python for the CLI and indexer because the dry-lab code and agent
-tooling are Python. Revisit for the server when it exists.
+is swappable. Phase 0 used Python; from Phase 0b the CLI and indexer are Rust, one binary,
+because the tool has to run in other repos and on machines without Nix (ADR-0017). The
+server language is decided when the server exists.
 
 ## 7. Agent integration
 
@@ -759,6 +783,9 @@ is a Phase 4 item, justified only once voice and photo capture are a daily need.
   directories for Claude Code and the other CLIs. Repo-specific commands go in this repo's
   `.claude/`; the harness supplies the rest.
 - Thesis and talks build via `nix build .#thesis` so they are reproducible from a clean clone.
+- `yajna` itself is distributed two ways: `packages.yajna` from this repo's flake, pulled
+  into `neusis` so every managed machine has it, and GitHub release binaries for machines
+  without Nix (HPC nodes, lab PCs). All yajna tooling stays in this repo (ADR-0017).
 
 ## 10. Evolution strategy
 
@@ -775,9 +802,14 @@ This is the part that matters most given G3.
   index is disposable. `qmd` reindexes on its own schedule.
 - **Decision records.** Any choice in this document that gets implemented goes into
   `docs/decisions/` with the date and the reason.
-- **Splitting repos.** IDs are global and never reused, so a project directory can be moved to
-  its own repo along with its data and remain linkable. The tooling under `tools/` is expected
-  to become its own repo once a second vault exists.
+- **Splitting repos.** IDs are unique within a repo and never reused; across repos they are
+  qualified by namespace (`[[rc2s2/EXP-0003]]`, ADR-0018). A project graduates by marking
+  its lab page `moved`, moving its code, and starting a `project`-shaped repo whose page
+  points back with `origin`; the project's pages are copied over with their IDs, links to
+  what stays behind rewritten to the lab's namespace, and the lab's copy is frozen as
+  history. The tooling stays in
+  this repo; it is the lab that will move out, to a `lab`-shaped repo of its own, once the
+  tooling no longer needs it next door for quick iteration (ADR-0017).
 
 ## 11. Phased roadmap
 
@@ -786,6 +818,7 @@ Each phase has a verification that proves it worked before the next starts.
 | Phase | Build | Verify |
 |-------|-------|--------|
 | 0. Conventions | `lab/` layout, templates, `docs/conventions.md`, `schema/` v1 including the protocol step convention and material inventory fields, `yajna new`, `yajna log`, `yajna result`, `yajna tasks`. Point `qmd` at `lab/`. | Two weeks of real bench and ML days captured without the tooling getting in the way. `qmd` answers a free-text question about last week. |
+| 0b. Portable CLI | Rust port of `yajna` at `tools/yajna-rs/` with parity tests against the Python CLI; `init lab\|project`, `namespace` and `[repos]` in `yajna.toml`, namespaced links in validate, `graduate`; `packages.yajna` in `neusis`, GitHub release binaries; the Python package is deleted and the port takes its name. | The same scripted session through both CLIs yields identical vaults. A non-Nix machine runs `yajna init project`, `new`, `validate` from a release binary. rc2s2 graduates by the documented procedure and both repos validate. |
 | 1. Index and site | Indexer, `yajna validate/timeline/tree`, static site with the experiment tree, `nix flake check` in CI. | "Everything I did with MAT-0210" and "all runs for EXP-0007 by metric" come from the index, and the site renders the tree. |
 | 1b. Collaboration | `sync` frontmatter, `yajna sync` with `publish` mode and comment pull-back, run from the laptop. `mirror` and `import` only once `publish` is routine. | The PI reads a project status page and an experiment conclusion in Google Docs, comments, and the comments appear in the repo within the hour without anyone touching git. |
 | 2. Data and runs | git-annex under `data/`, `ART` pages, AutoGo-style `experiment` and `autoresearch` commands in `.claude/` that write `EXP`/`RUN` pages and `results.tsv`. | A training sweep and an imaging session are both fully reconstructible from the repo plus annex. An agent runs an overnight autoresearch loop and the notebook has every run. |
@@ -809,6 +842,14 @@ Resolved on 2026-10-15 and recorded in `docs/decisions/`:
 - Google account for synced docs: the personal account (ADR-0011).
 - Voice and photo capture: server-side transcription; photos and audio are inline log
   attachments by default and `ART` artifacts when they are a run's result (ADR-0012).
+
+Resolved on 2026-10-17:
+
+- CLI language and distribution: Rust, one static binary, embedded schemas and templates,
+  Nix package plus GitHub releases (ADR-0017, supersedes ADR-0015).
+- Using `yajna` in other repos: two shapes, `lab` and `project`; namespaced links with a
+  `[repos]` registry; graduation marks the lab page `moved` and starts a project repo
+  that points back (ADR-0018).
 
 Nothing remains open at the architecture level. New questions go in the decision records
 index as `proposed` entries.
