@@ -18,6 +18,7 @@ of this repo (a uv workspace with the `sspoc` package) are preserved on the `v1`
 | `projects/` | Dry-lab code, one directory and flake per project, scaffolded by `yajna new project --code` |
 | `references/` | `library.bib`, a Better BibTeX snapshot of the Zotero library |
 | `tools/yajna/` | The `yajna` CLI and interactive TUI (Python) |
+| `tools/yajna-rs/` | The Rust port of the CLI, one static binary with schemas and templates embedded (ADR-0017) |
 | `tools/zotero/` | Export the `.bib` and reorganise the Zotero library from a plan |
 | `tools/corpus/` | Fetch published protocols into `corpus/` as test fixtures |
 | `docs/` | Architecture, conventions, decision records, build progress |

@@ -32,6 +32,14 @@
           doCheck = false;
         };
         default = yajna;
+        # The Rust port (ADR-0017). Takes over the `yajna` name once it passes parity.
+        yajna-rs = pkgs.rustPlatform.buildRustPackage {
+          pname = "yajna";
+          version = "0.2.0";
+          src = self;
+          sourceRoot = "source/tools/yajna-rs";
+          cargoLock.lockFile = ./tools/yajna-rs/Cargo.lock;
+        };
       });
 
       devShells = forAll (pkgs:
@@ -44,7 +52,7 @@
           '';
         in {
           default = pkgs.mkShell {
-            packages = [ python yajnaDev pkgs.git ];
+            packages = [ python yajnaDev pkgs.git pkgs.cargo pkgs.rustc pkgs.clippy pkgs.rustfmt pkgs.rust-analyzer ];
             shellHook = ''
               export YAJNA_SRC="$PWD/tools/yajna"
             '';
@@ -52,6 +60,8 @@
         });
 
       checks = forAll (pkgs: projectChecks pkgs // {
+        # buildRustPackage runs `cargo test`, so the port's unit and integration tests run here.
+        yajna-rs = self.packages.${pkgs.system}.yajna-rs;
         validate = pkgs.runCommand "yajna-validate" {
           nativeBuildInputs = [ self.packages.${pkgs.system}.yajna ];
         } ''

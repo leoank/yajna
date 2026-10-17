@@ -90,7 +90,9 @@ and must never be exposed or forwarded off the machine. Keys never go in the rep
 
 ## Changing the tooling
 
-- `tools/yajna/` is the CLI; `schema/` and `templates/` are the contract for every page.
+- `tools/yajna/` is the Python CLI and `tools/yajna-rs/` its Rust port (ADR-0017); both
+  must pass their tests and `tools/yajna-rs/parity.sh` (same scripted session, identical
+  vaults) until the Python one is deleted. `schema/` and `templates/` are the contract for every page.
   A schema change needs the template, `docs/conventions.md` and a test in
   `tools/yajna/tests/` updated in the same change.
 - Decisions that change the architecture get an ADR in `docs/decisions/` and a row in its

@@ -1,3 +1,5 @@
 corpus/raw/
 .DS_Store
 __pycache__/
+tools/yajna-rs/target/
+result

@@ -8,6 +8,15 @@ link the file.
 
 ## 2026-10-17
 
+- **2026-10-17 14:20** Rust port started at `tools/yajna-rs/` (ADR-0017): clap, inquire,
+  jsonschema, serde with a YAML parser, jiff, rust-embed; schemas and templates embedded
+  with `.yajna/templates/` overrides; `new`, `log`, `result`, `tasks`, `ref`, `validate`
+  and the interactive menu ported; namespaced links accepted when the namespace is in
+  `[repos]`. Frontmatter scalars follow PyYAML's quoting rules so pages are byte-identical.
+  Ten unit and nine integration tests (`cargo test`), and `parity.sh` runs the same
+  scripted session through both CLIs and diffs the vaults: identical. `packages.yajna-rs`
+  and `checks.yajna-rs` in the flake; cargo, rustc, clippy, rustfmt in the dev shell.
+
 - **2026-10-17 13:33** Portable CLI designed: ADR-0017 (Rust single binary with embedded
   schemas and templates, Nix package plus GitHub releases, written at `tools/yajna-rs/`;
   all yajna tooling stays in this repo and the lab moves out later; supersedes ADR-0015)

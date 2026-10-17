@@ -29,7 +29,7 @@ contract is files.
 - Parity is defined by tests, not by reading: the Python test suite is ported as
   integration tests that drive the binary against a scratch vault, and a scripted session
   (`new`, `log`, `result`, `ref`, `validate`) run through both CLIs must produce the same
-  vault byte for byte, timestamps aside.
+  vault byte for byte, timestamps aside (`tools/yajna-rs/parity.sh`).
 - Distribution: `packages.yajna` from this repo's flake, installed on every
   `neusis`-managed machine by adding `github:leoank/yajna` as an input there; GitHub
   releases with binaries for `x86_64-linux` (musl), `aarch64-linux`, `aarch64-darwin`
