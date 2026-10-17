@@ -27,11 +27,14 @@ bibliography = "references/library.bib"
 rc2s2 = "github:leoank/rc2s2"
 ```
 
-`yajna init lab` creates this repo's layout. `yajna init project "<title>"`, run at the
+`yajna init lab [dir]` creates this repo's layout (`--namespace` and `--author` default to
+the directory name and `$USER`). `yajna init project "<title>"`, run at the
 root of a code repo, adds `yajna.toml` and `lab/` inside it: `lab/README.md` is the
-project page and `experiments/`, `runs/`, `analyses/`, `artifacts/`, `agents/`, `log/`,
-`references/`, `tasks.md` sit beside it. The notebook lives inside the project's source
-tree, never in a folder next to it.
+project page (`PRJ-0001`, `code: .`) and `experiments/`, `runs/`, `analyses/`,
+`artifacts/`, `agents/`, `log/`, `references/`, `tasks.md` sit beside it. The notebook
+lives inside the project's source tree, never in a folder next to it. With `--from <lab
+path> PRJ-xxxx` instead of a title, the project's notebook is copied out of that lab (see
+"Graduating a project").
 A project repo has no protocols, materials, equipment or builds of its own; it links to
 the lab's. The commands, IDs, templates and schemas are the same in both shapes, and in a
 project repo `yajna new` never asks for a project.
@@ -183,18 +186,24 @@ When a code-bearing project is ready for its own repository (ADR-0018):
    `continued_in: <namespace>/PRJ-0001`, and put `Continued in [[<namespace>/PRJ-0001]]`
    as the first line of the body. Add the namespace to `[repos]`.
 4. At the new repo's root run `yajna init project --from ../yajna/main PRJ-0002`: it adds
-   `yajna.toml` with the namespace and `[repos] yajna = "github:leoank/yajna"`, and
-   `lab/` beside the code, then copies the project's notebook in: the project page as
-   `lab/README.md` with `origin: yajna/PRJ-0002`, its `experiments/`, `runs/`,
-   `analyses/` and `artifacts/` with sidecars, the reading notes and `.bib` entries they
-   cite, and `counters.yaml` seeded from the highest copied IDs. IDs stay the same. Links
-   to anything that stays in the lab are rewritten with the namespace
-   (`[[PRO-0012]]` becomes `[[yajna/PRO-0012]]`); links among the copied pages stay bare.
+   `yajna.toml` with the namespace and `[repos] yajna = { url = "github:leoank/yajna",
+   path = "../yajna/main" }`, and `lab/` beside the code, then copies the project's
+   notebook in: the project page as `lab/README.md` with `id: PRJ-0001`, `code: .` and
+   `origin: yajna/PRJ-0002`, its `experiments/`, `runs/`, `analyses/` and `artifacts/`
+   with sidecars, the reading notes and `.bib` entries they cite, and `counters.yaml`
+   seeded from the highest copied IDs. Experiment and run IDs stay the same; only the
+   project page is renumbered, and `project:` fields follow it. Links and ID fields that
+   point at anything staying in the lab are rewritten with the namespace (`[[PRO-0012]]`
+   becomes `[[yajna/PRO-0012]]`); links among the copied pages stay bare.
 5. Record the move in the progress log. The lab's copy of the project directory stays
    as history and is never edited again.
 
-`yajna graduate PRJ-0002 --to github:leoank/rc2s2` does steps 2 to 4 once the Rust CLI
-exists (ADR-0017); until then follow the list by hand, including the link rewrite.
+`yajna graduate PRJ-0002 --to github:leoank/rc2s2` does steps 2 to 4: check out the new,
+empty repo first (default `../rc2s2` next to the lab, or `--into <path>`; the namespace
+defaults to the last segment of `--to`). It splits the code directory with its history
+into that checkout, imports the notebook there, edits the lab page, removes the flake
+input and registers the namespace in `[repos]`. Left to you: `nix flake lock` here, the
+commits in both repos, the remote and push of the new one, and the progress log entry.
 
 ## Protocols
 

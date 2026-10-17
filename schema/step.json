@@ -17,14 +17,14 @@
       "type": "array",
       "items": {
         "type": "string",
-        "pattern": "^MAT-\\d{4,}$"
+        "pattern": "^([a-z][a-z0-9_-]*/)?MAT-\\d{4,}$"
       }
     },
     "equipment": {
       "type": "array",
       "items": {
         "type": "string",
-        "pattern": "^EQP-\\d{4,}$"
+        "pattern": "^([a-z][a-z0-9_-]*/)?EQP-\\d{4,}$"
       }
     },
     "volume": {

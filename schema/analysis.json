@@ -54,20 +54,20 @@
     },
     "project": {
       "type": "string",
-      "pattern": "^PRJ-\\d{4,}$"
+      "pattern": "^([a-z][a-z0-9_-]*/)?PRJ-\\d{4,}$"
     },
     "experiments": {
       "type": "array",
       "items": {
         "type": "string",
-        "pattern": "^EXP-\\d{4,}$"
+        "pattern": "^([a-z][a-z0-9_-]*/)?EXP-\\d{4,}$"
       }
     },
     "artifacts": {
       "type": "array",
       "items": {
         "type": "string",
-        "pattern": "^ART-\\d{8}-[a-z2-7]{4}$"
+        "pattern": "^([a-z][a-z0-9_-]*/)?ART-\\d{8}-[a-z2-7]{4}$"
       }
     },
     "code": {

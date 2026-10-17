@@ -113,7 +113,7 @@
     },
     "parent": {
       "type": "string",
-      "pattern": "^MAT-\\d{4,}$"
+      "pattern": "^([a-z][a-z0-9_-]*/)?MAT-\\d{4,}$"
     }
   },
   "additionalProperties": true

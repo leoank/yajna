@@ -64,7 +64,7 @@
     },
     "produced_by": {
       "type": "string",
-      "pattern": "^BLD-\\d{4,}$"
+      "pattern": "^([a-z][a-z0-9_-]*/)?BLD-\\d{4,}$"
     },
     "calibration_valid_until": {
       "type": "string",

@@ -16,8 +16,13 @@ yajna result --experiment EXP-xxxx <run.log>     # metric runs only: ===RESULT==
 yajna ref <citekey> [--note]
 yajna tasks
 yajna validate
-nix flake check                                   # validate + unit tests + every project flake
+yajna graduate PRJ-xxxx --to <location> [--into <path>]   # move a project to its own repo (ADR-0018)
+nix flake check                                   # validate + the CLI's tests + every project flake
 ```
+
+`yajna` is one static binary (`tools/yajna/`, Rust); `nix develop` runs it from the
+checked-out source. Outside this repo, `yajna init lab` or `yajna init project "<title>"`
+sets up a new repo of either shape.
 
 Never install tools ad hoc; add them to `flake.nix` (root tooling) or to the project's own
 flake under `projects/<name>/`. Run `yajna validate` after touching anything in `lab/` and
@@ -71,9 +76,10 @@ both lock files are committed. Then
 experiment; fill `Question`, `Hypothesis and predictions`, `Plan` and `Success criteria`
 before the first run. Small analyses stay in this repo for good; a project graduates to its
 own repository only by the author's decision (ADR-0009), recorded in `docs/progress.md`.
-Graduation follows the list in `docs/conventions.md`: the lab page is marked `moved` and points
-at the new repo, the new repo is a `project`-shaped yajna repo pointing back, and links
-between them are namespaced (`[[rc2s2/EXP-0003]]`, ADR-0018).
+`yajna graduate` does it, following the list in `docs/conventions.md`: the code directory
+becomes the new repo with its history, the project's pages move in under `lab/`, the lab
+page is marked `moved` and points at the new repo, and links between them are namespaced
+(`[[rc2s2/EXP-0003]]`, ADR-0018).
 
 Wet-lab work is the same shape without `--code`: protocols are `PRO` pages with numbered
 steps and attribute blocks, materials are `MAT`, bench sessions are `RUN` pages of kind
@@ -90,11 +96,13 @@ and must never be exposed or forwarded off the machine. Keys never go in the rep
 
 ## Changing the tooling
 
-- `tools/yajna/` is the Python CLI and `tools/yajna-rs/` its Rust port (ADR-0017); both
-  must pass their tests and `tools/yajna-rs/parity.sh` (same scripted session, identical
-  vaults) until the Python one is deleted. `schema/` and `templates/` are the contract for every page.
-  A schema change needs the template, `docs/conventions.md` and a test in
-  `tools/yajna/tests/` updated in the same change.
+- `tools/yajna/` is the CLI, a Rust crate that embeds `schema/` and `templates/`
+  (ADR-0017); `cargo test` and `cargo clippy` in the dev shell must pass, and
+  `nix build .#yajna` runs the same tests in the sandbox. `schema/` and `templates/` are the
+  contract for every page. A schema change needs the template, `docs/conventions.md` and a
+  test in `tools/yajna/tests/cli.rs` updated in the same change.
+- Releases for machines without Nix: tag `vX.Y.Z` matching `tools/yajna/Cargo.toml` and
+  `.github/workflows/release.yml` attaches the four binaries to the GitHub release.
 - Decisions that change the architecture get an ADR in `docs/decisions/` and a row in its
   README. Dated progress goes in `docs/progress.md`, newest first, with real timestamps.
 - `flake.lock` changes only through `nix flake update` or `nix flake lock`.

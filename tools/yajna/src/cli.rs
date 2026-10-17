@@ -7,7 +7,8 @@ use clap::{Parser, Subcommand};
 #[derive(Parser, Debug)]
 #[command(
     name = "yajna",
-    about = "The yajna command: new, log, result, tasks, ref, validate.",
+    version,
+    about = "The yajna command: init, new, log, result, tasks, ref, validate, graduate.",
     disable_help_subcommand = true
 )]
 pub struct Cli {
@@ -21,6 +22,11 @@ pub struct Cli {
 #[derive(Subcommand, Debug, Clone)]
 #[allow(clippy::enum_variant_names)] // `ResultCmd`: `Result` would shadow the std type
 pub enum Cmd {
+    /// create a repo of either shape: a lab, or one project inside a code repo
+    Init {
+        #[command(subcommand)]
+        shape: InitShape,
+    },
     /// create a page from its template and allocate an ID
     New {
         /// project, experiment, run, protocol, material, artifact, analysis, equipment, build, agent; omit for an interactive prompt
@@ -84,4 +90,47 @@ pub enum Cmd {
     },
     /// check every page against the schemas, IDs and links
     Validate,
+    /// move a code-bearing project into its own repo, notebook included (ADR-0018)
+    Graduate {
+        /// PRJ-xxxx of the project
+        project: String,
+        /// where the new repo will live, e.g. github:leoank/rc2s2
+        #[arg(long)]
+        to: String,
+        /// the new repo's checkout (default: ../<namespace> next to this repo)
+        #[arg(long)]
+        into: Option<PathBuf>,
+        /// the new repo's namespace (default: the last path segment of --to)
+        #[arg(long)]
+        namespace: Option<String>,
+    },
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum InitShape {
+    /// a lab: lab/ with projects, protocols, materials, equipment, builds, agents, log
+    Lab {
+        /// directory to create the lab in (default: --root or the current directory)
+        path: Option<PathBuf>,
+        /// this repo's name in links from other repos (default: the directory name)
+        #[arg(long)]
+        namespace: Option<String>,
+        /// author handle written into every page (default: $USER)
+        #[arg(long)]
+        author: Option<String>,
+    },
+    /// one project at the root of a code repo: yajna.toml and lab/ next to the code
+    Project {
+        /// the project's title, or its PRJ-xxxx in the lab given by --from
+        name: String,
+        /// a lab repo to copy the project's notebook from (graduation, ADR-0018)
+        #[arg(long)]
+        from: Option<PathBuf>,
+        /// this repo's name in links from other repos (default: the directory name)
+        #[arg(long)]
+        namespace: Option<String>,
+        /// author handle (default: the lab's with --from, else $USER)
+        #[arg(long)]
+        author: Option<String>,
+    },
 }

@@ -20,13 +20,20 @@ static FIELD_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(\w+)\s*=\s*").
 static WS_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s+").unwrap());
 
 pub fn bib_path(vault: &Vault) -> PathBuf {
-    vault.root.join(
-        vault
-            .cfg
-            .bibliography
-            .as_deref()
-            .unwrap_or("references/library.bib"),
-    )
+    match vault.cfg.bibliography.as_deref() {
+        Some(p) => vault.root.join(p),
+        None if vault.is_project() => vault.lab.join("references").join("library.bib"),
+        None => vault.root.join("references").join("library.bib"),
+    }
+}
+
+/// The raw text of one entry, `@type{key,` through its closing brace.
+pub fn raw_entry<'a>(bib: &'a str, key: &str) -> Option<&'a str> {
+    ENTRY_RE.captures_iter(bib).find(|m| &m[2] == key).map(|m| {
+        let start = m.get(0).unwrap().start();
+        let open = start + m[0].find('{').unwrap();
+        &bib[start..balanced_end(bib, open)]
+    })
 }
 
 pub fn bib_keys(vault: &Vault) -> BTreeSet<String> {

@@ -34,10 +34,40 @@ fn vault() -> Vault {
     fs::write(root.join("lab/tasks.md"), "# Tasks\n\n- [ ] \n").unwrap();
     fs::write(
         root.join("yajna.toml"),
-        "author = \"tester\"\nvault = \"lab\"\ntimezone = \"UTC\"\n",
+        "shape = \"lab\"\nnamespace = \"yajna\"\nauthor = \"tester\"\nvault = \"lab\"\ntimezone = \"UTC\"\n",
     )
     .unwrap();
     Vault { _dir: dir, root }
+}
+
+/// An empty directory: for `init` and as a graduation target.
+fn empty() -> Vault {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().canonicalize().unwrap();
+    Vault { _dir: dir, root }
+}
+
+const BIB: &str = "@article{shih2015cloning,\n  title = {Cloning on a {Chip}},\n  author = {Shih, Steve and Goyal, Garima},\n  year = {2015},\n  doi = {10.1021/acs.analchem.5b01905},\n  journal = {Analytical Chemistry}\n}\n\n@book{other2020,\n  title = {Unrelated},\n  year = {2020}\n}\n";
+
+fn git(root: &Path, args: &[&str]) -> String {
+    let out = Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .args(args)
+        .env("GIT_AUTHOR_NAME", "t")
+        .env("GIT_AUTHOR_EMAIL", "t@example.com")
+        .env("GIT_COMMITTER_NAME", "t")
+        .env("GIT_COMMITTER_EMAIL", "t@example.com")
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "git {args:?}: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    String::from_utf8_lossy(&out.stdout).into_owned()
 }
 
 struct Out {
@@ -391,6 +421,320 @@ fn namespaced_links_need_a_registered_repo() {
     fs::write(v.root.join("yajna.toml"), "author = \"tester\"\nvault = \"lab\"\ntimezone = \"UTC\"\n[repos]\nrc2s2 = \"github:leoank/rc2s2\"\nyajna = \"github:leoank/yajna\"\n").unwrap();
     let out = v.run(&["validate"]);
     assert_eq!(out.code, 0, "{}", out.stdout);
+}
+
+#[test]
+fn init_lab() {
+    let v = empty();
+    let out = v.run(&["init", "lab", "--namespace", "mylab", "--author", "tester"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(v.root.join("lab/counters.yaml").is_file());
+    assert!(v.root.join("lab/protocols").is_dir());
+    assert!(v.root.join("references/library.bib").is_file());
+    let cfg = v.read(&v.root.join("yajna.toml"));
+    assert!(cfg.contains("shape = \"lab\""), "{cfg}");
+    assert!(cfg.contains("namespace = \"mylab\""), "{cfg}");
+    assert!(cfg.contains("[repos]"), "{cfg}");
+    let out = v.run(&["new", "project", "Archaeal division"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(v.read(&v.path(&out)).contains("author: tester"));
+    let out = v.run(&["validate"]);
+    assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
+    assert_eq!(v.run(&["init", "lab"]).code, 1, "a second init must refuse");
+}
+
+#[test]
+fn init_project_in_a_code_repo() {
+    let v = empty();
+    fs::write(v.root.join("README.md"), "# toy\n").unwrap();
+    let out = v.run(&[
+        "init",
+        "project",
+        "Toy model: a colon",
+        "--namespace",
+        "toy",
+        "--author",
+        "tester",
+    ]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let page = v.read(&v.root.join("lab/README.md"));
+    assert!(page.contains("id: PRJ-0001\n"), "{page}");
+    assert!(page.contains("title: \"Toy model: a colon\"\n"), "{page}");
+    assert!(page.contains("\ncode: .  "), "{page}");
+    assert!(v.root.join("lab/references/library.bib").is_file());
+    assert!(!v.root.join("lab/projects").exists());
+    let cfg = v.read(&v.root.join("yajna.toml"));
+    assert!(cfg.contains("shape = \"project\""), "{cfg}");
+    assert!(
+        cfg.contains("bibliography = \"lab/references/library.bib\""),
+        "{cfg}"
+    );
+
+    // no --project needed: the repo's one project is implied
+    let out = v.run(&["new", "experiment", "Timing"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert_eq!(out.stdout.trim(), "lab/experiments/EXP-0001-timing.md");
+    assert!(v.read(&v.path(&out)).contains("project: PRJ-0001\n"));
+    let out = v.run(&[
+        "new",
+        "run",
+        "--experiment",
+        "EXP-0001",
+        "--kind",
+        "compute",
+    ]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(out.stdout.starts_with("lab/runs/RUN-"), "{}", out.stdout);
+    let out = v.run_with(
+        &["result", "--experiment", "EXP-0001"],
+        Some("===RESULT=== {\"loss\": 0.5}\n"),
+        &[],
+    );
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(v
+        .root
+        .join("lab/experiments/EXP-0001/results.tsv")
+        .is_file());
+    let out = v.run_with(
+        &["new"],
+        None,
+        &[("YAJNA_ANSWERS", "experiment\nInteractive")],
+    );
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(
+        out.stdout.contains("EXP-0002-interactive.md"),
+        "{}",
+        out.stdout
+    );
+
+    for shared in ["protocol", "material", "equipment", "build", "project"] {
+        let out = v.run(&["new", shared, "Nope"]);
+        assert_eq!(
+            out.code, 1,
+            "{shared} must not be created in a project repo"
+        );
+    }
+    let out = v.run(&["validate"]);
+    assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
+}
+
+/// A lab with a code-bearing project, an experiment that cites and links shared pages,
+/// a run and a reading note: the input to import and graduation.
+fn lab_with_project() -> Vault {
+    let v = vault();
+    fs::create_dir_all(v.root.join("references")).unwrap();
+    fs::write(v.root.join("references/library.bib"), BIB).unwrap();
+    fs::write(
+        v.root.join("flake.nix"),
+        "{\n# projects: registered by yajna new project --code\n}\n",
+    )
+    .unwrap();
+    assert_eq!(v.run(&["new", "project", "Other"]).code, 0);
+    assert_eq!(v.run(&["new", "protocol", "Transformation"]).code, 0);
+    assert_eq!(
+        v.run(&["new", "material", "Strain", "--kind", "strain"])
+            .code,
+        0
+    );
+    let out = v.run(&["new", "project", "Toy model", "--code"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let out = v.run(&["new", "experiment", "Timing", "--project", "PRJ-0002"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let exp = v.path(&out);
+    fs::write(
+        &exp,
+        v.read(&exp).replace("protocols: []", "protocols: [PRO-0001]")
+            + "\nUses [[PRO-0001@1|the protocol]] and [[MAT-0001]] after [[PRJ-0001]]; see [@shih2015cloning].\n",
+    )
+    .unwrap();
+    assert_eq!(v.run(&["ref", "shih2015cloning", "--note"]).code, 0);
+    assert_eq!(v.run(&["new", "run", "--experiment", "EXP-0001"]).code, 0);
+    fs::create_dir_all(
+        v.root
+            .join("lab/projects/PRJ-0002-toy-model/experiments/EXP-0001"),
+    )
+    .unwrap();
+    fs::write(
+        v.root
+            .join("lab/projects/PRJ-0002-toy-model/experiments/EXP-0001/notes.txt"),
+        "sidecar\n",
+    )
+    .unwrap();
+    assert_eq!(v.run(&["validate"]).code, 0);
+    v
+}
+
+#[test]
+fn init_project_from_a_lab() {
+    let lab = lab_with_project();
+    let v = empty();
+    fs::write(v.root.join("flake.nix"), "{ }\n").unwrap();
+    let out = v.run(&[
+        "init",
+        "project",
+        "PRJ-0002",
+        "--from",
+        lab.root.to_str().unwrap(),
+        "--namespace",
+        "toy",
+    ]);
+    assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
+
+    let page = v.read(&v.root.join("lab/README.md"));
+    assert!(
+        page.contains("id: PRJ-0001\norigin: yajna/PRJ-0002\n"),
+        "{page}"
+    );
+    assert!(page.contains("code: .\n"), "{page}");
+    assert!(page.contains("title: Toy model\n"), "{page}");
+    let exp = v.read(&v.root.join("lab/experiments/EXP-0001-timing.md"));
+    assert!(exp.contains("project: PRJ-0001\n"), "{exp}");
+    assert!(exp.contains("protocols: [yajna/PRO-0001]\n"), "{exp}");
+    assert!(
+        exp.contains(
+            "[[yajna/PRO-0001@1|the protocol]] and [[yajna/MAT-0001]] after [[yajna/PRJ-0001]]"
+        ),
+        "{exp}"
+    );
+    assert!(v.root.join("lab/experiments/EXP-0001/notes.txt").is_file());
+    assert_eq!(walk(&v.root.join("lab/runs")).len(), 1);
+    assert!(v
+        .read(&walk(&v.root.join("lab/runs"))[0])
+        .contains("project: PRJ-0001\n"));
+    assert!(v.root.join("lab/references/shih2015cloning.md").is_file());
+    let bib = v.read(&v.root.join("lab/references/library.bib"));
+    assert!(bib.contains("@article{shih2015cloning,"), "{bib}");
+    assert!(!bib.contains("other2020"), "{bib}");
+    let counters = v.read(&v.root.join("lab/counters.yaml"));
+    assert!(counters.contains("PRJ: 1\nEXP: 1\nANA: 0\n"), "{counters}");
+    let cfg = v.read(&v.root.join("yajna.toml"));
+    assert!(cfg.contains("namespace = \"toy\""), "{cfg}");
+    assert!(cfg.contains("\nyajna = { path = \""), "{cfg}");
+    assert!(
+        v.read(&v.root.join("flake.nix")) == "{ }\n",
+        "the code tree is untouched"
+    );
+
+    // the lab is checked out at the registered path, so its IDs are resolved
+    let out = v.run(&["validate"]);
+    assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
+    let exp_path = v.root.join("lab/experiments/EXP-0001-timing.md");
+    fs::write(&exp_path, exp + "\nAlso [[yajna/PRO-0099]].\n").unwrap();
+    let out = v.run(&["validate"]);
+    assert_eq!(out.code, 1);
+    assert!(
+        out.stdout.contains("link to unknown id yajna/PRO-0099"),
+        "{}",
+        out.stdout
+    );
+
+    assert_eq!(
+        v.run(&[
+            "init",
+            "project",
+            "PRJ-0002",
+            "--from",
+            lab.root.to_str().unwrap()
+        ])
+        .code,
+        1
+    );
+    let lab_v = empty();
+    let out = lab_v.run(&[
+        "init",
+        "project",
+        "PRJ-0042",
+        "--from",
+        lab.root.to_str().unwrap(),
+        "--namespace",
+        "x",
+    ]);
+    assert_eq!(out.code, 1);
+    assert!(out.stderr.contains("PRJ-0042"));
+}
+
+#[test]
+fn graduate_moves_code_and_notebook() {
+    let lab = lab_with_project();
+    git(&lab.root, &["init", "-q", "-b", "main"]);
+    git(&lab.root, &["add", "-A"]);
+    git(&lab.root, &["commit", "-q", "-m", "lab"]);
+    assert!(lab
+        .read(&lab.root.join("flake.nix"))
+        .contains("inputs.toy-model = "));
+    let into = empty();
+    git(&into.root, &["init", "-q", "-b", "main"]);
+
+    let out = lab.run(&[
+        "graduate",
+        "PRJ-0002",
+        "--to",
+        "github:leoank/toy",
+        "--into",
+        into.root.to_str().unwrap(),
+    ]);
+    assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
+
+    // the code tree is the new repo's root, with its history
+    assert!(into
+        .read(&into.root.join("flake.nix"))
+        .contains("flake-parts"));
+    assert!(
+        into.read(&into.root.join("README.md"))
+            .contains("[[PRJ-0002]]"),
+        "the code tree is untouched"
+    );
+    assert_eq!(
+        git(&into.root, &["rev-list", "--count", "HEAD"]).trim(),
+        "1"
+    );
+    assert!(git(&into.root, &["status", "--porcelain"]).contains("lab/"));
+    assert!(git(&lab.root, &["branch", "--list", "graduate/*"])
+        .trim()
+        .is_empty());
+    let page = into.read(&into.root.join("lab/README.md"));
+    assert!(page.contains("origin: yajna/PRJ-0002\n"), "{page}");
+    assert!(into
+        .root
+        .join("lab/experiments/EXP-0001-timing.md")
+        .is_file());
+
+    // the lab page points onward
+    let moved = lab.read(&lab.root.join("lab/projects/PRJ-0002-toy-model/README.md"));
+    assert!(moved.contains("status: moved\n"), "{moved}");
+    assert!(
+        moved.contains("code: github:leoank/toy\ncontinued_in: toy/PRJ-0001\n"),
+        "{moved}"
+    );
+    assert!(
+        moved.contains("---\n\nContinued in [[toy/PRJ-0001]].\n\n## Current belief"),
+        "{moved}"
+    );
+    assert!(!lab
+        .read(&lab.root.join("flake.nix"))
+        .contains("inputs.toy-model"));
+    let cfg = lab.read(&lab.root.join("yajna.toml"));
+    assert!(
+        cfg.contains("\n[repos]\ntoy = { url = \"github:leoank/toy\", path = \""),
+        "{cfg}"
+    );
+
+    let out = lab.run(&["validate"]);
+    assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
+    let out = into.run(&["validate"]);
+    assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
+    assert_eq!(
+        lab.run(&[
+            "graduate",
+            "PRJ-0002",
+            "--to",
+            "github:leoank/toy",
+            "--into",
+            into.root.to_str().unwrap()
+        ])
+        .code,
+        1
+    );
 }
 
 fn walk(dir: &Path) -> Vec<PathBuf> {

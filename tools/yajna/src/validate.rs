@@ -217,22 +217,38 @@ pub fn validate(vault: &Vault) -> Res<(Vec<String>, usize)> {
             );
         }
         let name = file_name(&page.path);
+        // A project page is README.md in a directory named by its ID; in a project repo it
+        // is the vault's own README.md.
         let named_by_id = name.starts_with(pid)
             || (name == "README.md"
-                && page
-                    .path
-                    .parent()
-                    .map(|p| file_name(p).starts_with(pid))
-                    .unwrap_or(false));
+                && (page.path == vault.lab.join("README.md") && vault.is_project()
+                    || page
+                        .path
+                        .parent()
+                        .map(|p| file_name(p).starts_with(pid))
+                        .unwrap_or(false)));
         if !named_by_id {
             problems.add(&page.path, format!("filename does not start with id {pid}"));
         }
         if let Some(code) = meta.get("code").and_then(|v| v.as_str()) {
-            if !code.contains("://") && !vault.root.join(code).is_dir() {
+            // a path under the repo, or a location (`github:owner/repo`, a URL) after a move
+            if !code.contains(':') && !vault.root.join(code).is_dir() {
                 problems.add(&page.path, format!("code directory {code} does not exist"));
             }
         }
     }
+
+    // Other repos named in [repos] with a checkout on disk: their IDs are checked too.
+    let mut remote_ids: BTreeMap<String, Option<BTreeMap<String, PathBuf>>> = BTreeMap::new();
+    let mut lookup = |ns: &str| -> Option<BTreeMap<String, PathBuf>> {
+        remote_ids
+            .entry(ns.to_string())
+            .or_insert_with(|| {
+                let root = vault.repo_root(ns)?;
+                Vault::open(root).ok()?.index().ok()
+            })
+            .clone()
+    };
 
     // Links and references need the full ID set.
     let keys = refs::bib_keys(vault);
@@ -273,12 +289,21 @@ pub fn validate(vault: &Vault) -> Res<(Vec<String>, usize)> {
             }
         }
         let mut seen_ns = BTreeSet::new();
-        for (ns, _) in &namespaced {
+        let mut seen_remote = BTreeSet::new();
+        for (ns, id) in &namespaced {
             if seen_ns.insert(ns.clone()) && !vault.cfg.repos.contains_key(ns) {
                 problems.add(
                     &page.path,
                     format!("namespace {ns} not in [repos] of yajna.toml"),
                 );
+            }
+            if !seen_remote.insert((ns.clone(), id.clone())) {
+                continue;
+            }
+            if let Some(index) = lookup(ns) {
+                if !index.contains_key(id) {
+                    problems.add(&page.path, format!("link to unknown id {ns}/{id}"));
+                }
             }
         }
 

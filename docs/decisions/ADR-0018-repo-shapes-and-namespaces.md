@@ -81,9 +81,11 @@ When a project leaves the lab:
    frozen: nothing under it is edited again, and the page marked `moved` is where a
    reader is sent on.
 
-`yajna graduate PRJ-0002 --to github:leoank/rc2s2` performs steps 2 and 3 when the new
-repo is checked out next to the lab; until the Rust CLI exists (ADR-0017) the steps are
-done by hand following `docs/conventions.md`, the link rewrite included.
+`yajna graduate PRJ-0002 --to github:leoank/rc2s2 [--into <path>]` performs steps 2 and
+3 when the new repo is checked out next to the lab (or at `--into`), leaving the commits,
+`nix flake lock` and the push to the author. The project page is renumbered `PRJ-0001` in
+the new repo, as every project repo's page is; experiment, run, analysis and artifact IDs
+are kept.
 
 ## Consequences
 

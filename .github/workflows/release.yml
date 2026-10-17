@@ -1,0 +1,41 @@
+# Release binaries for machines without Nix (ADR-0017). Tag `vX.Y.Z` (matching
+# tools/yajna/Cargo.toml) and the four binaries land on the GitHub release.
+name: release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+jobs:
+  binaries:
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: x86_64-unknown-linux-musl, os: ubuntu-latest }
+          - { target: aarch64-unknown-linux-musl, os: ubuntu-latest }
+          - { target: aarch64-apple-darwin, os: macos-latest }
+          - { target: x86_64-apple-darwin, os: macos-latest }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: taiki-e/setup-cross-toolchain-action@v1
+        if: runner.os == 'Linux'
+        with:
+          target: ${{ matrix.target }}
+      - run: cargo test --manifest-path tools/yajna/Cargo.toml
+        if: matrix.target == 'x86_64-unknown-linux-musl' || matrix.target == 'aarch64-apple-darwin'
+      - uses: taiki-e/upload-rust-binary-action@v1
+        with:
+          bin: yajna
+          target: ${{ matrix.target }}
+          manifest-path: tools/yajna/Cargo.toml
+          archive: yajna-$tag-$target
+          tar: unix
+          zip: none
+          checksum: sha256
+          token: ${{ secrets.GITHUB_TOKEN }}

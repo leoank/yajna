@@ -59,39 +59,39 @@
     },
     "project": {
       "type": "string",
-      "pattern": "^PRJ-\\d{4,}$"
+      "pattern": "^([a-z][a-z0-9_-]*/)?PRJ-\\d{4,}$"
     },
     "experiment": {
       "type": "string",
-      "pattern": "^EXP-\\d{4,}$"
+      "pattern": "^([a-z][a-z0-9_-]*/)?EXP-\\d{4,}$"
     },
     "build": {
       "type": "string",
-      "pattern": "^BLD-\\d{4,}$"
+      "pattern": "^([a-z][a-z0-9_-]*/)?BLD-\\d{4,}$"
     },
     "equipment": {
       "type": "string",
-      "pattern": "^EQP-\\d{4,}$"
+      "pattern": "^([a-z][a-z0-9_-]*/)?EQP-\\d{4,}$"
     },
     "protocols": {
       "type": "array",
       "items": {
         "type": "string",
-        "pattern": "^PRO-\\d{4,}(@\\d+)?$"
+        "pattern": "^([a-z][a-z0-9_-]*/)?PRO-\\d{4,}(@\\d+)?$"
       }
     },
     "materials": {
       "type": "array",
       "items": {
         "type": "string",
-        "pattern": "^MAT-\\d{4,}$"
+        "pattern": "^([a-z][a-z0-9_-]*/)?MAT-\\d{4,}$"
       }
     },
     "artifacts": {
       "type": "array",
       "items": {
         "type": "string",
-        "pattern": "^ART-\\d{8}-[a-z2-7]{4}$"
+        "pattern": "^([a-z][a-z0-9_-]*/)?ART-\\d{8}-[a-z2-7]{4}$"
       }
     },
     "status": {

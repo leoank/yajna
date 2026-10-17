@@ -182,7 +182,6 @@ impl Page {
 }
 
 #[derive(Debug, Deserialize, Default)]
-#[allow(dead_code)]
 pub struct Config {
     pub author: Option<String>,
     pub vault: Option<String>,
@@ -191,7 +190,29 @@ pub struct Config {
     pub shape: Option<String>,
     pub namespace: Option<String>,
     #[serde(default)]
-    pub repos: BTreeMap<String, toml::Value>,
+    pub repos: BTreeMap<String, Repo>,
+}
+
+/// One `[repos]` entry: `ns = "github:owner/repo"` or `ns = { url = "...", path = "../repo" }`.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+#[allow(dead_code)] // `url` is read by the site and the server, not by the CLI yet
+pub enum Repo {
+    Location(String),
+    Table {
+        url: Option<String>,
+        path: Option<String>,
+    },
+}
+
+impl Repo {
+    /// Where a checkout usually is, relative to the repo root.
+    pub fn path(&self) -> Option<&str> {
+        match self {
+            Repo::Table { path, .. } => path.as_deref(),
+            Repo::Location(_) => None,
+        }
+    }
 }
 
 pub struct Vault {
@@ -222,6 +243,40 @@ impl Vault {
             tz,
             counters_file,
         })
+    }
+
+    // --- shape -----------------------------------------------------------------------
+    /// `lab` (the default) or `project` (ADR-0018).
+    pub fn shape(&self) -> &str {
+        self.cfg.shape.as_deref().unwrap_or("lab")
+    }
+
+    pub fn is_project(&self) -> bool {
+        self.shape() == "project"
+    }
+
+    pub fn namespace(&self) -> Res<&str> {
+        self.cfg
+            .namespace
+            .as_deref()
+            .ok_or_else(|| format!("{CONFIG_NAME}: no namespace"))
+    }
+
+    /// The one project of a project-shaped repo: the ID on `lab/README.md`.
+    pub fn single_project(&self) -> Res<String> {
+        let page = self.read(&self.lab.join("README.md"))?;
+        page.id().map(str::to_string).ok_or_else(|| {
+            format!(
+                "{}: no id in frontmatter",
+                rel(&self.lab.join("README.md"), &self.root)
+            )
+        })
+    }
+
+    /// Root of another namespace's checkout, when `[repos]` gives a `path` that exists.
+    pub fn repo_root(&self, ns: &str) -> Option<PathBuf> {
+        let p = self.root.join(self.cfg.repos.get(ns)?.path()?);
+        p.join(CONFIG_NAME).is_file().then_some(p)
     }
 
     // --- time ------------------------------------------------------------------------
@@ -274,7 +329,12 @@ impl Vault {
         }
     }
 
+    /// Where a project's experiments, runs, analyses and artifacts live: `lab/projects/PRJ-*/`
+    /// in a lab, the vault itself in a project repo.
     pub fn project_dir(&self, prj: &str) -> Res<PathBuf> {
+        if self.is_project() {
+            return Ok(self.lab.clone());
+        }
         let projects = self.lab.join("projects");
         let mut dirs: Vec<PathBuf> = fs::read_dir(&projects)
             .map(|rd| {
@@ -367,13 +427,7 @@ impl Vault {
                 1
             }
         };
-        let mut text = String::from(
-            "# Last allocated number per curated ID prefix. Managed by `yajna new`.\n",
-        );
-        for (k, v) in &counters {
-            text.push_str(&format!("{k}: {v}\n"));
-        }
-        fs::write(&self.counters_file, text)
+        fs::write(&self.counters_file, counters_text(&counters))
             .map_err(|e| format!("{}: {e}", self.counters_file.display()))?;
         Ok(format!("{prefix}-{n:04}"))
     }
@@ -415,6 +469,16 @@ impl Vault {
             .join(&date[..4.min(date.len())])
             .join(format!("{name}.md"))
     }
+}
+
+/// The text of `counters.yaml` for these prefixes.
+pub fn counters_text(counters: &[(String, i64)]) -> String {
+    let mut text =
+        String::from("# Last allocated number per curated ID prefix. Managed by `yajna new`.\n");
+    for (k, v) in counters {
+        text.push_str(&format!("{k}: {v}\n"));
+    }
+    text
 }
 
 pub fn substitute(text: &str, fields: &[(&str, &str)]) -> String {

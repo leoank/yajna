@@ -84,19 +84,19 @@
       "type": "array",
       "items": {
         "type": "string",
-        "pattern": "^MAT-\\d{4,}$"
+        "pattern": "^([a-z][a-z0-9_-]*/)?MAT-\\d{4,}$"
       }
     },
     "equipment": {
       "type": "array",
       "items": {
         "type": "string",
-        "pattern": "^EQP-\\d{4,}$"
+        "pattern": "^([a-z][a-z0-9_-]*/)?EQP-\\d{4,}$"
       }
     },
     "supersedes": {
       "type": "string",
-      "pattern": "^PRO-\\d{4,}$"
+      "pattern": "^([a-z][a-z0-9_-]*/)?PRO-\\d{4,}$"
     }
   },
   "additionalProperties": true

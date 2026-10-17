@@ -80,6 +80,13 @@ pub fn run(vault: &Vault, cmd: &Cmd, prompter: &mut dyn Prompter) -> Res<i32> {
         Cmd::Tasks { done } => cmd_tasks(vault, *done),
         Cmd::Ref { key, note } => cmd_ref(vault, key, *note),
         Cmd::Validate => cmd_validate(vault),
+        Cmd::Graduate {
+            project,
+            to,
+            into,
+            namespace,
+        } => crate::init::graduate(vault, project, to, into.as_deref(), namespace.as_deref()),
+        Cmd::Init { .. } => unreachable!("init runs before a vault is opened"),
     }
 }
 
@@ -109,9 +116,24 @@ pub fn create(
         None => return Err(format!("a title is required for a {etype}")),
     };
 
+    if vault.is_project() {
+        // One project per repo; shared entities live in a lab and are linked by namespace.
+        if etype == "project" {
+            return Err("a project repo holds one project, lab/README.md".to_string());
+        }
+        if ["protocol", "material", "equipment", "build"].contains(&etype.as_str()) {
+            return Err(format!(
+                "{etype}s live in the lab; link them as [[<namespace>/{}-xxxx]]",
+                ent.prefix
+            ));
+        }
+    }
     let mut project = project.map(str::to_string);
     if let (Some(exp), None) = (experiment, &project) {
         project = vault.find(exp)?.field("project").map(str::to_string);
+    }
+    if vault.is_project() && PROJECT_SCOPED.contains(&etype.as_str()) && project.is_none() {
+        project = Some(vault.single_project()?);
     }
     if PROJECT_SCOPED.contains(&etype.as_str()) && project.is_none() {
         return Err(format!(

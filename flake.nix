@@ -20,39 +20,27 @@
       }) projects;
     in {
       packages = forAll (pkgs: rec {
-        yajna = pkgs.python3Packages.buildPythonApplication {
-          pname = "yajna";
-          version = "0.1.0";
-          pyproject = true;
-          src = ./tools/yajna;
-          build-system = [ pkgs.python3Packages.setuptools ];
-          dependencies = with pkgs.python3Packages; [ pyyaml jsonschema prompt-toolkit ];
-          # Tests need the repo's templates and schemas, which sit outside the package
-          # src; they run in checks.tests instead.
-          doCheck = false;
-        };
-        default = yajna;
-        # The Rust port (ADR-0017). Takes over the `yajna` name once it passes parity.
-        yajna-rs = pkgs.rustPlatform.buildRustPackage {
+        # The yajna CLI (ADR-0017): one static binary with schema/ and templates/ embedded.
+        yajna = pkgs.rustPlatform.buildRustPackage {
           pname = "yajna";
           version = "0.2.0";
           src = self;
-          sourceRoot = "source/tools/yajna-rs";
-          cargoLock.lockFile = ./tools/yajna-rs/Cargo.lock;
+          sourceRoot = "source/tools/yajna";
+          cargoLock.lockFile = ./tools/yajna/Cargo.lock;
+          nativeCheckInputs = [ pkgs.git ]; # the graduate test drives `git subtree`
         };
+        default = yajna;
       });
 
       devShells = forAll (pkgs:
         let
-          python = pkgs.python3.withPackages (ps: with ps; [ pyyaml jsonschema prompt-toolkit ]);
           # Runs the checked-out source, so edits under tools/yajna take effect immediately.
           yajnaDev = pkgs.writeShellScriptBin "yajna" ''
-            export PYTHONPATH="''${YAJNA_SRC:?run inside nix develop}''${PYTHONPATH:+:$PYTHONPATH}"
-            exec ${python}/bin/python3 -m yajna "$@"
+            exec cargo run --quiet --manifest-path "''${YAJNA_SRC:?run inside nix develop}/Cargo.toml" -- "$@"
           '';
         in {
           default = pkgs.mkShell {
-            packages = [ python yajnaDev pkgs.git pkgs.cargo pkgs.rustc pkgs.clippy pkgs.rustfmt pkgs.rust-analyzer ];
+            packages = [ yajnaDev pkgs.git pkgs.cargo pkgs.rustc pkgs.clippy pkgs.rustfmt pkgs.rust-analyzer pkgs.python3 ];
             shellHook = ''
               export YAJNA_SRC="$PWD/tools/yajna"
             '';
@@ -60,20 +48,13 @@
         });
 
       checks = forAll (pkgs: projectChecks pkgs // {
-        # buildRustPackage runs `cargo test`, so the port's unit and integration tests run here.
-        yajna-rs = self.packages.${pkgs.system}.yajna-rs;
+        # buildRustPackage runs `cargo test`: the CLI's unit and integration tests.
+        yajna = self.packages.${pkgs.system}.yajna;
         validate = pkgs.runCommand "yajna-validate" {
           nativeBuildInputs = [ self.packages.${pkgs.system}.yajna ];
         } ''
           cd ${self}
           yajna --root . validate
-          touch $out
-        '';
-        tests = pkgs.runCommand "yajna-tests" {
-          nativeBuildInputs = [ (pkgs.python3.withPackages (ps: with ps; [ pyyaml jsonschema prompt-toolkit ])) ];
-        } ''
-          cd ${self}
-          PYTHONPATH=tools/yajna python3 -m unittest discover -s tools/yajna/tests -v
           touch $out
         '';
       });

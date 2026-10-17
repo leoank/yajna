@@ -58,7 +58,7 @@
     },
     "project": {
       "type": "string",
-      "pattern": "^PRJ-\\d{4,}$"
+      "pattern": "^([a-z][a-z0-9_-]*/)?PRJ-\\d{4,}$"
     },
     "status": {
       "enum": [
@@ -75,20 +75,20 @@
     },
     "produces": {
       "type": "string",
-      "pattern": "^EQP-\\d{4,}$"
+      "pattern": "^([a-z][a-z0-9_-]*/)?EQP-\\d{4,}$"
     },
     "parts": {
       "type": "array",
       "items": {
         "type": "string",
-        "pattern": "^MAT-\\d{4,}$"
+        "pattern": "^([a-z][a-z0-9_-]*/)?MAT-\\d{4,}$"
       }
     },
     "tests": {
       "type": "array",
       "items": {
         "type": "string",
-        "pattern": "^EXP-\\d{4,}$"
+        "pattern": "^([a-z][a-z0-9_-]*/)?EXP-\\d{4,}$"
       }
     }
   },

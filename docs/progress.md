@@ -8,6 +8,22 @@ link the file.
 
 ## 2026-10-17
 
+- **2026-10-17 17:05** Phase 0b lands in the Rust CLI, now `tools/yajna/` (the Python
+  package and `parity.sh` deleted at parity, ADR-0017): `yajna init lab` and `yajna init
+  project "<title>"` create either repo shape; `yajna init project --from <lab> PRJ-xxxx`
+  copies a project's notebook out of a lab with IDs kept, outward links and ID fields
+  namespaced, cited notes and `.bib` entries, counters seeded; `yajna graduate PRJ-xxxx
+  --to <location> [--into <path>]` splits the code directory with its history into the
+  new checkout, imports the notebook, marks the lab page `moved` with `continued_in`,
+  removes the flake input and registers the namespace in `[repos]`. In a project repo
+  `new` implies the one project and refuses shared entity types. `validate` resolves
+  `[[ns/ID]]` in a registered repo whose `path` is on disk. Schemas: ID-holding fields
+  (not `id`) accept a namespace prefix. Flake: `packages.yajna` is the Rust build, the
+  dev shell runs it with `cargo run` from the checkout, `checks.yajna` runs the tests;
+  `.github/workflows/release.yml` builds the four release binaries on a `v*` tag. 13
+  unit and 13 integration tests; a dry run graduated a scratch clone's rc2s2 and both
+  repos validated.
+
 - **2026-10-17 14:20** Rust port started at `tools/yajna-rs/` (ADR-0017): clap, inquire,
   jsonschema, serde with a YAML parser, jiff, rust-embed; schemas and templates embedded
   with `.yajna/templates/` overrides; `new`, `log`, `result`, `tasks`, `ref`, `validate`

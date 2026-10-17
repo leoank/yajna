@@ -54,7 +54,7 @@
     },
     "project": {
       "type": "string",
-      "pattern": "^PRJ-\\d{4,}$"
+      "pattern": "^([a-z][a-z0-9_-]*/)?PRJ-\\d{4,}$"
     },
     "status": {
       "enum": [
@@ -78,28 +78,28 @@
       "type": "array",
       "items": {
         "type": "string",
-        "pattern": "^EXP-\\d{4,}$"
+        "pattern": "^([a-z][a-z0-9_-]*/)?EXP-\\d{4,}$"
       }
     },
     "protocols": {
       "type": "array",
       "items": {
         "type": "string",
-        "pattern": "^PRO-\\d{4,}(@\\d+)?$"
+        "pattern": "^([a-z][a-z0-9_-]*/)?PRO-\\d{4,}(@\\d+)?$"
       }
     },
     "materials": {
       "type": "array",
       "items": {
         "type": "string",
-        "pattern": "^MAT-\\d{4,}$"
+        "pattern": "^([a-z][a-z0-9_-]*/)?MAT-\\d{4,}$"
       }
     },
     "builds": {
       "type": "array",
       "items": {
         "type": "string",
-        "pattern": "^BLD-\\d{4,}$"
+        "pattern": "^([a-z][a-z0-9_-]*/)?BLD-\\d{4,}$"
       }
     }
   },

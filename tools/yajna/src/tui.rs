@@ -266,7 +266,15 @@ fn enum_values(schema: &str, field: &str) -> Vec<String> {
 // --- flows -----------------------------------------------------------------------------
 
 pub fn new(vault: &Vault, p: &mut dyn Prompter) -> Res<PathBuf> {
-    let mut types: Vec<String> = entity_names().iter().map(|s| s.to_string()).collect();
+    let mut types: Vec<String> = entity_names()
+        .iter()
+        .filter(|t| {
+            !vault.is_project()
+                || crate::vault::PROJECT_SCOPED.contains(t)
+                || **t == "agent_session"
+        })
+        .map(|s| s.to_string())
+        .collect();
     types.push("agent".to_string());
     let etype = p.ask(
         "type",
@@ -300,7 +308,10 @@ pub fn new(vault: &Vault, p: &mut dyn Prompter) -> Res<PathBuf> {
         )?;
         experiment = Some(e).filter(|s| !s.is_empty());
     }
-    if crate::vault::PROJECT_SCOPED.contains(&etype.as_str()) && experiment.is_none() {
+    if crate::vault::PROJECT_SCOPED.contains(&etype.as_str())
+        && experiment.is_none()
+        && !vault.is_project()
+    {
         project = Some(p.ask(
             "project",
             Some(Completer::ids(vault, &["PRJ"], None, false)?),

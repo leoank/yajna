@@ -54,11 +54,11 @@
     },
     "run": {
       "type": "string",
-      "pattern": "^RUN-\\d{8}-[a-z2-7]{4}$"
+      "pattern": "^([a-z][a-z0-9_-]*/)?RUN-\\d{8}-[a-z2-7]{4}$"
     },
     "project": {
       "type": "string",
-      "pattern": "^PRJ-\\d{4,}$"
+      "pattern": "^([a-z][a-z0-9_-]*/)?PRJ-\\d{4,}$"
     },
     "hash": {
       "type": "string",

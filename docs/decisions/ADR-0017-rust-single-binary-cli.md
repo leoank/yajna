@@ -52,3 +52,6 @@ contract is files.
   one wrote it.
 - `packages.yajna` in this repo's flake becomes the Rust build; the dev shell keeps
   running the checked-out source so edits take effect immediately.
+- Parity was reached the same day (2026-10-17): the Python package, its tests and
+  `parity.sh` were deleted and the port took the `tools/yajna/` name. The integration
+  tests in `tools/yajna/tests/cli.rs` are the port's definition from then on.
