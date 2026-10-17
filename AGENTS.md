@@ -20,9 +20,12 @@ then runs the checked-out source through `cargo run`, so edits take effect immed
   template, `docs/conventions.md` and a test updated in the same change. Pages written
   by the CLI go through templates and text substitution so key order and comments
   survive; do not switch that to serialising a parsed tree.
-- `skills/yajna/SKILL.md` is the agent skill for notebook repos, embedded in the binary and
-  written by `yajna skill` and `yajna init`. It restates `docs/conventions.md` for an
-  agent; change both together.
+- `plugins/yajna/` is the Claude Code plugin, and `.claude-plugin/marketplace.json` makes
+  this repo its marketplace. `skills/yajna/SKILL.md` in it is the agent skill for notebook
+  repos, also embedded in the binary and written by `yajna skill` and `yajna init`; it
+  restates `docs/conventions.md` for an agent, so change both together. `commands/` are
+  the `/yajna:project` family. `claude plugin validate --strict plugins/yajna` and
+  `claude plugin validate .` must pass; bump `version` in `plugin.json` on a change.
 - `tools/yajna.nvim/` is the Neovim plugin (plain Lua, no binary). Its headless tests run
   with `nvim --headless -u NONE --cmd "set rtp+=tools/yajna.nvim" -l tools/yajna.nvim/tests/run.lua`
   and as `checks.yajna-nvim`.

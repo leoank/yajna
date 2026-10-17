@@ -28,7 +28,7 @@ pub struct Templates;
 pub struct Schemas;
 
 #[derive(Embed)]
-#[folder = "../../skills"]
+#[folder = "../../plugins/yajna/skills"]
 pub struct Skills;
 
 pub struct Entity {

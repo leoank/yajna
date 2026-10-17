@@ -15,7 +15,7 @@ itself is a separate, private repo of the `lab` shape (ADR-0018); mine is
 | `schema/` | JSON Schema for every page type's frontmatter and for protocol steps |
 | `templates/` | Page templates filled by `yajna new`, plus the scaffolds for `init` and `new project --code` |
 | `tools/yajna/` | The `yajna` CLI and interactive TUI: one static binary (Rust) with the schemas and templates embedded (ADR-0017) |
-| `skills/yajna/` | The agent skill (how to use yajna and its conventions), embedded in the binary and installed into a repo by `yajna skill` |
+| `plugins/yajna/` | The Claude Code plugin: the `yajna` skill (how to use yajna and its conventions, also embedded in the binary for `yajna skill`) and the `/yajna:project` family of commands that bootstrap a project through an interview |
 | `tools/yajna.nvim/` | Neovim plugin: follow `[[ID]]` links and `@citekey` citations, find entities, backlinks |
 | `tools/zotero/` | Export a lab's `references/library.bib` from Zotero and reorganise the library from a plan |
 | `tools/corpus/` | Fetch published protocols into a lab's `corpus/` as fixtures for the protocol work |
@@ -47,8 +47,18 @@ Get the binary from this flake: `packages.yajna` (and `packages.yajna-nvim` for 
 plugin) as an input of a lab repo's flake or of a machine config, or
 `nix run github:leoank/yajna -- validate`. Machines without Nix take a binary from the
 GitHub releases (`x86_64-linux` musl, `aarch64-linux`, `aarch64-darwin`,
-`x86_64-darwin`). `docs/conventions.md` is the cheat sheet for writing an entry; `yajna skill`
-puts the same rules in front of Claude Code as `.claude/skills/yajna/SKILL.md`.
+`x86_64-darwin`). `docs/conventions.md` is the cheat sheet for writing an entry.
+
+For Claude Code this repo is a plugin marketplace:
+
+```
+/plugin install yajna --marketplace leoank/yajna
+```
+
+gives the `yajna` skill and `/yajna:project`, `/yajna:code-project`, `/yajna:bio-project`,
+`/yajna:ml-project` and `/yajna:hardware-project`, which bootstrap a project from a brief
+through an interview with the author. Without the plugin, `yajna skill` writes the skill
+alone into a repo as `.claude/skills/yajna/SKILL.md`.
 
 ## Developing
 

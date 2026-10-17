@@ -312,8 +312,12 @@ and edited. Curated pages (`EXP`, `PRO`, `MAT`) edited by an agent carry `review
 in frontmatter until a human removes it. Every compute run an agent records carries a
 `script` that re-creates it (see "Dry-lab runs").
 
-The agent skill that teaches all of this lives in the tooling repo at
-`skills/yajna/SKILL.md` and is embedded in the binary: `yajna skill` writes it to
-`.claude/skills/yajna/SKILL.md` in the current repo (`yajna init` does so too), so every
-lab and project repo carries the current version for Claude Code. `yajna skill --print`
-shows it.
+The agent skill that teaches all of this ships as the Claude Code plugin `yajna`, with
+the tooling repo as its marketplace (`/plugin install yajna --marketplace leoank/yajna`).
+The plugin adds `/yajna:project <brief>` and its `code-`, `bio-`, `ml-` and `hardware-`
+variants: each reads the notebook, interviews the author until the question, success
+criteria, scope, constraints, risks and first experiments are pinned down, and only then
+creates the project page, the experiments and, for code, the scaffold and design docs.
+The skill alone is also embedded in the binary: `yajna skill` writes it to
+`.claude/skills/yajna/SKILL.md` in the current repo (`yajna init` does so too) for
+machines without the plugin. `yajna skill --print` shows it.

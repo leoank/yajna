@@ -80,6 +80,13 @@ Every `compute` run you record must be re-creatable by someone who has only the 
 Hand-recorded runs that were not scripted (an interactive session, a one-off probe) say so
 under `Notes` and still leave a script that gets as close as possible.
 
+## Starting a project
+
+A new project starts with an interview, not a guess: `/yajna:project <brief>` (and
+`/yajna:code-project`, `/yajna:bio-project`, `/yajna:ml-project`,
+`/yajna:hardware-project` for their domains) reads the notebook, asks the author the
+questions that pin the project down, and only then creates the pages.
+
 ## Finishing
 
 Run `yajna validate` (and `nix flake check` if the repo's AGENTS.md asks for it), update

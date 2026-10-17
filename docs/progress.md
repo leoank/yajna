@@ -8,6 +8,13 @@ link the file.
 
 ## 2026-10-17
 
+- **2026-10-17 23:00** Claude Code plugin: `plugins/yajna/` holds the skill (moved from
+  `skills/`, still embedded in the binary) and five commands, `/yajna:project` plus
+  `code-`, `bio-`, `ml-` and `hardware-project`, that bootstrap a project through an
+  interview with the author before any page is written; `.claude-plugin/marketplace.json`
+  makes this repo the marketplace (`/plugin install yajna --marketplace leoank/yajna`).
+  Both manifests pass `claude plugin validate --strict`.
+
 - **2026-10-17 22:00** Agents as authors and reproducible runs: `yajna new` takes
   `--author`, and `YAJNA_AUTHOR` in the environment is the default author for every
   command without touching whose log file is whose; run pages carry `script`, the

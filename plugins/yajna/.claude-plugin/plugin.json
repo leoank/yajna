@@ -1,0 +1,15 @@
+{
+  "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
+  "name": "yajna",
+  "version": "0.3.0",
+  "description": "Work in a yajna lab notebook: the conventions as a skill, and /yajna:project, /yajna:code-project, /yajna:bio-project, /yajna:ml-project, /yajna:hardware-project to bootstrap a project through an interview.",
+  "author": {
+    "name": "Ankur Kumar"
+  },
+  "homepage": "https://github.com/leoank/yajna",
+  "repository": "https://github.com/leoank/yajna",
+  "license": "MIT",
+  "keywords": ["lab-notebook", "research", "experiments", "markdown"],
+  "commands": "./commands",
+  "skills": "./skills"
+}
