@@ -19,7 +19,9 @@ itself is a separate, private repo of the `lab` shape (ADR-0018); mine is
 | `tools/yajna.nvim/` | Neovim plugin: follow `[[ID]]` links and `@citekey` citations, find entities, backlinks |
 | `tools/zotero/` | Export a lab's `references/library.bib` from Zotero and reorganise the library from a plan |
 | `tools/corpus/` | Fetch published protocols into a lab's `corpus/` as fixtures for the protocol work |
-| `docs/` | Architecture, conventions, decision records, build progress |
+| `docs/` | Architecture, conventions, decision records, the original brief |
+| `notes/` | This repo's own notebook: the project page (`notes/README.md`), the daily log, tasks |
+| `yajna.toml` | Makes this repo a `project`-shaped yajna repo, namespace `yajna` |
 
 ## Using it
 
@@ -77,8 +79,9 @@ nix flake check        # the CLI's tests in the sandbox, the plugin's headless t
 - `docs/decisions/`: ADRs 0001–0021, indexed in `docs/decisions/README.md`.
 - `docs/protocol-framework.md`, `docs/protocol-corpus.md`, `docs/microfluidic-compiler.md`:
   protocols as code, the published-protocol corpus, and a chip backend for them.
-- `docs/progress.md`: dated build log.
-- `context.md`: the original brief.
+- `docs/context.md`: the original brief.
+- `notes/`: this repo's own yajna notebook (it is a `project`-shaped repo): the project
+  page with its *Progress* checklist, and the dated log of what landed when.
 
 ## Status
 

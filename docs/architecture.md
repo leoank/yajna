@@ -4,14 +4,14 @@ Status: draft v0.5, 2026-10-15. This is a design discussion, not a spec. It lays
 options, states a recommended path, and defines how the system is allowed to grow.
 Decisions that get locked in should move to `docs/decisions/` as short decision records.
 
-v0.2 revised v0.1 after reading every link in `context.md`. v0.3 added wet-lab planning
+v0.2 revised v0.1 after reading every link in `docs/context.md`. v0.3 added wet-lab planning
 agents and live bench monitoring, and dropped the external task tracker. v0.4 added Google
 Docs sync for collaboration with the PI and lab members. v0.5 adds hardware build projects
 and revises the ID scheme for scale. See section 13.
 
 ## 1. Goals and constraints
 
-From `context.md`, restated as design goals:
+From `docs/context.md`, restated as design goals:
 
 | ID | Goal |
 |----|------|
@@ -72,7 +72,7 @@ Dry lab:
   timestamped events from an agent that is present at the bench or watching a training run,
   not just batched writes at the end. Agent sessions need to reference transcripts and media.
 
-Hardware, from `context.md` and the kinds of tools the wet-lab work needs (bench camera
+Hardware, from `docs/context.md` and the kinds of tools the wet-lab work needs (bench camera
 rigs, microfluidic controllers, incubation chambers, imaging adapters, liquid-handling
 jigs):
 
@@ -912,7 +912,7 @@ Changes from v0.3 to v0.4:
 Companion documents: `docs/protocol-framework.md` (protocols as code, 2026-10-15),
 `docs/protocol-corpus.md` (published protocols as test fixtures for it, 2026-10-15),
 `docs/microfluidic-compiler.md` (codified protocols compiled to printable chips,
-2026-10-15) and `docs/progress.md` (timestamped build log).
+2026-10-15) and the project log under `notes/log/` (timestamped, migrated from `docs/progress.md` on 2026-10-19).
 
 Changes from v0.4 to v0.5:
 

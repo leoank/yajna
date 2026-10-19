@@ -45,9 +45,23 @@ finish with `yajna validate` there. Do not commit in the lab repo from here.
 ## Documents
 
 - Decisions that change the architecture get an ADR in `docs/decisions/` and a row in its
-  README. Dated progress goes in `docs/progress.md`, newest first, with real timestamps.
+  README.
 - `docs/conventions.md` is the writer's cheat sheet and must stay in step with the
   schemas and templates.
+
+## This repo's own notebook
+
+This repo is a `project`-shaped yajna repo (`yajna.toml`, namespace `yajna`), so its own
+work is recorded the way it records everyone else's; load the `yajna` skill.
+
+- `notes/README.md` is the project page. Tick its *Progress* items as work lands, add
+  items when the plan grows, and keep *Open questions* and *Lessons* current.
+- What landed and when goes in the log: `yajna log --author agent:<name> "..."`, one line
+  per change, with real times. This replaces the old `docs/progress.md`.
+- Spikes and benchmarks the design rests on are experiments with reproducible runs.
+- Decisions stay ADRs in `docs/decisions/` with a row in its README; the architecture is
+  `docs/architecture.md`.
+- `yajna validate` (or `nix flake check`, which runs it as `checks.notes`) must pass.
 
 ## Git
 

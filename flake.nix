@@ -45,6 +45,14 @@
       checks = forAll (pkgs: {
         # buildRustPackage runs `cargo test`: the CLI's unit and integration tests.
         yajna = self.packages.${pkgs.system}.yajna;
+        # this repo is a project-shaped yajna repo: its own notebook must validate
+        notes = pkgs.runCommand "yajna-notes" {
+          nativeBuildInputs = [ self.packages.${pkgs.system}.yajna ];
+        } ''
+          cd ${self}
+          yajna --root . validate
+          touch $out
+        '';
         yajna-nvim = pkgs.runCommand "yajna-nvim-tests" {
           nativeBuildInputs = [ pkgs.neovim ];
         } ''
