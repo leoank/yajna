@@ -66,6 +66,21 @@ ID, so create the run first, then write the script at the path printed on the pa
   ask before adding anything over a few MB.
 - **Never delete.** Mark `status: abandoned` or `aborted`; git history is the record.
 
+## Working in a worktree
+
+Other agents may be working in other worktrees of the same notebook at the same time.
+
+- If the repo root has `.yajna/author`, it names you for this worktree; do not set
+  `YAJNA_AUTHOR` over it. Start parallel work with `yajna worktree PRJ-xxxx <topic>`.
+- Stay inside your branch's project. Do not create or edit protocols, materials,
+  equipment or builds on a branch; ask for them on `main`.
+- Prefer experiments that already exist on `main`. If you must create one on the branch,
+  run `yajna validate --against main` before you report the branch as ready; on a
+  collision run `yajna renumber <ID>` on the branch and validate again. Never edit an ID
+  by hand.
+- Merge `main` into your branch before allocating anything, and never use a bare
+  `git stash`.
+
 ## Reproducible runs
 
 Every `compute` run you record must be re-creatable by someone who has only the repo:

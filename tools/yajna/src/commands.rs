@@ -85,7 +85,15 @@ pub fn run(vault: &Vault, cmd: &Cmd, prompter: &mut dyn Prompter) -> Res<i32> {
         ),
         Cmd::Tasks { done } => cmd_tasks(vault, *done),
         Cmd::Ref { key, note } => cmd_ref(vault, key, *note),
-        Cmd::Validate => cmd_validate(vault),
+        Cmd::Validate { against } => cmd_validate(vault, against.as_deref()),
+        Cmd::Renumber { old, new } => crate::parallel::renumber(vault, old, new.as_deref()),
+        Cmd::Worktree {
+            project,
+            topic,
+            agent,
+            from,
+            path,
+        } => crate::parallel::worktree(vault, project, topic, agent, from, path.as_deref()),
         Cmd::Index => crate::query::cmd_index(vault),
         Cmd::Show { id } => crate::query::cmd_show(vault, id),
         Cmd::Timeline { id } => crate::query::cmd_timeline(vault, id),
@@ -707,8 +715,15 @@ fn cmd_ref(vault: &Vault, key: &str, note: bool) -> Res<i32> {
 
 // --- validate ------------------------------------------------------------------------
 
-fn cmd_validate(vault: &Vault) -> Res<i32> {
-    let (problems, counted) = validate::validate(vault)?;
+fn cmd_validate(vault: &Vault, against: Option<&str>) -> Res<i32> {
+    let (mut problems, counted) = validate::validate(vault)?;
+    if let Some(reference) = against {
+        let (collisions, notes) = crate::parallel::against(vault, reference)?;
+        problems.extend(collisions);
+        for n in notes {
+            eprintln!("note: {n}");
+        }
+    }
     for p in &problems {
         println!("{p}");
     }

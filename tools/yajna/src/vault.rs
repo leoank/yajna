@@ -286,11 +286,18 @@ impl Vault {
     }
 
     /// The author new pages and log lines get: `$YAJNA_AUTHOR` (how an agent names
-    /// itself for a session), else the human handle in yajna.toml.
+    /// itself for a session), else `.yajna/author` (written by `yajna worktree` for the
+    /// agent of that worktree, never committed), else the human handle in yajna.toml.
     pub fn default_author(&self) -> String {
         std::env::var("YAJNA_AUTHOR")
             .ok()
             .filter(|s| !s.trim().is_empty())
+            .or_else(|| {
+                fs::read_to_string(self.root.join(".yajna").join("author"))
+                    .ok()
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+            })
             .unwrap_or_else(|| self.author.clone())
     }
 

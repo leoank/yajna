@@ -27,3 +27,4 @@ one rather than an edit.
 | [0018](ADR-0018-repo-shapes-and-namespaces.md) | Two repo shapes (`lab`, `project`), namespaced cross-repo links, graduation procedure | accepted |
 | [0019](ADR-0019-index-and-site-as-caches.md) | The SQLite index and the static site are caches outside the repo, rebuilt when stale | accepted |
 | [0020](ADR-0020-directory-names.md) | `notes/`, `code/` and `assets/` as the top-level directories; two project page templates | accepted |
+| [0021](ADR-0021-parallel-worktrees.md) | Several agents in parallel worktrees: one project per branch, IDs allocated on main, `validate --against`, `renumber`, `worktree` | accepted |

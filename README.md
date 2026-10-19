@@ -40,6 +40,9 @@ yajna timeline MAT-0210                          # everything recorded about a m
 yajna tree PRJ-0001                              # experiments by theme, outcome, runs, influence
 yajna runs EXP-0007 --by loss                    # an experiment's runs ordered by a metric
 yajna site --serve --open                        # the static site in a browser, refreshed as pages change
+yajna worktree PRJ-0003 aero-map                 # a branch and worktree with its own agent author
+yajna validate --against main                    # curated IDs allocated on both branches?
+yajna renumber EXP-0012                          # resolve one: new ID, every reference rewritten
 yajna graduate PRJ-0002 --to github:leoank/rc2s2  # a project moves to its own repo
 ```
 
@@ -71,7 +74,7 @@ nix flake check        # the CLI's tests in the sandbox, the plugin's headless t
 ## Documents
 
 - `docs/architecture.md`: the system design and why markdown is the write model.
-- `docs/decisions/`: ADRs 0001–0019, indexed in `docs/decisions/README.md`.
+- `docs/decisions/`: ADRs 0001–0021, indexed in `docs/decisions/README.md`.
 - `docs/protocol-framework.md`, `docs/protocol-corpus.md`, `docs/microfluidic-compiler.md`:
   protocols as code, the published-protocol corpus, and a chip backend for them.
 - `docs/progress.md`: dated build log.

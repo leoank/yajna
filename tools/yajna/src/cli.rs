@@ -99,7 +99,35 @@ pub enum Cmd {
         note: bool,
     },
     /// check every page against the schemas, IDs and links
-    Validate,
+    Validate {
+        /// also check this branch against another (e.g. main): a curated ID created on both
+        /// sides since they diverged is a collision
+        #[arg(long, value_name = "REF")]
+        against: Option<String>,
+    },
+    /// give a curated page a new ID and rewrite every reference (resolves a branch collision)
+    Renumber {
+        /// the ID to replace, e.g. EXP-0012
+        old: String,
+        /// the new ID (default: the next free one from the counter)
+        new: Option<String>,
+    },
+    /// start a branch <project-slug>/<topic> in its own git worktree with its own agent author
+    Worktree {
+        /// PRJ-xxxx the work belongs to
+        project: String,
+        /// what the branch is for, a few words
+        topic: String,
+        /// the agent that will work there; the author becomes agent:<agent>-<slug>-<topic>
+        #[arg(long, default_value = "claude")]
+        agent: String,
+        /// the branch to start from
+        #[arg(long, default_value = "main")]
+        from: String,
+        /// where to put the worktree (default: beside the others in a bare-repo layout)
+        #[arg(long)]
+        path: Option<PathBuf>,
+    },
     /// rebuild the SQLite index (a cache outside the repo; queries rebuild it when stale)
     Index,
     /// one entity: frontmatter, links out, links in, log mentions

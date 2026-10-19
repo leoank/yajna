@@ -2,6 +2,7 @@ mod cli;
 mod commands;
 mod index;
 mod init;
+mod parallel;
 mod query;
 mod refs;
 mod site;

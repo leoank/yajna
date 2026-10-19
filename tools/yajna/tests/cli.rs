@@ -1221,6 +1221,241 @@ fn listed_experiments_and_runs_need_a_description() {
     );
 }
 
+fn first_md(dir: &Path) -> PathBuf {
+    let mut pages: Vec<PathBuf> = walk(dir)
+        .into_iter()
+        .filter(|p| p.extension().map(|e| e == "md").unwrap_or(false))
+        .collect();
+    pages.sort();
+    pages.remove(0)
+}
+
+/// A committed lab with one project and one experiment, on branch `main`.
+fn git_lab() -> Vault {
+    let v = vault();
+    assert_eq!(v.run(&["new", "project", "Toy"]).code, 0);
+    assert_eq!(
+        v.run(&["new", "experiment", "First", "--project", "PRJ-0001"])
+            .code,
+        0
+    );
+    git(&v.root, &["init", "-q", "-b", "main"]);
+    git(&v.root, &["add", "-A"]);
+    git(&v.root, &["commit", "-q", "-m", "lab"]);
+    v
+}
+
+#[test]
+fn validate_against_finds_ids_allocated_on_both_branches() {
+    let v = git_lab();
+    git(&v.root, &["checkout", "-q", "-b", "toy/aero"]);
+    assert_eq!(
+        v.run(&["new", "experiment", "Branch one", "--project", "PRJ-0001"])
+            .code,
+        0
+    );
+    git(&v.root, &["add", "-A"]);
+    git(&v.root, &["commit", "-q", "-m", "branch"]);
+    // nothing on main yet: no collision
+    let out = v.run(&["validate", "--against", "main"]);
+    assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
+    // main allocates EXP-0002 too
+    git(&v.root, &["checkout", "-q", "main"]);
+    assert_eq!(
+        v.run(&["new", "experiment", "Main one", "--project", "PRJ-0001"])
+            .code,
+        0
+    );
+    assert_eq!(v.run(&["new", "protocol", "Shared"]).code, 0);
+    git(&v.root, &["add", "-A"]);
+    git(&v.root, &["commit", "-q", "-m", "main"]);
+    git(&v.root, &["checkout", "-q", "toy/aero"]);
+    assert_eq!(
+        v.run(&["validate"]).code,
+        0,
+        "each branch is valid on its own"
+    );
+    let out = v.run(&["validate", "--against", "main"]);
+    assert_eq!(out.code, 1, "{}{}", out.stdout, out.stderr);
+    assert!(
+        out.stdout.contains("EXP-0002 was also created on main"),
+        "{}",
+        out.stdout
+    );
+    assert!(
+        out.stdout.contains("yajna renumber EXP-0002"),
+        "{}",
+        out.stdout
+    );
+    // the fix: renumber on the branch, then the merge is clean
+    let out = v.run(&["renumber", "EXP-0002", "EXP-0003"]);
+    assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
+    git(&v.root, &["add", "-A"]);
+    git(&v.root, &["commit", "-q", "-m", "renumber"]);
+    let out = v.run(&["validate", "--against", "main"]);
+    assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
+    assert!(
+        out.stderr.contains("merge main before allocating"),
+        "{}",
+        out.stderr
+    );
+    assert_eq!(v.run(&["validate", "--against", "nope"]).code, 1);
+}
+
+#[test]
+fn renumber_moves_page_sidecar_and_every_reference() {
+    let v = vault();
+    assert_eq!(v.run(&["new", "project", "Toy"]).code, 0);
+    assert_eq!(
+        v.run(&["new", "experiment", "Timing", "--project", "PRJ-0001"])
+            .code,
+        0
+    );
+    let out = v.run_with(
+        &["result", "--experiment", "EXP-0001"],
+        Some("===RESULT=== {\"loss\": 0.5}\n"),
+        &[],
+    );
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let prj = v.root.join("notes/projects/PRJ-0001-toy/README.md");
+    fs::write(&prj, v.read(&prj) + "- [[EXP-0001]] timing, in short\n\nSee [[EXP-0001@2|it]], not EXP-00011 or [[other/EXP-0001]].\n").unwrap();
+    fs::write(
+        v.root.join("yajna.toml"),
+        v.read(&v.root.join("yajna.toml")) + "[repos]\nother = \"github:x/other\"\n",
+    )
+    .unwrap();
+    assert_eq!(
+        v.run(&["log", "ran [[EXP-0001]]", "--time", "09:00"]).code,
+        0
+    );
+
+    let out = v.run(&["renumber", "EXP-0001", "EXP-0007"]);
+    assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
+    let exps = v.root.join("notes/projects/PRJ-0001-toy/experiments");
+    assert!(exps.join("EXP-0007-timing.md").is_file());
+    assert!(!exps.join("EXP-0001-timing.md").exists());
+    assert!(exps.join("EXP-0007/results.tsv").is_file(), "sidecar moved");
+    assert!(v
+        .read(&exps.join("EXP-0007-timing.md"))
+        .contains("id: EXP-0007\n"));
+    let page = v.read(&prj);
+    assert!(page.contains("- [[EXP-0007]] timing, in short"), "{page}");
+    assert!(
+        page.contains("[[EXP-0007@2|it]]")
+            && page.contains("EXP-00011")
+            && page.contains("[[other/EXP-0001]]"),
+        "{page}"
+    );
+    let run = first_md(&v.root.join("notes/projects/PRJ-0001-toy/runs"));
+    assert!(v.read(&run).contains("experiment: EXP-0007\n"));
+    assert!(v
+        .read(&v.root.join("notes/counters.yaml"))
+        .contains("EXP: 7\n"));
+    assert_eq!(v.run(&["validate"]).code, 0);
+    assert_eq!(v.run(&["timeline", "EXP-0007"]).code, 0);
+
+    // without a new ID the next free one is taken; projects move their directory
+    let out = v.run(&["renumber", "PRJ-0001"]);
+    assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
+    assert!(v
+        .root
+        .join("notes/projects/PRJ-0002-toy/README.md")
+        .is_file());
+    let exp = v.read(
+        &v.root
+            .join("notes/projects/PRJ-0002-toy/experiments/EXP-0007-timing.md"),
+    );
+    assert!(exp.contains("project: PRJ-0002\n"), "{exp}");
+    assert_eq!(v.run(&["validate"]).code, 0);
+
+    assert_eq!(
+        v.run(&["renumber", "EXP-0007", "PRJ-0009"]).code,
+        1,
+        "prefix kept"
+    );
+    assert_eq!(v.run(&["renumber", "EXP-0099"]).code, 1, "unknown id");
+    let r = run.file_stem().unwrap().to_string_lossy().to_string();
+    assert_eq!(v.run(&["renumber", &r]).code, 1, "volume ids never collide");
+}
+
+#[test]
+fn worktree_branches_with_its_own_author() {
+    let v = git_lab();
+    let wt = empty();
+    let target = wt.root.join("aero");
+    let out = v.run(&[
+        "worktree",
+        "PRJ-0001",
+        "Aero map",
+        "--path",
+        target.to_str().unwrap(),
+    ]);
+    assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
+    assert!(
+        out.stdout.contains("branch   toy/aero-map"),
+        "{}",
+        out.stdout
+    );
+    assert_eq!(
+        git(&target, &["rev-parse", "--abbrev-ref", "HEAD"]).trim(),
+        "toy/aero-map"
+    );
+    assert_eq!(
+        fs::read_to_string(target.join(".yajna/author")).unwrap(),
+        "agent:claude-toy-aero-map\n"
+    );
+    assert!(
+        git(&target, &["status", "--porcelain"]).trim().is_empty(),
+        "the author file is not tracked"
+    );
+    // pages and log lines made in the worktree carry the worktree's author
+    let w = Vault {
+        _dir: tempfile::tempdir().unwrap(),
+        root: target.clone(),
+    };
+    let out = w.run(&["log", "first step", "--time", "10:00"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(
+        out.stdout.contains(".agent-claude-toy-aero-map.md"),
+        "{}",
+        out.stdout
+    );
+    let out = w.run(&[
+        "new",
+        "run",
+        "--experiment",
+        "EXP-0001",
+        "--kind",
+        "compute",
+    ]);
+    assert!(w
+        .read(&w.path(&out))
+        .contains("author: agent:claude-toy-aero-map\n"));
+    // YAJNA_AUTHOR still wins
+    let out = w.run_with(
+        &["log", "x", "--time", "10:01"],
+        None,
+        &[("YAJNA_AUTHOR", "agent:other")],
+    );
+    assert!(out.stdout.contains(".agent-other.md"), "{}", out.stdout);
+    assert_eq!(
+        v.run(&[
+            "worktree",
+            "PRJ-0001",
+            "Aero map",
+            "--path",
+            target.to_str().unwrap()
+        ])
+        .code,
+        1
+    );
+    assert_eq!(
+        v.run(&["worktree", "EXP-0001", "x"]).code,
+        1,
+        "a project is required"
+    );
+}
+
 #[test]
 fn site_serve_answers_http_and_rerenders() {
     use std::io::{BufRead, BufReader, Read, Write};

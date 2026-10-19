@@ -8,6 +8,14 @@ link the file.
 
 ## 2026-10-19
 
+- **2026-10-19 16:00** Parallel worktrees (ADR-0021): `yajna worktree PRJ-xxxx <topic>`
+  creates `<slug>/<topic>` in its own worktree with `.yajna/author` (an author handle per
+  worktree, read after `YAJNA_AUTHOR`, excluded from git); `yajna validate --against main`
+  fails on a curated ID allocated on both branches since they diverged; `yajna renumber
+  OLD [NEW]` renames the page, project directory or sidecar and rewrites every reference,
+  refusing an ID that is on two pages. Conventions gained "Working in parallel", the skill
+  "Working in a worktree"; plugin 0.4.0. Three integration tests on real branches.
+
 - **2026-10-19 13:30** Listed links carry a one-line description: `- [[EXP-0003]] what it
   asks and what came of it` on project pages, `- [[RUN-...]] what was tried and what it
   showed` on experiment pages. `validate` rejects a bare listed link, the index stores the

@@ -66,7 +66,8 @@ is set, a new page offers to open in it.
 - Link into another repo with its namespace: `[[rc2s2/EXP-0003]]`, `[[yajna/PRO-0012@3]]`.
   The namespace must be in `[repos]`; the target is checked only when that repo's `path`
   is on disk. Frontmatter ID fields accept namespaced IDs too.
-- Never reuse or hand-edit an ID.
+- Never reuse or hand-edit an ID. The one sanctioned change is `yajna renumber`, which
+  resolves a collision between branches (see "Working in parallel").
 - A project page lists its experiments and an experiment page its runs as
   `- [[ID]] one line on what it asks and what came of it`. The line after the link is
   required there (`yajna validate` rejects a bare `- [[EXP-0003]]`), is what `yajna site`
@@ -314,6 +315,41 @@ yajna index                  # force a rebuild and print the table sizes
 Tags carry the tree: put the theme first (`tags: [timing, confinement]`). `outcome`
 colours the node (positive green, negative red, inconclusive amber, infra grey, open
 white). `influenced_by` draws the dotted edges.
+
+## Working in parallel
+
+Several agents can work on one notebook at once, each in its own git worktree on its own
+branch (ADR-0021). The rules exist because one thing in the vault does not merge: the
+counter behind curated IDs.
+
+```
+yajna worktree PRJ-0003 aero-map            # branch fbr-sim/aero-map in its own worktree,
+                                            #   author agent:claude-fbr-sim-aero-map
+yajna validate --against main               # before merging back: IDs allocated on both sides?
+yajna renumber EXP-0012                     # the fix, on the branch: next free ID, every reference
+```
+
+1. **One agent per worktree, one project per branch.** Name the branch
+   `<project-slug>/<topic>`; `yajna worktree` does, and puts it beside the others. Two
+   agents never work on the same project at once; when a project needs parallel work,
+   split it by experiment and let only one branch edit the project page.
+2. **Each worktree has its own author.** `yajna worktree` writes `.yajna/author`
+   (`agent:<agent>-<slug>-<topic>`, never committed), which every command uses unless
+   `YAJNA_AUTHOR` or `--author` says otherwise. Log files then never collide.
+3. **Allocate curated IDs on `main`.** Create the branch's experiments (and analyses) on
+   `main`, commit, merge `main` into the branch, then fill them in there. A branch only
+   creates volume entities: runs, artifacts, agent sessions.
+4. **Shared entities live on `main`.** Protocols, materials, equipment and builds are
+   created and edited there; branches link to them.
+5. **Check before merging.** A branch that allocated a curated ID runs
+   `yajna validate --against main`; a collision fails with the command that fixes it.
+   Renumber on the branch, commit, then merge. `yajna renumber` refuses an ID that is on
+   two pages, because after a merge nobody can tell which links meant which page.
+6. **Merge `main` into the branch at least daily.** Long branches are where collisions
+   grow. In a conflict on `counters.yaml` take the larger number per prefix; regenerate
+   `flake.lock` and the root flake's input block with `nix flake lock`, never by hand.
+7. Loose todos go on the pages they belong to, not in `notes/tasks.md`, while on a
+   branch. No bare `git stash`: worktrees share the stash stack.
 
 ## Agents
 
