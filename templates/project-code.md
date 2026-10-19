@@ -14,6 +14,12 @@ tags: []
 What this software is, who or what uses it, and why it is being written here rather
 than taken off the shelf. Written once, edited rarely.
 
+## Progress
+What is planned and how far it has got, as a checklist: one item per milestone, ticked
+when it lands. Add items as plans change; keep the done ones. `yajna tasks` lists the
+open items with the rest.
+- [ ] 
+
 ## Status
 What exists and works right now, in a paragraph; what is broken or missing. Rewrite,
 do not append.

@@ -8,6 +8,10 @@ link the file.
 
 ## 2026-10-19
 
+- **2026-10-19 17:00** Project pages gain a *Progress* checklist after the *Introduction*,
+  in both templates: what is planned, ticked as it lands. Conventions, the skill and the
+  project command fill and keep it.
+
 - **2026-10-19 16:00** Parallel worktrees (ADR-0021): `yajna worktree PRJ-xxxx <topic>`
   creates `<slug>/<topic>` in its own worktree with `.yajna/author` (an author handle per
   worktree, read after `YAJNA_AUTHOR`, excluded from git); `yajna validate --against main`

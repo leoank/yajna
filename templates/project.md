@@ -14,6 +14,12 @@ tags: []
 What this project is about and why it exists, for a reader who has never heard of it:
 the question, the system, where it came from. Written once, edited rarely.
 
+## Progress
+What is planned and how far it has got, as a checklist: one item per milestone, ticked
+when it lands. Add items as plans change; keep the done ones. `yajna tasks` lists the
+open items with the rest.
+- [ ] 
+
 ## Current belief
 What we think is true right now, in a paragraph. Rewrite, do not append.
 

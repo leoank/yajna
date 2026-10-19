@@ -48,6 +48,9 @@ ID, so create the run first, then write the script at the path printed on the pa
 - **Link with `[[ID]]`**, `[[ID|label]]`, `[[PRO-0012@3]]` for a protocol version,
   `[[ns/ID]]` into another repo listed in `[repos]`. A link to an unknown ID fails
   validation. Cite papers as `@citekey` from `references/library.bib`.
+- **Keep *Progress* current.** The project page's *Progress* checklist is the quick view
+  of what is planned and done: tick an item when its work lands, add one when the plan
+  grows, never delete a done item.
 - **List children with one line each.** On a project page `- [[EXP-0007]] what it asks
   and what came of it`; on an experiment page `- [[RUN-20261016-k7f3]] what was tried and
   what it showed`. A bare `- [[ID]]` fails validation; the line is what the site shows

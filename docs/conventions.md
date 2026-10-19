@@ -183,10 +183,12 @@ yajna new project "Toy model" --code     # also creates code/toy-model/ with a f
 cd code/toy-model && nix develop     # the project's own environment
 ```
 
-The project page uses the code template (*Introduction*, *Status*, *Design*, *Roadmap*,
-*Lessons*, *Experiments*) instead of the research one (*Introduction*, *Current belief*,
-*Open questions*, *What not to try again*, *Experiments*); both open with an
-*Introduction* written once for a reader who has never heard of the project. The page
+The project page uses the code template (*Introduction*, *Progress*, *Status*, *Design*,
+*Roadmap*, *Lessons*, *Experiments*) instead of the research one (*Introduction*,
+*Progress*, *Current belief*, *Open questions*, *What not to try again*, *Experiments*);
+both open with an *Introduction* written once for a reader who has never heard of the
+project, followed by *Progress*, a checklist of what is planned, ticked as it lands, so
+the page shows at a glance how far the project has got. The page
 gets `code: code/toy-model`; `yajna validate` fails if that directory
 disappears. The project flake is built on flake-parts and is a normal flake: add whatever
 inputs it needs and commit its own `flake.lock`. The scaffold also registers the directory
