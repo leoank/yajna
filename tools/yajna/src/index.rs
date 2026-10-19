@@ -77,7 +77,7 @@ pub fn index_path(vault: &Vault) -> PathBuf {
     cache_dir().join(format!("{:016x}.sqlite", h.finish()))
 }
 
-fn newest(dir: &Path, newest_so_far: &mut SystemTime) {
+pub fn newest(dir: &Path, newest_so_far: &mut SystemTime) {
     let Ok(rd) = fs::read_dir(dir) else { return };
     for e in rd.flatten() {
         let p = e.path();

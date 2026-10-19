@@ -39,7 +39,7 @@ yajna validate         # schema, IDs, links, citations
 yajna timeline MAT-0210                          # everything recorded about a material
 yajna tree PRJ-0001                              # experiments by theme, outcome, runs, influence
 yajna runs EXP-0007 --by loss                    # an experiment's runs ordered by a metric
-yajna site                                       # static site with the experiment tree
+yajna site --serve --open                        # the static site in a browser, refreshed as pages change
 yajna graduate PRJ-0002 --to github:leoank/rc2s2  # a project moves to its own repo
 ```
 

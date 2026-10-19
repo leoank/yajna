@@ -1138,6 +1138,63 @@ fn skill_is_embedded_and_installed() {
     assert!(fresh.root.join(".claude/skills/yajna/SKILL.md").is_file());
 }
 
+#[test]
+fn site_serve_answers_http_and_rerenders() {
+    use std::io::{BufRead, BufReader, Read, Write};
+    let v = indexed_lab();
+    let out_dir = v.root.join("site");
+    let mut child = Command::new(env!("CARGO_BIN_EXE_yajna"))
+        .arg("--root")
+        .arg(&v.root)
+        .args(["site", "--serve", "--port", "0", "--out"])
+        .arg(&out_dir)
+        .env("YAJNA_CACHE", v.root.join(".cache"))
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    let mut lines = BufReader::new(child.stdout.take().unwrap()).lines();
+    let url = loop {
+        let line = lines.next().unwrap().unwrap();
+        if let Some(rest) = line.strip_prefix("serving http://") {
+            break rest
+                .split(' ')
+                .next()
+                .unwrap()
+                .trim_end_matches('/')
+                .to_string();
+        }
+    };
+    let get = |path: &str| -> String {
+        let mut s = std::net::TcpStream::connect(&url).unwrap();
+        write!(s, "GET {path} HTTP/1.1\r\nHost: x\r\n\r\n").unwrap();
+        let mut body = String::new();
+        s.read_to_string(&mut body).unwrap();
+        body
+    };
+    let home = get("/");
+    assert!(home.starts_with("HTTP/1.1 200 OK"), "{home}");
+    assert!(
+        home.contains("text/html") && home.contains("Archaeal division"),
+        "{home}"
+    );
+    assert!(get("/EXP-0001.html").contains("ESCRT timing"));
+    assert!(get("/nope.html").starts_with("HTTP/1.1 404"));
+    assert!(
+        get("/../yajna.toml").starts_with("HTTP/1.1 404"),
+        "no traversal"
+    );
+    // a change in the vault shows up on the next request
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    assert_eq!(v.run(&["new", "equipment", "Spinning disk"]).code, 0);
+    assert!(
+        get("/EQP-0001.html").contains("Spinning disk"),
+        "re-rendered after a change"
+    );
+    child.kill().unwrap();
+    let _ = child.wait();
+}
+
 fn walk(dir: &Path) -> Vec<PathBuf> {
     let mut out = Vec::new();
     if let Ok(rd) = fs::read_dir(dir) {

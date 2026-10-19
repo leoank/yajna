@@ -8,6 +8,10 @@ link the file.
 
 ## 2026-10-19
 
+- **2026-10-19 12:00** `yajna site --serve [--port N] [--open]` renders the site and serves
+  it from the binary (std-only HTTP, loopback), re-rendering before a request whenever a
+  page, the bibliography or `yajna.toml` changed since the last render.
+
 - **2026-10-19 10:30** Directory names (ADR-0020): the vault is `notes/` (default
   `vault`), code lives under `code/<slug>/` (one `projects/` left, the one inside the
   vault), and `assets/<name>/` holds only what GUI programs produce. Two project page

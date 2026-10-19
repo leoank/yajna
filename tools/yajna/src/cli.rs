@@ -126,11 +126,20 @@ pub enum Cmd {
         #[arg(long)]
         print: bool,
     },
-    /// render the static site from the index
+    /// render the static site from the index; --serve keeps it fresh in a browser
     Site {
         /// output directory (default: <cache>/<repo>/site)
         #[arg(long)]
         out: Option<PathBuf>,
+        /// serve the site over HTTP, re-rendering when a page changes
+        #[arg(long)]
+        serve: bool,
+        /// port for --serve (0 picks a free one)
+        #[arg(long, default_value_t = 8765)]
+        port: u16,
+        /// with --serve: open the browser
+        #[arg(long)]
+        open: bool,
     },
     /// move a code-bearing project into its own repo, notebook included (ADR-0018)
     Graduate {
