@@ -9,6 +9,7 @@ use regex::Regex;
 use serde_json::{Map, Value};
 
 use crate::refs;
+use crate::vault::without_code;
 use crate::vault::{
     load_yaml, prefix_to_type, rel, Page, Res, Schemas, Vault, ID_FULL_RE, LINK_RE, NS_ID_RE,
     PATH_FIELDS,
@@ -265,7 +266,8 @@ pub fn validate(vault: &Vault) -> Res<(Vec<String>, usize)> {
     let bib = refs::bib_path(vault);
     for page in &pages {
         let Some(meta) = &page.meta else { continue };
-        for key in refs::citations(&page.body) {
+        let prose = without_code(&page.body);
+        for key in refs::citations(&prose) {
             if !keys.contains(&key) {
                 problems.add(
                     &page.path,
@@ -280,7 +282,7 @@ pub fn validate(vault: &Vault) -> Res<(Vec<String>, usize)> {
                 ids_in(v, &mut targets, &mut namespaced);
             }
         }
-        for m in LINK_RE.captures_iter(&page.body) {
+        for m in LINK_RE.captures_iter(&prose) {
             let target = m[1].trim().split('@').next().unwrap_or("").to_string();
             match target.split_once('/') {
                 Some((ns, id)) if ID_FULL_RE.is_match(id) => {
@@ -325,7 +327,7 @@ pub fn validate(vault: &Vault) -> Res<(Vec<String>, usize)> {
             _ => None,
         };
         if let Some(prefix) = child_prefix {
-            for line in page.body.lines() {
+            for line in prose.lines() {
                 let Some(m) = LISTED_RE.captures(line) else {
                     continue;
                 };

@@ -108,17 +108,26 @@ fn init_project(root: &Path, title: &str, ns: &str, author: &str) -> Res<()> {
     )?;
     let vault = Vault::open(root.to_path_buf())?;
     let created = vault.today();
+    // a project repo is a code tree: the code page, and its design docs unless they exist
     let page = vault.render(
-        "project",
+        "project-code",
         &[
             ("id", SOLE_PROJECT),
             ("title", &title_scalar(title)),
             ("created", &created),
             ("author", author),
             ("code", "."),
+            ("docs", "docs"),
         ],
     )?;
     put(root, "notes/README.md", &page)?;
+    for name in ["docs/architecture.md", "docs/decisions/README.md"] {
+        let text = vault.render(
+            &format!("code/{name}"),
+            &[("title", title), ("id", SOLE_PROJECT), ("slug", ns)],
+        )?;
+        put_if_absent(root, name, &text)?;
+    }
     println!("project {ns} ready; next: yajna new experiment \"<title>\"");
     Ok(())
 }
@@ -513,7 +522,7 @@ pub fn graduate(
     let entry = repo_entry(Some(to), &relative(&vault.root, &into));
     add_repo(&vault.root.join(CONFIG_NAME), &ns, &entry)?;
     println!(
-        "next: commit here and in {}; add the remote {to} there and push; record the move in the progress log",
+        "next: commit here and in {}; add the remote {to} there and push; record the move with yajna log",
         into.display()
     );
     Ok(0)

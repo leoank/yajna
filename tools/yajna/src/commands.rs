@@ -228,6 +228,7 @@ pub fn create(
             ("now", &now_iso),
             ("date", &date),
             ("code", &code_field),
+            ("docs", &format!("code/{slug}/docs")),
             ("script", script.unwrap_or("null")),
         ],
     )?;

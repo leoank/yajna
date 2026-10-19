@@ -227,15 +227,16 @@ impl Index {
                     insert_link(&tx, &id, &dst, Some(&n), None, k)?;
                 }
             }
+            let prose = crate::vault::without_code(&page.body);
             // the one-line descriptions of listed links, by target
             let mut notes: BTreeMap<String, String> = BTreeMap::new();
-            for m in LISTED_RE.captures_iter(&page.body) {
+            for m in LISTED_RE.captures_iter(&prose) {
                 let target = m[1].trim().split('@').next().unwrap_or("").to_string();
                 if !m[2].is_empty() {
                     notes.insert(target, m[2].to_string());
                 }
             }
-            for m in LINK_RE.captures_iter(&page.body) {
+            for m in LINK_RE.captures_iter(&prose) {
                 let target = m[1].trim();
                 let (target, version) = match target.split_once('@') {
                     Some((t, v)) => (t, Some(v)),
@@ -263,7 +264,7 @@ impl Index {
                     }
                 }
             }
-            for key in refs::citations(&page.body) {
+            for key in refs::citations(&prose) {
                 tx.execute("INSERT INTO citation VALUES (?1, ?2)", params![id, key])
                     .map_err(|e| e.to_string())?;
             }

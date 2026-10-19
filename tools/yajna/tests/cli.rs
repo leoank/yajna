@@ -456,6 +456,8 @@ fn init_lab() {
 fn init_project_in_a_code_repo() {
     let v = empty();
     fs::write(v.root.join("README.md"), "# toy\n").unwrap();
+    fs::create_dir_all(v.root.join("docs")).unwrap();
+    fs::write(v.root.join("docs/architecture.md"), "mine\n").unwrap();
     let out = v.run(&[
         "init",
         "project",
@@ -470,6 +472,18 @@ fn init_project_in_a_code_repo() {
     assert!(page.contains("id: PRJ-0001\n"), "{page}");
     assert!(page.contains("title: \"Toy model: a colon\"\n"), "{page}");
     assert!(page.contains("\ncode: .  "), "{page}");
+    assert!(
+        page.contains("## Progress") && page.contains("`docs/architecture.md`"),
+        "{page}"
+    );
+    assert_eq!(
+        v.read(&v.root.join("docs/architecture.md")),
+        "mine\n",
+        "existing docs are kept"
+    );
+    assert!(v
+        .read(&v.root.join("docs/decisions/README.md"))
+        .contains("ADR-0001"));
     assert!(v.root.join("notes/references/library.bib").is_file());
     assert!(!v.root.join("notes/projects").exists());
     let cfg = v.read(&v.root.join("yajna.toml"));
@@ -1174,6 +1188,25 @@ fn skill_is_embedded_and_installed() {
         0
     );
     assert!(fresh.root.join(".claude/skills/yajna/SKILL.md").is_file());
+}
+
+#[test]
+fn links_in_code_are_text() {
+    let v = vault();
+    v.run(&["new", "project", "P"]);
+    let prj = v.root.join("notes/projects/PRJ-0001-p/README.md");
+    fs::write(
+        &prj,
+        v.read(&prj) + "\nWrite `[[EXP-0042]]` or `@citekey`; in a block:\n```\n[[nope/EXP-1]] @nobody\n```\n",
+    )
+    .unwrap();
+    let out = v.run(&["validate"]);
+    assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
+    let out_dir = v.root.join("site");
+    assert_eq!(v.run(&["site", "--out", out_dir.to_str().unwrap()]).code, 0);
+    assert!(v
+        .read(&out_dir.join("PRJ-0001.html"))
+        .contains("<code>[[EXP-0042]]</code>"));
 }
 
 #[test]

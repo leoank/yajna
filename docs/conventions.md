@@ -30,7 +30,8 @@ rc2s2 = "github:leoank/rc2s2"
 `yajna init lab [dir]` creates a lab's layout (`--namespace` and `--author` default to
 the directory name and `$USER`). `yajna init project "<title>"`, run at the
 root of a code repo, adds `yajna.toml` and `notes/` inside it: `notes/README.md` is the
-project page (`PRJ-0001`, `code: .`) and `experiments/`, `runs/`, `analyses/`,
+project page (`PRJ-0001`, `code: .`, on the code template), plus `docs/architecture.md`
+and `docs/decisions/` unless the repo already has them and `experiments/`, `runs/`, `analyses/`,
 `artifacts/`, `agents/`, `log/`, `references/`, `tasks.md` sit beside it. The notebook
 lives inside the project's source tree, never in a folder next to it. With `--from <lab
 path> PRJ-xxxx` instead of a title, the project's notebook is copied out of that lab (see
@@ -228,7 +229,7 @@ When a code-bearing project is ready for its own repository (ADR-0018):
    project page is renumbered, and `project:` fields follow it. Links and ID fields that
    point at anything staying in the lab are rewritten with the namespace (`[[PRO-0012]]`
    becomes `[[yajna/PRO-0012]]`); links among the copied pages stay bare.
-5. Record the move in the progress log. The lab's copy of the project directory stays
+5. Record the move with a `yajna log` line in the lab. The lab's copy of the project directory stays
    as history and is never edited again.
 
 `yajna graduate PRJ-0002 --to github:leoank/rc2s2` does steps 2 to 4: check out the new,
@@ -236,7 +237,7 @@ empty repo first (default `../rc2s2` next to the lab, or `--into <path>`; the na
 defaults to the last segment of `--to`). It splits the code directory with its history
 into that checkout, imports the notebook there, edits the lab page, removes the flake
 input and registers the namespace in `[repos]`. Left to you: `nix flake lock` here, the
-commits in both repos, the remote and push of the new one, and the progress log entry.
+commits in both repos, the remote and push of the new one, and the log line.
 
 ## Protocols
 

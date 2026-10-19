@@ -24,8 +24,8 @@ open items with the rest.
 - 
 
 ## Design
-The architecture is `code/$slug/docs/architecture.md` and its decision records are
-`code/$slug/docs/decisions/`; here, only the few choices
+The architecture is `$docs/architecture.md` and its decision records are
+`$docs/decisions/`; here, only the few choices
 a reader must know before touching the code.
 
 ## Lessons

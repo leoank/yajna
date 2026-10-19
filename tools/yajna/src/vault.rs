@@ -118,6 +118,58 @@ pub static LINK_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\[\[([^\]|]+)(?:\|[^\]]*)?\]\]").unwrap());
 const BASE32: &[u8] = b"abcdefghijklmnopqrstuvwxyz234567";
 
+/// `text` cut into (is_code, piece): fenced blocks and inline code spans are code. A link or
+/// citation inside code is literal text, not a reference.
+fn code_segments(text: &str) -> Vec<(bool, &str)> {
+    static INLINE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"``[^`]*``|`[^`\n]*`").unwrap());
+    let mut out = Vec::new();
+    let mut fence = false;
+    for line in text.split_inclusive('\n') {
+        let t = line.trim_start();
+        if t.starts_with("```") || t.starts_with("~~~") {
+            fence = !fence;
+            out.push((true, line));
+            continue;
+        }
+        if fence {
+            out.push((true, line));
+            continue;
+        }
+        let mut last = 0;
+        for m in INLINE.find_iter(line) {
+            out.push((false, &line[last..m.start()]));
+            out.push((true, m.as_str()));
+            last = m.end();
+        }
+        out.push((false, &line[last..]));
+    }
+    out
+}
+
+/// The text with code blanked to spaces (newlines kept, so line numbers hold).
+pub fn without_code(text: &str) -> String {
+    code_segments(text)
+        .into_iter()
+        .map(|(code, s)| {
+            if code {
+                s.chars()
+                    .map(|c| if c == '\n' { '\n' } else { ' ' })
+                    .collect()
+            } else {
+                s.to_string()
+            }
+        })
+        .collect()
+}
+
+/// Apply `f` to the prose of `text`, leaving code as written.
+pub fn map_outside_code(text: &str, f: impl Fn(&str) -> String) -> String {
+    code_segments(text)
+        .into_iter()
+        .map(|(code, s)| if code { s.to_string() } else { f(s) })
+        .collect()
+}
+
 pub fn load_yaml(text: &str) -> Res<Value> {
     serde_norway::from_str::<Value>(text).map_err(|e| e.to_string())
 }
@@ -564,6 +616,21 @@ pub fn rel<'a>(path: &'a Path, root: &Path) -> std::borrow::Cow<'a, str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn code_is_not_prose() {
+        let t =
+            "See [[EXP-0001]] and `[[EXP-0002]]`.\n```\n[[EXP-0003]]\n```\n``a`[[EXP-0004]]``\n";
+        let w = without_code(t);
+        assert!(
+            w.contains("[[EXP-0001]]")
+                && !w.contains("EXP-0002")
+                && !w.contains("EXP-0003")
+                && !w.contains("EXP-0004")
+        );
+        assert_eq!(w.lines().count(), t.lines().count());
+        assert_eq!(map_outside_code("x `y` z", |s| s.to_uppercase()), "X `y` Z");
+    }
 
     #[test]
     fn slug() {

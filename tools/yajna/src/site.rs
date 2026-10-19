@@ -46,6 +46,10 @@ fn href(id: &str) -> String {
 
 /// `[[ID]]`, `[[ID@3|label]]`, `[[ns/ID]]` and `@citekey` in markdown become links.
 fn linkify(ix: &Index, md: &str) -> String {
+    crate::vault::map_outside_code(md, |prose| linkify_prose(ix, prose))
+}
+
+fn linkify_prose(ix: &Index, md: &str) -> String {
     let out = LINK_RE.replace_all(md, |c: &regex::Captures| {
         let inner = c[0].trim_start_matches("[[").trim_end_matches("]]");
         let (target, label) = match inner.split_once('|') {
