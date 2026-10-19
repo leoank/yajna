@@ -79,17 +79,17 @@ fn init_lab(root: &Path, ns: &str, author: &str) -> Res<()> {
     check_namespace(ns)?;
     ensure_fresh(root)?;
     for d in LAB_DIRS {
-        fs::create_dir_all(root.join("lab").join(d)).map_err(|e| e.to_string())?;
+        fs::create_dir_all(root.join("notes").join(d)).map_err(|e| e.to_string())?;
     }
     put(root, CONFIG_NAME, &config_text("lab", ns, author, &[]))?;
     let vault = Vault::open(root.to_path_buf())?;
-    put(root, "lab/README.md", &vault.template("init/README.md")?)?;
-    put(root, "lab/tasks.md", &vault.template("init/tasks.md")?)?;
+    put(root, "notes/README.md", &vault.template("init/README.md")?)?;
+    put(root, "notes/tasks.md", &vault.template("init/tasks.md")?)?;
     let zero: Vec<(String, i64)> = ["PRJ", "EXP", "PRO", "MAT", "ANA", "EQP", "BLD"]
         .iter()
         .map(|p| (p.to_string(), 0))
         .collect();
-    put(root, "lab/counters.yaml", &counters_text(&zero))?;
+    put(root, "notes/counters.yaml", &counters_text(&zero))?;
     put_if_absent(root, "references/library.bib", "")?;
     crate::commands::write_skill(root)?;
     println!("created .claude/skills/yajna/SKILL.md");
@@ -103,7 +103,7 @@ fn init_project(root: &Path, title: &str, ns: &str, author: &str) -> Res<()> {
     scaffold_project_vault(root, ns, author, &[])?;
     put(
         root,
-        "lab/counters.yaml",
+        "notes/counters.yaml",
         &counters_text(&[("PRJ".into(), 1), ("EXP".into(), 0), ("ANA".into(), 0)]),
     )?;
     let vault = Vault::open(root.to_path_buf())?;
@@ -118,7 +118,7 @@ fn init_project(root: &Path, title: &str, ns: &str, author: &str) -> Res<()> {
             ("code", "."),
         ],
     )?;
-    put(root, "lab/README.md", &page)?;
+    put(root, "notes/README.md", &page)?;
     println!("project {ns} ready; next: yajna new experiment \"<title>\"");
     Ok(())
 }
@@ -132,7 +132,7 @@ fn scaffold_project_vault(
     repos: &[(String, String)],
 ) -> Res<()> {
     for d in PROJECT_DIRS {
-        fs::create_dir_all(root.join("lab").join(d)).map_err(|e| e.to_string())?;
+        fs::create_dir_all(root.join("notes").join(d)).map_err(|e| e.to_string())?;
     }
     put(
         root,
@@ -140,8 +140,8 @@ fn scaffold_project_vault(
         &config_text("project", ns, author, repos),
     )?;
     let vault = Vault::open(root.to_path_buf())?;
-    put(root, "lab/tasks.md", &vault.template("init/tasks.md")?)?;
-    put_if_absent(root, "lab/references/library.bib", "")?;
+    put(root, "notes/tasks.md", &vault.template("init/tasks.md")?)?;
+    put_if_absent(root, "notes/references/library.bib", "")?;
     crate::commands::write_skill(root)?;
     println!("created .claude/skills/yajna/SKILL.md");
     Ok(())
@@ -151,7 +151,7 @@ fn config_text(shape: &str, ns: &str, author: &str, repos: &[(String, String)]) 
     let tz = TimeZone::system();
     let tz = tz.iana_name().unwrap_or("UTC");
     let bib = if shape == "project" {
-        "lab/references/library.bib"
+        "notes/references/library.bib"
     } else {
         "references/library.bib"
     };
@@ -160,7 +160,7 @@ fn config_text(shape: &str, ns: &str, author: &str, repos: &[(String, String)]) 
          shape = {shape:?}       # lab | project (ADR-0018)\n\
          namespace = {ns:?}  # this repo's name in links from other repos\n\
          author = {author:?}      # the human author handle written into every page\n\
-         vault = \"lab\"         # the notebook directory, relative to this file\n\
+         vault = \"notes\"       # the notebook directory, relative to this file\n\
          timezone = {tz:?}\n\
          bibliography = {bib:?}\n\
          \n\
@@ -175,7 +175,7 @@ fn config_text(shape: &str, ns: &str, author: &str, repos: &[(String, String)]) 
 // --- import (init project --from) ----------------------------------------------------
 
 /// Copy project `prj` out of `lab` into `root/lab/` (ADR-0018 step 3): the project page as
-/// `lab/README.md` with `origin`, its experiments, runs, analyses and artifacts with their
+/// `notes/README.md` with `origin`, its experiments, runs, analyses and artifacts with their
 /// sidecars, the reading notes and `.bib` entries they cite, and counters seeded from the
 /// highest copied IDs. Links to pages that stay in the lab get the lab's namespace.
 pub fn import_project(
@@ -221,7 +221,7 @@ pub fn import_project(
     let lab_url = lab_url.or_else(|| remote_url(&lab.root));
     let lab_entry = repo_entry(lab_url.as_deref(), &relative(root, &lab.root));
     scaffold_project_vault(root, ns, author, &[(lab_ns.clone(), lab_entry)])?;
-    let dst = root.join("lab");
+    let dst = root.join("notes");
 
     let mut pages = 0;
     let mut cited: BTreeSet<String> = BTreeSet::new();
@@ -278,14 +278,14 @@ pub fn import_project(
         }
     }
     if !bib.is_empty() {
-        put(root, "lab/references/library.bib", &bib)?;
+        put(root, "notes/references/library.bib", &bib)?;
     }
 
     let mut counters: Vec<(String, i64)> = vec![(String::from("PRJ"), 1)];
     for p in ["EXP", "ANA"] {
         counters.push((p.to_string(), *highest.get(p).unwrap_or(&0)));
     }
-    put(root, "lab/counters.yaml", &counters_text(&counters))?;
+    put(root, "notes/counters.yaml", &counters_text(&counters))?;
     println!(
         "imported {prj} from {} as {ns}/{SOLE_PROJECT}: {pages} page(s), {notes} reading note(s), {} citation(s)",
         lab.root.display(),
@@ -399,7 +399,7 @@ pub fn graduate(
     let code = page
         .field("code")
         .filter(|c| !c.contains(':'))
-        .ok_or_else(|| format!("{prj} has no code directory under projects/"))?
+        .ok_or_else(|| format!("{prj} has no code directory under code/"))?
         .trim_end_matches('/')
         .to_string();
     if !vault.root.join(&code).is_dir() {
@@ -708,7 +708,7 @@ mod tests {
 
     #[test]
     fn frontmatter_edits() {
-        let text = "---\nid: PRJ-0002\nstatus: active            # active | paused\ncode: projects/x   # here\n---\n\n## Body\n";
+        let text = "---\nid: PRJ-0002\nstatus: active            # active | paused\ncode: code/x   # here\n---\n\n## Body\n";
         let out = edit_frontmatter(text, |l| {
             set_field(l, "status", "moved");
             set_field(l, "code", "github:leoank/x");

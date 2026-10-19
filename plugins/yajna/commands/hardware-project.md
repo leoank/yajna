@@ -22,8 +22,9 @@ is shared equipment.
 3. **Parts.** The bill of materials as `MAT` pages of kind `part`: supplier, part number,
    price, lead time, quantity; what is already in stock; what can be substituted.
 4. **Design sources.** CAD (code-based where possible), PCB (KiCad), firmware; all text
-   where it can be, built under Nix in `hardware/<name>/` or the project's code tree;
-   binary exports go to artifacts, not git history.
+   where it can be, built under Nix in the project's code tree (`code/<name>/`); files
+   from GUI programs that cannot be regenerated (exported STEP, Gerbers, renders) go under
+   `assets/<name>/`, and large binaries to artifacts, not git history.
 5. **Revisions.** What rev 0 proves, what rev 1 adds, how revisions are recorded on the
    page and in the design tree.
 6. **Assembly and test.** The assembly sequence as a run sheet (`RUN` of kind
@@ -38,6 +39,6 @@ is shared equipment.
   pages), revisions and tests sections filled.
 - `yajna new material "<part>" --kind part` for each part with supplier fields.
 - The design directory under Nix with a flake that builds the exports (`nix build` for
-  STEP, Gerbers, firmware), registered like a code project where it lives in `projects/`.
+  STEP, Gerbers, firmware), registered like a code project where it lives in `code/`.
 - The first assembly run sheet and the first characterization experiment with pass
   criteria from the spec; `yajna new equipment` once the tests pass, linking the build.

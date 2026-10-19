@@ -24,17 +24,17 @@ fn vault() -> Vault {
         "log",
         "references",
     ] {
-        fs::create_dir_all(root.join("lab").join(d)).unwrap();
+        fs::create_dir_all(root.join("notes").join(d)).unwrap();
     }
     fs::write(
-        root.join("lab/counters.yaml"),
+        root.join("notes/counters.yaml"),
         "PRJ: 0\nEXP: 0\nPRO: 0\nMAT: 0\nANA: 0\nEQP: 0\nBLD: 0\n",
     )
     .unwrap();
-    fs::write(root.join("lab/tasks.md"), "# Tasks\n\n- [ ] \n").unwrap();
+    fs::write(root.join("notes/tasks.md"), "# Tasks\n\n- [ ] \n").unwrap();
     fs::write(
         root.join("yajna.toml"),
-        "shape = \"lab\"\nnamespace = \"yajna\"\nauthor = \"tester\"\nvault = \"lab\"\ntimezone = \"UTC\"\n",
+        "shape = \"lab\"\nnamespace = \"yajna\"\nauthor = \"tester\"\nvault = \"notes\"\ntimezone = \"UTC\"\n",
     )
     .unwrap();
     Vault { _dir: dir, root }
@@ -167,7 +167,7 @@ fn new_log_result_tasks_validate() {
         "09:10",
     ]);
     assert_eq!(out.code, 0, "{}", out.stderr);
-    let day = walk(&v.root.join("lab/log"))
+    let day = walk(&v.root.join("notes/log"))
         .into_iter()
         .find(|p| p.extension().map(|e| e == "md").unwrap_or(false))
         .unwrap();
@@ -181,7 +181,7 @@ fn new_log_result_tasks_validate() {
     assert_eq!(out.code, 0, "{}", out.stderr);
     let tsv = v
         .root
-        .join("lab/projects/PRJ-0001-archaeal-division/experiments/EXP-0001/results.tsv");
+        .join("notes/projects/PRJ-0001-archaeal-division/experiments/EXP-0001/results.tsv");
     assert!(tsv.is_file());
     let run_page = v.path(&out);
     let page = v.read(&run_page);
@@ -316,8 +316,8 @@ fn interactive_project_with_code() {
     );
     assert_eq!(out.code, 0, "{}", out.stderr);
     assert!(out.stdout.contains("PRJ-0001-toy-model/README.md"));
-    assert!(v.read(&v.path(&out)).contains("code: projects/toy-model"));
-    assert!(v.root.join("projects/toy-model/flake.nix").is_file());
+    assert!(v.read(&v.path(&out)).contains("code: code/toy-model"));
+    assert!(v.root.join("code/toy-model/flake.nix").is_file());
 }
 
 #[test]
@@ -329,11 +329,11 @@ fn ref_and_citation_check() {
         "@article{shih2015cloning,\n  title = {Cloning on a {Chip}},\n  author = {Shih, Steve and Goyal, Garima},\n  year = {2015},\n  doi = {10.1021/acs.analchem.5b01905},\n  journal = {Analytical Chemistry}\n}\n",
     )
     .unwrap();
-    fs::write(v.root.join("yajna.toml"), "author = \"tester\"\nvault = \"lab\"\ntimezone = \"UTC\"\nbibliography = \"references/library.bib\"\n").unwrap();
+    fs::write(v.root.join("yajna.toml"), "author = \"tester\"\nvault = \"notes\"\ntimezone = \"UTC\"\nbibliography = \"references/library.bib\"\n").unwrap();
     let out = v.run(&["ref", "shih2015cloning", "--note"]);
     assert_eq!(out.code, 0, "{}", out.stderr);
     assert!(out.stdout.contains("Cloning on a Chip"), "{}", out.stdout);
-    let note = v.root.join("lab/references/shih2015cloning.md");
+    let note = v.root.join("notes/references/shih2015cloning.md");
     assert!(note.is_file());
     let text = v.read(&note);
     assert!(text.contains("doi: 10.1021/acs.analchem.5b01905"));
@@ -368,25 +368,25 @@ fn project_code_scaffold() {
     let flake = v.read(&v.root.join("flake.nix"));
     assert!(
         flake.contains(
-            "inputs.toy-model = { url = \"path:./projects/toy-model\"; inputs.nixpkgs.follows"
+            "inputs.toy-model = { url = \"path:./code/toy-model\"; inputs.nixpkgs.follows"
         ),
         "{flake}"
     );
     assert!(v
-        .read(&v.root.join("projects/toy-model/flake.nix"))
+        .read(&v.root.join("code/toy-model/flake.nix"))
         .contains("flake-parts"));
     let page = v.read(&v.path(&out));
-    assert!(page.contains("code: projects/toy-model"));
-    let readme = v.read(&v.root.join("projects/toy-model/README.md"));
+    assert!(page.contains("code: code/toy-model"));
+    let readme = v.read(&v.root.join("code/toy-model/README.md"));
     assert!(readme.contains("[[PRJ-0001]]"));
-    assert!(readme.contains("lab/projects/PRJ-0001-toy-model/README.md"));
+    assert!(readme.contains("notes/projects/PRJ-0001-toy-model/README.md"));
     assert_eq!(v.run(&["validate"]).code, 0);
-    fs::remove_dir_all(v.root.join("projects/toy-model")).unwrap();
+    fs::remove_dir_all(v.root.join("code/toy-model")).unwrap();
     let out = v.run(&["validate"]);
     assert_eq!(out.code, 1);
     assert!(out
         .stdout
-        .contains("code directory projects/toy-model does not exist"));
+        .contains("code directory code/toy-model does not exist"));
     assert_eq!(v.run(&["new", "protocol", "P", "--code"]).code, 1);
 }
 
@@ -419,7 +419,7 @@ fn namespaced_links_need_a_registered_repo() {
         "{}",
         out.stdout
     );
-    fs::write(v.root.join("yajna.toml"), "author = \"tester\"\nvault = \"lab\"\ntimezone = \"UTC\"\n[repos]\nrc2s2 = \"github:leoank/rc2s2\"\nyajna = \"github:leoank/yajna\"\n").unwrap();
+    fs::write(v.root.join("yajna.toml"), "author = \"tester\"\nvault = \"notes\"\ntimezone = \"UTC\"\n[repos]\nrc2s2 = \"github:leoank/rc2s2\"\nyajna = \"github:leoank/yajna\"\n").unwrap();
     let out = v.run(&["validate"]);
     assert_eq!(out.code, 0, "{}", out.stdout);
 }
@@ -429,8 +429,8 @@ fn init_lab() {
     let v = empty();
     let out = v.run(&["init", "lab", "--namespace", "mylab", "--author", "tester"]);
     assert_eq!(out.code, 0, "{}", out.stderr);
-    assert!(v.root.join("lab/counters.yaml").is_file());
-    assert!(v.root.join("lab/protocols").is_dir());
+    assert!(v.root.join("notes/counters.yaml").is_file());
+    assert!(v.root.join("notes/protocols").is_dir());
     assert!(v.root.join("references/library.bib").is_file());
     let cfg = v.read(&v.root.join("yajna.toml"));
     assert!(cfg.contains("shape = \"lab\""), "{cfg}");
@@ -458,23 +458,23 @@ fn init_project_in_a_code_repo() {
         "tester",
     ]);
     assert_eq!(out.code, 0, "{}", out.stderr);
-    let page = v.read(&v.root.join("lab/README.md"));
+    let page = v.read(&v.root.join("notes/README.md"));
     assert!(page.contains("id: PRJ-0001\n"), "{page}");
     assert!(page.contains("title: \"Toy model: a colon\"\n"), "{page}");
     assert!(page.contains("\ncode: .  "), "{page}");
-    assert!(v.root.join("lab/references/library.bib").is_file());
-    assert!(!v.root.join("lab/projects").exists());
+    assert!(v.root.join("notes/references/library.bib").is_file());
+    assert!(!v.root.join("notes/projects").exists());
     let cfg = v.read(&v.root.join("yajna.toml"));
     assert!(cfg.contains("shape = \"project\""), "{cfg}");
     assert!(
-        cfg.contains("bibliography = \"lab/references/library.bib\""),
+        cfg.contains("bibliography = \"notes/references/library.bib\""),
         "{cfg}"
     );
 
     // no --project needed: the repo's one project is implied
     let out = v.run(&["new", "experiment", "Timing"]);
     assert_eq!(out.code, 0, "{}", out.stderr);
-    assert_eq!(out.stdout.trim(), "lab/experiments/EXP-0001-timing.md");
+    assert_eq!(out.stdout.trim(), "notes/experiments/EXP-0001-timing.md");
     assert!(v.read(&v.path(&out)).contains("project: PRJ-0001\n"));
     let out = v.run(&[
         "new",
@@ -485,7 +485,7 @@ fn init_project_in_a_code_repo() {
         "compute",
     ]);
     assert_eq!(out.code, 0, "{}", out.stderr);
-    assert!(out.stdout.starts_with("lab/runs/RUN-"), "{}", out.stdout);
+    assert!(out.stdout.starts_with("notes/runs/RUN-"), "{}", out.stdout);
     let out = v.run_with(
         &["result", "--experiment", "EXP-0001"],
         Some("===RESULT=== {\"loss\": 0.5}\n"),
@@ -494,7 +494,7 @@ fn init_project_in_a_code_repo() {
     assert_eq!(out.code, 0, "{}", out.stderr);
     assert!(v
         .root
-        .join("lab/experiments/EXP-0001/results.tsv")
+        .join("notes/experiments/EXP-0001/results.tsv")
         .is_file());
     let out = v.run_with(
         &["new"],
@@ -552,12 +552,12 @@ fn lab_with_project() -> Vault {
     assert_eq!(v.run(&["new", "run", "--experiment", "EXP-0001"]).code, 0);
     fs::create_dir_all(
         v.root
-            .join("lab/projects/PRJ-0002-toy-model/experiments/EXP-0001"),
+            .join("notes/projects/PRJ-0002-toy-model/experiments/EXP-0001"),
     )
     .unwrap();
     fs::write(
         v.root
-            .join("lab/projects/PRJ-0002-toy-model/experiments/EXP-0001/notes.txt"),
+            .join("notes/projects/PRJ-0002-toy-model/experiments/EXP-0001/notes.txt"),
         "sidecar\n",
     )
     .unwrap();
@@ -581,14 +581,14 @@ fn init_project_from_a_lab() {
     ]);
     assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
 
-    let page = v.read(&v.root.join("lab/README.md"));
+    let page = v.read(&v.root.join("notes/README.md"));
     assert!(
         page.contains("id: PRJ-0001\norigin: yajna/PRJ-0002\n"),
         "{page}"
     );
     assert!(page.contains("code: .\n"), "{page}");
     assert!(page.contains("title: Toy model\n"), "{page}");
-    let exp = v.read(&v.root.join("lab/experiments/EXP-0001-timing.md"));
+    let exp = v.read(&v.root.join("notes/experiments/EXP-0001-timing.md"));
     assert!(exp.contains("project: PRJ-0001\n"), "{exp}");
     assert!(exp.contains("protocols: [yajna/PRO-0001]\n"), "{exp}");
     assert!(
@@ -597,16 +597,19 @@ fn init_project_from_a_lab() {
         ),
         "{exp}"
     );
-    assert!(v.root.join("lab/experiments/EXP-0001/notes.txt").is_file());
-    assert_eq!(walk(&v.root.join("lab/runs")).len(), 1);
     assert!(v
-        .read(&walk(&v.root.join("lab/runs"))[0])
+        .root
+        .join("notes/experiments/EXP-0001/notes.txt")
+        .is_file());
+    assert_eq!(walk(&v.root.join("notes/runs")).len(), 1);
+    assert!(v
+        .read(&walk(&v.root.join("notes/runs"))[0])
         .contains("project: PRJ-0001\n"));
-    assert!(v.root.join("lab/references/shih2015cloning.md").is_file());
-    let bib = v.read(&v.root.join("lab/references/library.bib"));
+    assert!(v.root.join("notes/references/shih2015cloning.md").is_file());
+    let bib = v.read(&v.root.join("notes/references/library.bib"));
     assert!(bib.contains("@article{shih2015cloning,"), "{bib}");
     assert!(!bib.contains("other2020"), "{bib}");
-    let counters = v.read(&v.root.join("lab/counters.yaml"));
+    let counters = v.read(&v.root.join("notes/counters.yaml"));
     assert!(counters.contains("PRJ: 1\nEXP: 1\nANA: 0\n"), "{counters}");
     let cfg = v.read(&v.root.join("yajna.toml"));
     assert!(cfg.contains("namespace = \"toy\""), "{cfg}");
@@ -619,7 +622,7 @@ fn init_project_from_a_lab() {
     // the lab is checked out at the registered path, so its IDs are resolved
     let out = v.run(&["validate"]);
     assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
-    let exp_path = v.root.join("lab/experiments/EXP-0001-timing.md");
+    let exp_path = v.root.join("notes/experiments/EXP-0001-timing.md");
     fs::write(&exp_path, exp + "\nAlso [[yajna/PRO-0099]].\n").unwrap();
     let out = v.run(&["validate"]);
     assert_eq!(out.code, 1);
@@ -689,26 +692,26 @@ fn graduate_moves_code_and_notebook() {
         git(&into.root, &["rev-list", "--count", "HEAD"]).trim(),
         "1"
     );
-    assert!(git(&into.root, &["status", "--porcelain"]).contains("lab/"));
+    assert!(git(&into.root, &["status", "--porcelain"]).contains("notes/"));
     assert!(git(&lab.root, &["branch", "--list", "graduate/*"])
         .trim()
         .is_empty());
-    let page = into.read(&into.root.join("lab/README.md"));
+    let page = into.read(&into.root.join("notes/README.md"));
     assert!(page.contains("origin: yajna/PRJ-0002\n"), "{page}");
     assert!(into
         .root
-        .join("lab/experiments/EXP-0001-timing.md")
+        .join("notes/experiments/EXP-0001-timing.md")
         .is_file());
 
     // the lab page points onward
-    let moved = lab.read(&lab.root.join("lab/projects/PRJ-0002-toy-model/README.md"));
+    let moved = lab.read(&lab.root.join("notes/projects/PRJ-0002-toy-model/README.md"));
     assert!(moved.contains("status: moved\n"), "{moved}");
     assert!(
         moved.contains("code: github:leoank/toy\ncontinued_in: toy/PRJ-0001\n"),
         "{moved}"
     );
     assert!(
-        moved.contains("---\n\nContinued in [[toy/PRJ-0001]].\n\n## Current belief"),
+        moved.contains("---\n\nContinued in [[toy/PRJ-0001]].\n\n## Introduction"),
         "{moved}"
     );
     assert!(!lab
@@ -859,7 +862,7 @@ fn index_is_a_rebuilt_cache_of_a_valid_vault() {
     );
     // an invalid vault has no index
     fs::write(
-        v.root.join("lab/equipment/EQP-0001-spinning-disk.md"),
+        v.root.join("notes/equipment/EQP-0001-spinning-disk.md"),
         "---\nid: EQP-0001\ntype: equipment\n---\n",
     )
     .unwrap();
@@ -1021,7 +1024,7 @@ fn agents_author_their_pages_and_runs_carry_a_script() {
             "--kind",
             "compute",
             "--script",
-            "lab/projects/PRJ-0001-p/runs/run.sh",
+            "notes/projects/PRJ-0001-p/runs/run.sh",
         ],
         None,
         &[("YAJNA_AUTHOR", "agent:claude")],
@@ -1030,11 +1033,11 @@ fn agents_author_their_pages_and_runs_carry_a_script() {
     let page = v.read(&v.path(&out));
     assert!(page.contains("author: agent:claude\n"), "{page}");
     assert!(
-        page.contains("script: lab/projects/PRJ-0001-p/runs/run.sh"),
+        page.contains("script: notes/projects/PRJ-0001-p/runs/run.sh"),
         "{page}"
     );
     assert!(page.contains("## Reproduce"), "{page}");
-    let script = v.root.join("lab/projects/PRJ-0001-p/runs/run.sh");
+    let script = v.root.join("notes/projects/PRJ-0001-p/runs/run.sh");
     let stub = v.read(&script);
     assert!(stub.starts_with("#!/usr/bin/env bash"), "{stub}");
     assert!(
@@ -1058,7 +1061,7 @@ fn agents_author_their_pages_and_runs_carry_a_script() {
             "--experiment",
             "EXP-0001",
             "--script",
-            "lab/projects/PRJ-0001-p/runs/run.sh",
+            "notes/projects/PRJ-0001-p/runs/run.sh",
         ],
         Some("===RESULT=== {\"loss\": 0.1}\n"),
         &[("YAJNA_AUTHOR", "agent:claude")],
@@ -1067,7 +1070,7 @@ fn agents_author_their_pages_and_runs_carry_a_script() {
     let page = v.read(&v.path(&out));
     assert!(
         page.contains("author: agent:claude\n")
-            && page.contains("script: lab/projects/PRJ-0001-p/runs/run.sh\n"),
+            && page.contains("script: notes/projects/PRJ-0001-p/runs/run.sh\n"),
         "{page}"
     );
     let out = v.run_with(
@@ -1089,7 +1092,7 @@ fn agents_author_their_pages_and_runs_carry_a_script() {
     assert_eq!(out.code, 1);
     assert!(
         out.stdout
-            .contains("script lab/projects/PRJ-0001-p/runs/run.sh does not exist"),
+            .contains("script notes/projects/PRJ-0001-p/runs/run.sh does not exist"),
         "{}",
         out.stdout
     );

@@ -49,7 +49,7 @@
           nativeBuildInputs = [ pkgs.neovim ];
         } ''
           export HOME=$TMPDIR
-          nvim --headless -u NONE --cmd "set rtp+=${self}/tools/yajna.nvim" -l ${self}/tools/yajna.nvim/tests/run.lua
+          nvim --headless -u NONE --cmd "set rtp^=${self}/tools/yajna.nvim" -l ${self}/tools/yajna.nvim/tests/run.lua
           touch $out
         '';
       });

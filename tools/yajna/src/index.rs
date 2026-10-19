@@ -99,7 +99,7 @@ impl Index {
         if !force && path.is_file() {
             let built = path.metadata().and_then(|m| m.modified()).ok();
             let mut latest = SystemTime::UNIX_EPOCH;
-            newest(&vault.lab, &mut latest);
+            newest(&vault.notes, &mut latest);
             if let Ok(m) = refs::bib_path(vault).metadata().and_then(|m| m.modified()) {
                 latest = latest.max(m);
             }
@@ -255,16 +255,17 @@ impl Index {
             }
             index_tasks(&tx, &relpath, Some(&id), &page.body)?;
         }
+        let tasks_file = vault.notes.join("tasks.md");
         index_tasks(
             &tx,
-            "lab/tasks.md",
+            &rel(&tasks_file, &vault.root),
             None,
-            &fs::read_to_string(vault.lab.join("tasks.md")).unwrap_or_default(),
+            &fs::read_to_string(&tasks_file).unwrap_or_default(),
         )?;
 
         // results.tsv sidecars: one row per run per metric.
         let mut tsvs = Vec::new();
-        find_named(&vault.lab, "results.tsv", &mut tsvs);
+        find_named(&vault.notes, "results.tsv", &mut tsvs);
         for tsv in tsvs {
             let experiment = tsv
                 .parent()

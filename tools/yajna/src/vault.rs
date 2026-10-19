@@ -225,7 +225,7 @@ pub struct Vault {
     pub root: PathBuf,
     pub cfg: Config,
     pub author: String,
-    pub lab: PathBuf,
+    pub notes: PathBuf,
     pub tz: TimeZone,
     pub counters_file: PathBuf,
 }
@@ -236,16 +236,16 @@ impl Vault {
             .map_err(|e| format!("{}: {e}", root.join(CONFIG_NAME).display()))?;
         let cfg: Config = toml::from_str(&text).map_err(|e| format!("{CONFIG_NAME}: {e}"))?;
         let author = cfg.author.clone().unwrap_or_else(|| "unknown".to_string());
-        let lab = root.join(cfg.vault.as_deref().unwrap_or("lab"));
+        let notes = root.join(cfg.vault.as_deref().unwrap_or("notes"));
         let tzname = cfg.timezone.clone().unwrap_or_else(|| "UTC".to_string());
         let tz =
             TimeZone::get(&tzname).map_err(|e| format!("{CONFIG_NAME}: timezone {tzname}: {e}"))?;
-        let counters_file = lab.join("counters.yaml");
+        let counters_file = notes.join("counters.yaml");
         Ok(Vault {
             root,
             cfg,
             author,
-            lab,
+            notes,
             tz,
             counters_file,
         })
@@ -268,13 +268,13 @@ impl Vault {
             .ok_or_else(|| format!("{CONFIG_NAME}: no namespace"))
     }
 
-    /// The one project of a project-shaped repo: the ID on `lab/README.md`.
+    /// The one project of a project-shaped repo: the ID on `notes/README.md`.
     pub fn single_project(&self) -> Res<String> {
-        let page = self.read(&self.lab.join("README.md"))?;
+        let page = self.read(&self.notes.join("README.md"))?;
         page.id().map(str::to_string).ok_or_else(|| {
             format!(
                 "{}: no id in frontmatter",
-                rel(&self.lab.join("README.md"), &self.root)
+                rel(&self.notes.join("README.md"), &self.root)
             )
         })
     }
@@ -317,7 +317,7 @@ impl Vault {
     /// Every markdown page under the vault, in the order Python's `sorted(Path.rglob())` gives.
     pub fn pages(&self) -> Res<Vec<Page>> {
         let mut paths: Vec<PathBuf> = Vec::new();
-        collect_md(&self.lab, &mut paths)?;
+        collect_md(&self.notes, &mut paths)?;
         paths.sort_by_key(|p| {
             p.components()
                 .map(|c| c.as_os_str().to_os_string())
@@ -340,17 +340,17 @@ impl Vault {
     pub fn find(&self, ident: &str) -> Res<Page> {
         match self.index()?.get(ident) {
             Some(path) => self.read(path),
-            None => Err(format!("{ident}: not found in {}", self.lab.display())),
+            None => Err(format!("{ident}: not found in {}", self.notes.display())),
         }
     }
 
-    /// Where a project's experiments, runs, analyses and artifacts live: `lab/projects/PRJ-*/`
+    /// Where a project's experiments, runs, analyses and artifacts live: `notes/projects/PRJ-*/`
     /// in a lab, the vault itself in a project repo.
     pub fn project_dir(&self, prj: &str) -> Res<PathBuf> {
         if self.is_project() {
-            return Ok(self.lab.clone());
+            return Ok(self.notes.clone());
         }
-        let projects = self.lab.join("projects");
+        let projects = self.notes.join("projects");
         let mut dirs: Vec<PathBuf> = fs::read_dir(&projects)
             .map(|rd| {
                 rd.flatten()
@@ -479,7 +479,7 @@ impl Vault {
         } else {
             format!("{date}.{}", author.replace(':', "-"))
         };
-        self.lab
+        self.notes
             .join("log")
             .join(&date[..4.min(date.len())])
             .join(format!("{name}.md"))

@@ -5,7 +5,7 @@ The cheat sheet for Phase 0. The reasoning is in `docs/architecture.md` and the 
 
 ## The vault
 
-Everything under `lab/` is the notebook. Pages are markdown with YAML frontmatter.
+Everything under `notes/` is the notebook. Pages are markdown with YAML frontmatter.
 `yajna validate` checks every page against `schema/`; run it before committing, CI runs it
 too (`nix flake check`).
 
@@ -29,7 +29,7 @@ rc2s2 = "github:leoank/rc2s2"
 
 `yajna init lab [dir]` creates a lab's layout (`--namespace` and `--author` default to
 the directory name and `$USER`). `yajna init project "<title>"`, run at the
-root of a code repo, adds `yajna.toml` and `lab/` inside it: `lab/README.md` is the
+root of a code repo, adds `yajna.toml` and `notes/` inside it: `notes/README.md` is the
 project page (`PRJ-0001`, `code: .`) and `experiments/`, `runs/`, `analyses/`,
 `artifacts/`, `agents/`, `log/`, `references/`, `tasks.md` sit beside it. The notebook
 lives inside the project's source tree, never in a folder next to it. With `--from <lab
@@ -59,7 +59,7 @@ is set, a new page offers to open in it.
 - Every entity page has an `id` and the filename starts with it: `EXP-0007-escrt-timing.md`.
   The slug is decoration; renaming the file never breaks a link.
 - Curated entities get counter IDs from `yajna new`: `PRJ`, `EXP`, `PRO`, `MAT`, `ANA`,
-  `EQP`, `BLD`, four digits, allocated from `lab/counters.yaml`.
+  `EQP`, `BLD`, four digits, allocated from `notes/counters.yaml`.
 - Volume entities get a date and a random suffix: `RUN-20261015-k7f3`, `ART-...`, `AGS-...`.
 - Link with `[[EXP-0007]]` or `[[EXP-0007|the timing experiment]]`. Pin a protocol version
   with `[[PRO-0012@3]]`. A link to an ID that does not exist fails validation.
@@ -88,10 +88,10 @@ you. Where things go:
 
 | Entity | Path |
 |--------|------|
-| `PRJ` | `lab/projects/PRJ-0001-<slug>/README.md` |
-| `EXP`, `RUN`, `ANA`, `ART` | `lab/projects/PRJ-0001-*/{experiments,runs,analyses,artifacts}/` |
-| `PRO`, `MAT`, `EQP`, `BLD`, `AGS` | `lab/{protocols,materials,equipment,builds,agents}/` |
-| log | `lab/log/<year>/<date>.md`, one per day per author |
+| `PRJ` | `notes/projects/PRJ-0001-<slug>/README.md` |
+| `EXP`, `RUN`, `ANA`, `ART` | `notes/projects/PRJ-0001-*/{experiments,runs,analyses,artifacts}/` |
+| `PRO`, `MAT`, `EQP`, `BLD`, `AGS` | `notes/{protocols,materials,equipment,builds,agents}/` |
+| log | `notes/log/<year>/<date>.md`, one per day per author |
 
 Experiment-local and run-local files (scripts, `results.tsv`, figures, `events.jsonl`) go in
 a sidecar directory named by the bare ID next to the page: `experiments/EXP-0007/`.
@@ -107,7 +107,7 @@ Lines are `- HH:MM text`, appended, never reordered. Link anything you mention. 
 is created with its frontmatter on first use. An agent logs with `--author agent:<name>`,
 which goes to a separate file for the same day so that merges stay trivial.
 
-Photos and audio that document the process go in `lab/log/<year>/<date>/` and are embedded
+Photos and audio that document the process go in `notes/log/<year>/<date>/` and are embedded
 from the entry. If they are a result of a run they become an `ART` page instead (ADR-0012).
 
 ## Experiments
@@ -135,9 +135,9 @@ one page per result that the experiment's conclusion will rest on.
 
 **Every compute run is re-creatable from the repo alone.** The page's `script` field names
 an executable, relative to the repo root, that reproduces it: `yajna new run ... --script
-lab/projects/PRJ-xxxx-<slug>/runs/RUN-<id>/run.sh` records the path and writes a stub there
+notes/projects/PRJ-xxxx-<slug>/runs/RUN-<id>/run.sh` records the path and writes a stub there
 when the file is missing. The script runs from the repo root inside the project's dev shell
-(`nix develop ./projects/<slug> -c <script>`) at the page's `commit`, pins its inputs
+(`nix develop ./code/<slug> -c <script>`) at the page's `commit`, pins its inputs
 (data paths, seeds, versions), writes its outputs beside itself and, for metric runs,
 prints the `===RESULT===` line. What the script cannot control (hardware, network, time)
 goes under `Reproduce` on the page. `yajna validate` fails when `script` points at a
@@ -173,19 +173,23 @@ in git. Use it only where a flat table of numbers is the natural summary of the 
 Dry-lab code lives beside the vault, not in it (ADR-0009):
 
 ```
-yajna new project "Toy model" --code     # also creates projects/toy-model/ with a flake
-cd projects/toy-model && nix develop     # the project's own environment
+yajna new project "Toy model" --code     # also creates code/toy-model/ with a flake
+cd code/toy-model && nix develop     # the project's own environment
 ```
 
-The project page gets `code: projects/toy-model`; `yajna validate` fails if that directory
+The project page uses the code template (*Introduction*, *Status*, *Design*, *Roadmap*,
+*Lessons*, *Experiments*) instead of the research one (*Introduction*, *Current belief*,
+*Open questions*, *What not to try again*, *Experiments*); both open with an
+*Introduction* written once for a reader who has never heard of the project. The page
+gets `code: code/toy-model`; `yajna validate` fails if that directory
 disappears. The project flake is built on flake-parts and is a normal flake: add whatever
 inputs it needs and commit its own `flake.lock`. The scaffold also registers the directory
 as an input of the root flake (`inputs.toy-model`, with `nixpkgs` following the root), so
 the root `nix flake check` builds every project's dev shell. After scaffolding:
 
 ```
-git add projects/toy-model      # Nix only sees tracked files
-nix flake lock ./projects/toy-model && nix flake lock .
+git add code/toy-model      # Nix only sees tracked files
+nix flake lock ./code/toy-model && nix flake lock .
 ```
 
 Both lock files travel with the commit.
@@ -196,7 +200,7 @@ When a code-bearing project is ready for its own repository (ADR-0018):
 
 1. Nothing to conclude first: the project's pages travel with it and active experiments
    continue under the same IDs.
-2. Move the code with history: `git subtree split -P projects/<slug>` becomes the new
+2. Move the code with history: `git subtree split -P code/<slug>` becomes the new
    repo, so the project directory is its root. Remove the project's input from the lab's
    `flake.nix` and relock.
 3. On the lab page set `status: moved`, `code: <repository url>`,
@@ -204,8 +208,8 @@ When a code-bearing project is ready for its own repository (ADR-0018):
    as the first line of the body. Add the namespace to `[repos]`.
 4. At the new repo's root run `yajna init project --from ../yajna/main PRJ-0002`: it adds
    `yajna.toml` with the namespace and `[repos] yajna = { url = "github:leoank/yajna",
-   path = "../yajna/main" }`, and `lab/` beside the code, then copies the project's
-   notebook in: the project page as `lab/README.md` with `id: PRJ-0001`, `code: .` and
+   path = "../yajna/main" }`, and `notes/` beside the code, then copies the project's
+   notebook in: the project page as `notes/README.md` with `id: PRJ-0001`, `code: .` and
    `origin: yajna/PRJ-0002`, its `experiments/`, `runs/`, `analyses/` and `artifacts/`
    with sidecars, the reading notes and `.bib` entries they cite, and `counters.yaml`
    seeded from the highest copied IDs. Experiment and run IDs stay the same; only the
@@ -262,19 +266,19 @@ Builds on the cloning chip of [@shih2015cloning] and the valve design in @gong20
 
 `yajna validate` fails on a key that is not in the `.bib`. `yajna ref shih2015cloning`
 shows the entry and every page that cites it; `--note` creates the reading note
-`lab/references/shih2015cloning.md`, where the digested meaning of the paper for this work
+`notes/references/shih2015cloning.md`, where the digested meaning of the paper for this work
 goes. File the paper in Zotero under `Projects/PRJ-0001 <slug>` for each project it serves
 and under a topic; tag it `to-read`, `skimmed` or `read` and by role.
 
 ## Tasks
 
 Any `- [ ]` on any page is a task. Put it next to the thing it is about. Loose ones go in
-`lab/tasks.md`. `yajna tasks` lists every open one with its page and section; `--done`
+`notes/tasks.md`. `yajna tasks` lists every open one with its page and section; `--done`
 includes ticked ones.
 
 ## Search
 
-`qmd` indexes `lab/` as the collection `yajna`:
+`qmd` indexes `notes/` as the collection `yajna`:
 
 ```
 qmd search "induction stressed"          # keyword

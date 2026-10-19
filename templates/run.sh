@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Re-creates $id for $experiment. Run from the repo root, inside the project's dev shell,
 # at the commit recorded on the run page:
-#   nix develop ./projects/<slug> -c $script
+#   nix develop ./code/<slug> -c $script
 set -euo pipefail
 
 # 1. Inputs and environment: pin data paths, seeds, model and tool versions here.

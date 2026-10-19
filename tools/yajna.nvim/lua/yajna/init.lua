@@ -1,7 +1,7 @@
 -- yajna.nvim: follow [[ID]] links and @citekey citations in a yajna vault, jump to an
 -- entity by ID or title, list backlinks. Pure Lua; needs no yajna binary. Resolution is
 -- by filename, which the conventions fix: EXP-0001-slug.md, RUN-20261016-k7f3.md,
--- projects/PRJ-0001-slug/README.md, and lab/README.md in a project-shaped repo.
+-- projects/PRJ-0001-slug/README.md, and notes/README.md in a project-shaped repo.
 
 local M = {}
 
@@ -38,7 +38,7 @@ end
 
 --- The parts of yajna.toml the plugin needs: vault, shape, bibliography, [repos] paths.
 function M.config(root)
-  local cfg = { vault = "lab", shape = "lab", bibliography = nil, repos = {} }
+  local cfg = { vault = "notes", shape = "lab", bibliography = nil, repos = {} }
   local lines = read_lines(root .. "/yajna.toml") or {}
   local section = nil
   for _, raw in ipairs(lines) do
@@ -60,7 +60,7 @@ function M.config(root)
   end
   cfg.vault = root .. "/" .. cfg.vault
   if not cfg.bibliography then
-    cfg.bibliography = cfg.shape == "project" and "lab/references/library.bib" or "references/library.bib"
+    cfg.bibliography = cfg.shape == "project" and "notes/references/library.bib" or "references/library.bib"
   end
   cfg.bibliography = root .. "/" .. cfg.bibliography
   return cfg

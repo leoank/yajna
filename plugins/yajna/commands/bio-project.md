@@ -8,7 +8,7 @@ Bootstrap a wet-lab (biology) project. Brief: $ARGUMENTS
 Run `/yajna:project` for the general interview and deliverables; this command adds what a
 bench project needs. Load the `yajna` skill first. Before the interview also read the
 existing `PRO`, `MAT` and `EQP` pages (`yajna show`, the site, or the files under
-`lab/protocols/`, `lab/materials/`, `lab/equipment/`): reuse is the default.
+`notes/protocols/`, `notes/materials/`, `notes/equipment/`): reuse is the default.
 
 ## Extra interview topics
 

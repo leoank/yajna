@@ -6,7 +6,7 @@ title: $title
 revision: 1
 project: $project
 status: designing         # designing | ordering | assembling | testing | deployed | retired
-sources: hardware/$slug
+sources: code/$slug
 produces: null
 parts: []
 tests: []

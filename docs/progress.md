@@ -6,6 +6,16 @@ modification stamps and document changelogs, so they carry a date and a rough ti
 Append an entry whenever a document, tool or dataset lands; keep each to a few lines and
 link the file.
 
+## 2026-10-19
+
+- **2026-10-19 10:30** Directory names (ADR-0020): the vault is `notes/` (default
+  `vault`), code lives under `code/<slug>/` (one `projects/` left, the one inside the
+  vault), and `assets/<name>/` holds only what GUI programs produce. Two project page
+  templates: research (`project.md`) and code (`project-code.md`, used by `--code`:
+  *Introduction*, *Status*, *Design*, *Roadmap*, *Lessons*, *Experiments*); both open
+  with an *Introduction*. CLI defaults, scaffold, tests, Neovim plugin, skill, commands
+  and the living docs renamed; manthan renamed with `git mv` and relocked.
+
 ## 2026-10-17
 
 - **2026-10-17 23:00** Claude Code plugin: `plugins/yajna/` holds the skill (moved from

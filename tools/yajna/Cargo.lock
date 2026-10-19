@@ -1639,6 +1639,7 @@ dependencies = [
  "inquire",
  "jiff",
  "jsonschema",
+ "libc",
  "pulldown-cmark",
  "regex",
  "rusqlite",

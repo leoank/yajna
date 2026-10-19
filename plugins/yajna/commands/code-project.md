@@ -1,5 +1,5 @@
 ---
-description: Bootstrap a software project in the notebook, interviewing the author on the architecture, then scaffold projects/<slug>/ with a flake, a design doc with decisions, and the first spikes as experiments
+description: Bootstrap a software project in the notebook, interviewing the author on the architecture, then scaffold code/<slug>/ with a flake, a design doc with decisions, and the first spikes as experiments
 argument-hint: [title or a one-paragraph brief]
 ---
 
@@ -31,13 +31,14 @@ questions and files a code project needs. Load the `yajna` skill first.
 
 ## Deliverables beyond the general ones
 
-- `yajna new project "<title>" --code`, then `git add projects/<slug>` and
-  `nix flake lock ./projects/<slug> && nix flake lock .` as the skill and AGENTS.md say.
-- `projects/<slug>/docs/architecture.md`: goals and constraints, the data model, the
+- `yajna new project "<title>" --code`, then `git add code/<slug>` and
+  `nix flake lock ./code/<slug> && nix flake lock .` as the skill and AGENTS.md say.
+- `code/<slug>/docs/architecture.md`: goals and constraints, the data model, the
   component diagram, the stack with reasons, phases with verification, open questions.
-- `projects/<slug>/docs/decisions/ADR-0001-....md` and onward, one per decision, with a
+- `code/<slug>/docs/decisions/ADR-0001-....md` and onward, one per decision, with a
   `README.md` index: context, decision, consequences.
 - The first phase's spikes as experiments (`yajna new experiment ... --project`), each
   a question the architecture rests on, run as `compute` runs with a reproducible script.
-- The project page's *Current belief* links the design doc; *Open questions* lists what the
-  spikes must answer.
+- The project page uses the code template (`--code`): *Introduction*, *Status*, *Design*
+  (linking the design doc and decisions), *Roadmap*, *Lessons*, *Experiments*. Rewrite
+  *Status*; the spikes' open questions go under *Roadmap*.

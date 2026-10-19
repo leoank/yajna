@@ -40,6 +40,11 @@ fn run() -> Result<i32, String> {
 }
 
 fn main() {
+    // `yajna tree | head` must not panic when the reader goes away: die quietly on EPIPE.
+    #[cfg(unix)]
+    unsafe {
+        libc::signal(libc::SIGPIPE, libc::SIG_DFL);
+    }
     match run() {
         Ok(code) => std::process::exit(code),
         Err(msg) => {

@@ -23,11 +23,11 @@ itself is a separate, private repo of the `lab` shape (ADR-0018); mine is
 
 ## Using it
 
-A lab repo (`yajna init lab`) holds `lab/` with projects, shared protocols, materials,
-equipment, builds, agent sessions, the log and reading notes, plus `projects/` for
+A lab repo (`yajna init lab`) holds `notes/` with projects, shared protocols, materials,
+equipment, builds, agent sessions, the log and reading notes, plus `code/` for
 dry-lab code, `references/library.bib` and `yajna.toml`. A project repo
 (`yajna init project "<title>"` at the root of a code repo) holds one project's notebook
-under `lab/` inside the source tree and links to a lab's shared pages by namespace.
+under `notes/` inside the source tree and links to a lab's shared pages by namespace.
 
 ```
 yajna                  # interactive menu: new, log, ref, tasks, validate

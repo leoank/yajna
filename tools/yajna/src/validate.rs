@@ -222,7 +222,7 @@ pub fn validate(vault: &Vault) -> Res<(Vec<String>, usize)> {
         // is the vault's own README.md.
         let named_by_id = name.starts_with(pid)
             || (name == "README.md"
-                && (page.path == vault.lab.join("README.md") && vault.is_project()
+                && (page.path == vault.notes.join("README.md") && vault.is_project()
                     || page
                         .path
                         .parent()

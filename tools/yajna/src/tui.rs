@@ -355,12 +355,7 @@ pub fn new(vault: &Vault, p: &mut dyn Prompter, author: Option<&str>) -> Res<Pat
     let mut code = false;
     if etype == "project" {
         code = p
-            .ask(
-                "scaffold projects/<slug>/ with a flake? (y/N)",
-                None,
-                None,
-                "",
-            )?
+            .ask("scaffold code/<slug>/ with a flake? (y/N)", None, None, "")?
             .to_lowercase()
             .starts_with('y');
     }

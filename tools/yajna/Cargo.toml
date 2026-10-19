@@ -16,6 +16,7 @@ csv = "1"
 fastrand = "2"
 inquire = "0.9"
 jiff = { version = "0.2", features = ["tzdb-bundle-always"] }
+libc = "0.2"
 jsonschema = { version = "0.59", default-features = false }
 pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
 regex = "1"

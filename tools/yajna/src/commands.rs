@@ -109,7 +109,7 @@ pub fn run(vault: &Vault, cmd: &Cmd, prompter: &mut dyn Prompter) -> Res<i32> {
 
 // --- new -----------------------------------------------------------------------------
 
-/// Allocate an ID, fill the template, write the page. `code` scaffolds `projects/<slug>/`;
+/// Allocate an ID, fill the template, write the page. `code` scaffolds `code/<slug>/`;
 /// `script` (runs) is recorded and stubbed when the file is missing.
 #[allow(clippy::too_many_arguments)]
 pub fn create(
@@ -140,7 +140,7 @@ pub fn create(
     if vault.is_project() {
         // One project per repo; shared entities live in a lab and are linked by namespace.
         if etype == "project" {
-            return Err("a project repo holds one project, lab/README.md".to_string());
+            return Err("a project repo holds one project, notes/README.md".to_string());
         }
         if ["protocol", "material", "equipment", "build"].contains(&etype.as_str()) {
             return Err(format!(
@@ -191,13 +191,18 @@ pub fn create(
     let date = date_of(&now);
     let now_iso = iso_minutes(&now);
     let code_field = if code {
-        format!("projects/{slug}")
+        format!("code/{slug}")
     } else {
         "null".to_string()
     };
     let title_field = title_scalar(&title);
+    let template = if etype == "project" && code {
+        "project-code"
+    } else {
+        ent.template
+    };
     let text = vault.render(
-        ent.template,
+        template,
         &[
             ("id", &ident),
             ("title", &title_field),
@@ -216,7 +221,7 @@ pub fn create(
 
     let path = if etype == "project" {
         vault
-            .lab
+            .notes
             .join(ent.subdir)
             .join(format!("{ident}-{slug}"))
             .join("README.md")
@@ -232,7 +237,7 @@ pub fn create(
                 .join(ent.subdir)
                 .join(name)
         } else {
-            vault.lab.join(ent.subdir).join(name)
+            vault.notes.join(ent.subdir).join(name)
         }
     };
     if let Some(parent) = path.parent() {
@@ -302,9 +307,9 @@ pub fn write_skill(root: &Path) -> Res<PathBuf> {
     Ok(path)
 }
 
-/// Create projects/<slug>/ with a flake and README and register it in the root flake.
+/// Create code/<slug>/ with a flake and README and register it in the root flake.
 pub fn scaffold_code(vault: &Vault, slug: &str, id: &str, title: &str) -> Res<PathBuf> {
-    let code_dir = vault.root.join("projects").join(slug);
+    let code_dir = vault.root.join("code").join(slug);
     if code_dir.exists() {
         return Err(format!("{} already exists", rel(&code_dir, &vault.root)));
     }
@@ -319,13 +324,15 @@ pub fn scaffold_code(vault: &Vault, slug: &str, id: &str, title: &str) -> Res<Pa
     let root_flake = vault.root.join("flake.nix");
     if let Ok(flake) = fs::read_to_string(&root_flake) {
         if flake.contains(PROJECTS_MARK) {
-            let line = format!("  inputs.{slug} = {{ url = \"path:./projects/{slug}\"; inputs.nixpkgs.follows = \"nixpkgs\"; }};\n");
+            let line = format!("  inputs.{slug} = {{ url = \"path:./code/{slug}\"; inputs.nixpkgs.follows = \"nixpkgs\"; }};\n");
             fs::write(
                 &root_flake,
                 flake.replacen(PROJECTS_MARK, &format!("{PROJECTS_MARK}{line}"), 1),
             )
             .map_err(|e| e.to_string())?;
-            eprintln!("registered input {slug} in flake.nix; next: git add projects/{slug} && nix flake lock");
+            eprintln!(
+                "registered input {slug} in flake.nix; next: git add code/{slug} && nix flake lock"
+            );
         }
     }
     Ok(code_dir)

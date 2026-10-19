@@ -2,7 +2,7 @@
 
 Follow links in a yajna vault from Neovim. Pure Lua, no `yajna` binary needed; pages are
 found by their filenames, which the conventions fix (`EXP-0001-slug.md`,
-`projects/PRJ-0001-slug/README.md`, `lab/README.md` in a project-shaped repo).
+`projects/PRJ-0001-slug/README.md`, `notes/README.md` in a project-shaped repo).
 
 In any markdown buffer under a directory with `yajna.toml`:
 
@@ -22,5 +22,5 @@ point lazy.nvim at `tools/yajna.nvim`:
 { dir = "~/workspace/chaos/yajna/main/tools/yajna.nvim" }
 ```
 
-Tests: `nvim --headless -u NONE --cmd "set rtp+=tools/yajna.nvim" -l tools/yajna.nvim/tests/run.lua`,
+Tests: `nvim --headless -u NONE --cmd "set rtp^=tools/yajna.nvim" -l tools/yajna.nvim/tests/run.lua`,
 also run by `checks.yajna-nvim`.

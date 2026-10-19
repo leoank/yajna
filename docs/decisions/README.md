@@ -26,3 +26,4 @@ one rather than an edit.
 | [0017](ADR-0017-rust-single-binary-cli.md) | The CLI becomes a single Rust binary with embedded schemas and templates | accepted |
 | [0018](ADR-0018-repo-shapes-and-namespaces.md) | Two repo shapes (`lab`, `project`), namespaced cross-repo links, graduation procedure | accepted |
 | [0019](ADR-0019-index-and-site-as-caches.md) | The SQLite index and the static site are caches outside the repo, rebuilt when stale | accepted |
+| [0020](ADR-0020-directory-names.md) | `notes/`, `code/` and `assets/` as the top-level directories; two project page templates | accepted |

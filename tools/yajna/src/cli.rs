@@ -42,7 +42,7 @@ pub enum Cmd {
         /// run kind (bench, compute, assembly, calibration) or material kind
         #[arg(long)]
         kind: Option<String>,
-        /// project: also scaffold projects/<slug>/ with a flake
+        /// project: also scaffold code/<slug>/ with a flake
         #[arg(long)]
         code: bool,
         /// author handle (default: $YAJNA_AUTHOR, else yajna.toml); agents pass agent:<name>

@@ -27,7 +27,7 @@ then runs the checked-out source through `cargo run`, so edits take effect immed
   the `/yajna:project` family. `claude plugin validate --strict plugins/yajna` and
   `claude plugin validate .` must pass; bump `version` in `plugin.json` on a change.
 - `tools/yajna.nvim/` is the Neovim plugin (plain Lua, no binary). Its headless tests run
-  with `nvim --headless -u NONE --cmd "set rtp+=tools/yajna.nvim" -l tools/yajna.nvim/tests/run.lua`
+  with `nvim --headless -u NONE --cmd "set rtp^=tools/yajna.nvim" -l tools/yajna.nvim/tests/run.lua`
   and as `checks.yajna-nvim`.
 - The index (`tools/yajna/src/index.rs`) is a cache outside the repo (ADR-0019); every
   query command and the site read it and rebuild it when stale. A new table or column

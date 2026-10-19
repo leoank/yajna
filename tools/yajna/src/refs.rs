@@ -22,7 +22,7 @@ static WS_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s+").unwrap());
 pub fn bib_path(vault: &Vault) -> PathBuf {
     match vault.cfg.bibliography.as_deref() {
         Some(p) => vault.root.join(p),
-        None if vault.is_project() => vault.lab.join("references").join("library.bib"),
+        None if vault.is_project() => vault.notes.join("references").join("library.bib"),
         None => vault.root.join("references").join("library.bib"),
     }
 }
@@ -125,7 +125,7 @@ pub fn entry(vault: &Vault, key: &str) -> Option<BTreeMap<String, String>> {
 }
 
 pub fn note_path(vault: &Vault, key: &str) -> PathBuf {
-    vault.lab.join("references").join(format!("{key}.md"))
+    vault.notes.join("references").join(format!("{key}.md"))
 }
 
 pub fn create_note(vault: &Vault, key: &str, fields: &BTreeMap<String, String>) -> Res<PathBuf> {

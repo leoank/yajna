@@ -169,7 +169,7 @@ yajna/
   schema/                    # JSON Schema for each entity's frontmatter, versioned
   templates/                 # one markdown template per entity
   .claude/                   # commands and skills for agents working in this repo
-  lab/                       # the notebook proper (the "vault")
+  notes/                     # the notebook proper (the "vault")
     projects/PRJ-0001-archaeal-division/
       README.md              # project status page: current belief, open questions
       experiments/
@@ -188,8 +188,8 @@ yajna/
   data/                      # content-addressed large files (not in git history, see 5.3)
   thesis/                    # thesis source (typst or LaTeX)
   talks/                     # presentation sources
-  projects/                  # code for dry-lab projects, each its own flake or subdir
-  hardware/<name>/           # design sources per build: cad/, pcb/ (KiCad), firmware/, flake.nix
+  code/                      # code per project, each its own flake: software, firmware, code-based CAD, KiCad
+  assets/<name>/             # files from GUI programs that cannot be generated: exported STEP, Gerbers, renders
   yajna.toml                 # shape = "lab", namespace, author, [repos]
   flake.nix
 ```
@@ -197,14 +197,14 @@ yajna/
 That is the `lab` shape, `leoank/manthan` for this notebook; every yajna tool (CLI, indexer,
 server, apps) lives in the public `leoank/yajna` repo under `tools/` and is consumed as a
 flake input. A graduated project (ADR-0018) is the `project` shape: the same
-vault conventions with one project and no shared entities. The former `projects/<slug>/`
+vault conventions with one project and no shared entities. The former `code/<slug>/`
 directory becomes the root of the new repo and the notebook moves in with the code:
 
 ```
-rc2s2-a-remote-command-and-control-session-server/   # was projects/<slug>/ in the lab
+rc2s2-a-remote-command-and-control-session-server/   # was code/<slug>/ in the lab
   flake.nix  README.md  src/  spikes/ ...             # the code tree, unchanged
   yajna.toml                 # shape = "project", namespace = "rc2s2", [repos] yajna = ...
-  lab/
+  notes/
     README.md                # the project page, origin: yajna/PRJ-0002
     experiments/EXP-0001-*.md
     runs/RUN-*.md
@@ -254,7 +254,7 @@ Filled in by tooling: links to RUN-* pages, or a rendered view of results.tsv.
 Written once, by a human, when status becomes `concluded`.
 ```
 
-Example daily log (`lab/log/2026/2026-10-14.md`). Entries are appended, never reordered:
+Example daily log (`notes/log/2026/2026-10-14.md`). Entries are appended, never reordered:
 
 ```markdown
 ---
@@ -316,7 +316,7 @@ updated by the human or by a `yajna use MAT-0210 50uL` command that also writes 
 
 Tasks. Any `- [ ]` checkbox on any page is a task. The indexer collects them with the page
 and section they sit in, so `yajna tasks` lists open items across the vault and an agent can
-claim one by checking it with a log entry. Loose todos go in `lab/tasks.md`. There is no
+claim one by checking it with a log entry. Loose todos go in `notes/tasks.md`. There is no
 separate tracker.
 
 Conventions worth fixing early because they are painful to change later:
@@ -381,7 +381,9 @@ without touching markdown. NFS or LMB storage becomes one annex remote, so the A
 cluster workflow still works. Confirm once the LMB storage situation is known (section 12).
 
 Hardware design sources follow the same split. Text sources (KiCad schematics and boards,
-code-based CAD such as CadQuery or OpenSCAD, firmware) live in git under `hardware/`.
+code-based CAD such as CadQuery or OpenSCAD, firmware) live in git under `code/`, like
+any project; only files produced by GUI programs that cannot be regenerated (an exported
+STEP, a hand-drawn Gerber, a render) go under `assets/`.
 Binary exports and inputs (STEP, STL, Gerber zips, datasheets, photos of the build) are
 `ART` entries in the annex, each recording the source commit it was generated from.
 
@@ -393,7 +395,7 @@ embeddings, and a scheduled reindex (`qmd-reindex` module, hourly). That changes
 | Option | Verdict |
 |--------|---------|
 | None, just `grep` and the editor | Fine for month one. Not enough for agents or a web UI. |
-| **`qmd` for full-text and semantic search (recommended)** | Already deployed on your machines, already an MCP server for agents, reindexes on a schedule. Nothing to build. Point it at `lab/`. |
+| **`qmd` for full-text and semantic search (recommended)** | Already deployed on your machines, already an MCP server for agents, reindexes on a schedule. Nothing to build. Point it at `notes/`. |
 | **Small SQLite index built by `yajna index` for structured queries (recommended, Phase 1)** | `qmd` answers "find pages about X". It does not answer "all runs of EXP-0007 ordered by metric" or "materials consumed by runs in September". A thin indexer over frontmatter and `[[links]]` does, and it is what the site and the experiment tree render from. |
 | Postgres | Only if the server ever has concurrent writers. SQLite can be swapped because nothing depends on it being the truth. |
 
@@ -403,7 +405,7 @@ Validation failures are build failures. The same indexer runs in CI via `nix fla
 
 ### 5.5 Existing tools
 
-- **Obsidian**: compatible as an editor since the vault is just `lab/`. Not a dependency.
+- **Obsidian**: compatible as an editor since the vault is just `notes/`. Not a dependency.
 - **eLabFTW, LabArchives, Benchling**: real ELNs with inventory and compliance. They own the
   data in their database, which violates G2. If the lab mandates one, treat it as an export
   target, not the source of truth. No sync with Benchling is planned. We may occasionally
@@ -415,7 +417,7 @@ Validation failures are build failures. The same indexer runs in CI via `nix fla
 - **Notion**: same problem. An exporter could publish project status pages there for others.
 - **Weights & Biases, MLflow**: good dashboards. Keep metrics as local JSONL (the truth) and
   optionally mirror to W&B for live viewing. Never make W&B the only copy.
-- **Jupyter**: notebooks are code, not notes. They live under `projects/` and an `ANA` page
+- **Jupyter**: notebooks are code, not notes. They live under `code/` and an `ANA` page
   links to them. Use `jupytext` paired `.py` files so diffs are readable.
 
 ### 5.6 How the backend writes
@@ -486,7 +488,7 @@ Why not the alternatives:
 ```mermaid
 flowchart LR
   subgraph truth [Source of truth]
-    MD[markdown in lab/]
+    MD[markdown in notes/]
     TSV[results.tsv, metrics.jsonl, events.jsonl]
     ANNEX[(git-annex data/)]
   end
@@ -522,7 +524,7 @@ Components, in the order they will exist:
    indexer. One static binary with the schemas and templates embedded, so it works in any
    repo of either shape and on machines without Nix (ADR-0017). The CLI is what agents
    call before there is a server.
-3. **Search.** `qmd` pointed at `lab/`, via the existing `qmd-reindex` module. No code.
+3. **Search.** `qmd` pointed at `notes/`, via the existing `qmd-reindex` module. No code.
 4. **Indexer.** Library plus command. Markdown in, SQLite out. Owns link resolution and
    schema validation. Everything downstream reads SQLite, never markdown directly.
 5. **Static site.** Rendered from the index: project pages, experiment timelines, the
@@ -695,7 +697,7 @@ type: build
 revision: 2
 project: PRJ-0004
 status: testing          # designing | ordering | assembling | testing | deployed | retired
-sources: hardware/bench-camera-rig   # path in this repo, pinned by git commit on each RUN
+sources: code/bench-camera-rig     # path in this repo, pinned by git commit on each RUN
 produces: EQP-0011
 parts: [MAT-0300, MAT-0301, MAT-0302]
 tests: [EXP-0019]
@@ -733,12 +735,12 @@ Mapping onto existing machinery:
   lab. `outcome` on the experiment feeds the build's `status`.
 - **Calibration is a run of kind `calibration`** against the `EQP`, with `valid_until` in
   frontmatter. A bench run sheet that books the equipment warns when calibration has lapsed.
-- **Revisions** are prose on the `BLD` page plus git history of `hardware/<name>/`. A `RUN`
+- **Revisions** are prose on the `BLD` page plus git history of `code/<name>/`. A `RUN`
   of any kind records the source commit it was built or tested from, the hardware
   equivalent of the flake revision on a compute run.
 
 Nix covers the toolchain: KiCad and export tooling, firmware cross-compilers, and CAD
-exporters as `devShells` per build under `hardware/<name>/flake.nix`, so an exported Gerber
+exporters as `devShells` per build under `code/<name>/flake.nix`, so an exported Gerber
 or STL is reproducible from a clean clone the same way a thesis PDF is.
 
 ## 8. Server, sync, and apps
@@ -769,12 +771,12 @@ is a Phase 4 item, justified only once voice and photo capture are a daily need.
 - `flake.nix` at the repo root with `devShells.default` (CLI, indexer, git-annex, sqlite,
   `qmd`, pandoc, typst), `packages.yajna` (the CLI), `checks.validate` (runs the
   indexer, fails on schema errors), and later `nixosModules.yajna-server`.
-- Dry-lab projects under `projects/` each carry their own flake or a `devShells.<name>` output,
+- Dry-lab projects under `code/` each carry their own flake or a `devShells.<name>` output,
   so ML environments are pinned per project and a `RUN` page records the flake revision it
   ran under. That is the dry-lab equivalent of recording the protocol version. AutoGo uses
   Docker over SSH for its cluster; the Nix equivalent is a per-project flake plus
   `nix run` on the worker, or an OCI image built with `dockerTools` if the cluster needs it.
-- Hardware builds under `hardware/` do the same with KiCad, firmware toolchains, and CAD
+- Hardware builds under `code/` do the same with KiCad, firmware toolchains, and CAD
   exporters, so design exports are reproducible (7.3).
 - `neusis` generates `nixosConfigurations` and `darwinConfigurations` from its machine
   registry (currently `darwin001` and `rogue`) and leaves deployment to external tooling.
@@ -818,7 +820,7 @@ Each phase has a verification that proves it worked before the next starts.
 
 | Phase | Build | Verify |
 |-------|-------|--------|
-| 0. Conventions | `lab/` layout, templates, `docs/conventions.md`, `schema/` v1 including the protocol step convention and material inventory fields, `yajna new`, `yajna log`, `yajna result`, `yajna tasks`. Point `qmd` at `lab/`. | Two weeks of real bench and ML days captured without the tooling getting in the way. `qmd` answers a free-text question about last week. |
+| 0. Conventions | `notes/` layout, templates, `docs/conventions.md`, `schema/` v1 including the protocol step convention and material inventory fields, `yajna new`, `yajna log`, `yajna result`, `yajna tasks`. Point `qmd` at `notes/`. | Two weeks of real bench and ML days captured without the tooling getting in the way. `qmd` answers a free-text question about last week. |
 | 0b. Portable CLI | Rust port of `yajna` at `tools/yajna-rs/` with parity tests against the Python CLI; `init lab\|project`, `namespace` and `[repos]` in `yajna.toml`, namespaced links in validate, `graduate`; `packages.yajna` in `neusis`, GitHub release binaries; the Python package is deleted and the port takes its name. | The same scripted session through both CLIs yields identical vaults. A non-Nix machine runs `yajna init project`, `new`, `validate` from a release binary. rc2s2 graduates by the documented procedure and both repos validate. |
 | 0c. Editor | `tools/yajna.nvim/`, a Neovim plugin in plain Lua: follow `[[ID]]`, `[[ns/ID]]` and `@citekey` from the buffer, jump to an entity by ID or title, backlinks into the quickfix list; `packages.yajna-nvim` for `neusis`. No binary needed: pages are found by filename, which the conventions fix. | Following any link in a page is one keypress and lands on the page in either repo; `checks.yajna-nvim` runs the headless tests. |
 | 1. Index and site | Indexer, `yajna validate/timeline/tree`, static site with the experiment tree, `nix flake check` in CI. | "Everything I did with MAT-0210" and "all runs for EXP-0007 by metric" come from the index, and the site renders the tree. |
@@ -838,7 +840,7 @@ Resolved on 2026-10-15 and recorded in `docs/decisions/`:
 - Large data storage: deferred to Phase 2, leaning git-annex (ADR-0013).
 - Institutional ELN: a plain one-way exporter, built at the start of Phase 1 (ADR-0010).
 - Authors: one human plus agents (ADR-0008).
-- Dry-lab code: starts under `projects/` here, moves to its own repo when it matures (ADR-0009).
+- Dry-lab code: starts under `code/` here, moves to its own repo when it matures (ADR-0009).
 - `qmd` versus the SQLite indexer: `qmd` alone until a structured query it cannot answer
   appears (ADR-0007). Two did on 2026-10-17, timelines and runs by metric; the indexer
   and site exist as caches outside the repo (ADR-0019).
