@@ -183,7 +183,11 @@ yajna new project "Toy model" --code     # also creates code/toy-model/ with a f
 cd code/toy-model && nix develop     # the project's own environment
 ```
 
-The project page uses the code template (*Introduction*, *Progress*, *Open questions*,
+The scaffold is `code/<slug>/` with `flake.nix`, `README.md`, `docs/architecture.md`
+(goals, data model, components, stack, phases, open questions) and `docs/decisions/`, one
+numbered decision record per file with an index in its `README.md`; a superseded record
+stays and names its successor. The project page uses the code template (*Introduction*,
+*Progress*, *Open questions*,
 *Design*, *Lessons*, *Experiments*) instead of the research one (*Introduction*,
 *Progress*, *Current belief*, *Open questions*, *What not to try again*, *Experiments*);
 both open with an *Introduction* written once for a reader who has never heard of the

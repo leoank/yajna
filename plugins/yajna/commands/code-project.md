@@ -33,10 +33,12 @@ questions and files a code project needs. Load the `yajna` skill first.
 
 - `yajna new project "<title>" --code`, then `git add code/<slug>` and
   `nix flake lock ./code/<slug> && nix flake lock .` as the skill and AGENTS.md say.
-- `code/<slug>/docs/architecture.md`: goals and constraints, the data model, the
-  component diagram, the stack with reasons, phases with verification, open questions.
-- `code/<slug>/docs/decisions/ADR-0001-....md` and onward, one per decision, with a
-  `README.md` index: context, decision, consequences.
+- Fill `code/<slug>/docs/architecture.md`, which the scaffold creates with its sections:
+  goals and constraints, the data model, the component diagram, the stack with reasons,
+  phases with verification, open questions.
+- One decision record per decision in `code/<slug>/docs/decisions/`
+  (`ADR-0001-short-title.md` onward, in the format `decisions/README.md` gives), each
+  added as a row to that README's table.
 - The first phase's spikes as experiments (`yajna new experiment ... --project`), each
   a question the architecture rests on, run as `compute` runs with a reproducible script.
 - The project page uses the code template (`--code`): *Introduction*, *Progress*, *Open

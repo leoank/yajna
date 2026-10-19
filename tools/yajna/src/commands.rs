@@ -327,12 +327,22 @@ pub fn scaffold_code(vault: &Vault, slug: &str, id: &str, title: &str) -> Res<Pa
         return Err(format!("{} already exists", rel(&code_dir, &vault.root)));
     }
     fs::create_dir_all(&code_dir).map_err(|e| e.to_string())?;
-    for name in ["flake.nix", "README.md"] {
+    // the flake, a README, and the design docs: an architecture and its decision records
+    for name in [
+        "flake.nix",
+        "README.md",
+        "docs/architecture.md",
+        "docs/decisions/README.md",
+    ] {
         let text = vault.render(
             &format!("code/{name}"),
             &[("slug", slug), ("id", id), ("title", title)],
         )?;
-        fs::write(code_dir.join(name), text).map_err(|e| e.to_string())?;
+        let target = code_dir.join(name);
+        if let Some(parent) = target.parent() {
+            fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        fs::write(target, text).map_err(|e| e.to_string())?;
     }
     let root_flake = vault.root.join("flake.nix");
     if let Ok(flake) = fs::read_to_string(&root_flake) {

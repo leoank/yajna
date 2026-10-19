@@ -375,6 +375,14 @@ fn project_code_scaffold() {
     assert!(v
         .read(&v.root.join("code/toy-model/flake.nix"))
         .contains("flake-parts"));
+    let arch = v.read(&v.root.join("code/toy-model/docs/architecture.md"));
+    assert!(
+        arch.starts_with("# Toy model: architecture") && arch.contains("[[PRJ-0001]]"),
+        "{arch}"
+    );
+    assert!(v
+        .read(&v.root.join("code/toy-model/docs/decisions/README.md"))
+        .contains("ADR-0001"));
     let page = v.read(&v.path(&out));
     assert!(page.contains("code: code/toy-model"));
     let readme = v.read(&v.root.join("code/toy-model/README.md"));

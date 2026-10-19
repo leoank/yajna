@@ -8,6 +8,10 @@ link the file.
 
 ## 2026-10-19
 
+- **2026-10-19 18:30** `yajna new project --code` also scaffolds `docs/architecture.md`
+  and `docs/decisions/README.md` (the ADR format and index) in `code/<slug>/`; the
+  code-project command fills them instead of creating them, the skill keeps them current.
+
 - **2026-10-19 18:00** Code project template: *Status* and *Roadmap* dropped (*Progress* carries
   the plan), *Open questions* back after *Progress*; *Design*, *Lessons*, *Experiments*
   unchanged.
