@@ -36,6 +36,7 @@ open items with the rest.
 - [x] Agent tooling: the Claude Code plugin (skill and `/yajna:project` commands), agents as authors, reproducible runs
 - [x] Parallel work: `worktree`, `validate --against`, `renumber` (ADR-0021)
 - [x] Phase 1: the one-way ELN exporter, `yajna export` (ADR-0010)
+- [ ] Verify `import benchling` against real exports from the lab's tenant ([[EXP-0001]])
 - [ ] Phase 1: upload to the institutional ELN, and its import format, once the ELN is named
 - [ ] Phase 1b: collaboration through Google Docs (`yajna sync`)
 - [ ] Phase 2: data and runs (git-annex, `ART` pages, `experiment` and `autoresearch` commands)
@@ -89,3 +90,4 @@ What was tried and dropped, and why, so nobody tries it again.
 ## Experiments
 One line per experiment after its link, what it asks and what came of it; `yajna validate`
 rejects a bare link here. Newest last.
+- [[EXP-0001]] does `import benchling` read real Benchling exports; planned, deferred until exports from the lab's tenant are at hand
