@@ -62,8 +62,8 @@ ID, so create the run first, then write the script at the path printed on the pa
 - **One run per result the experiment will rest on**, not one per command. A `RUN`
   page has kind `compute` for anything executed, `bench` for bench sessions.
 - **Curated pages are human-signed.** When you edit an `EXP`, `PRO` or `MAT` page, set
-  `review: pending` in its frontmatter; only a human removes it. Rewrite *Current belief*
-  (*Status* on a code project's page); append everywhere else. The *Conclusion* of an experiment is written
+  `review: pending` in its frontmatter; only a human removes it. Rewrite *Current belief*;
+  append everywhere else. The *Conclusion* of an experiment is written
   once, by a human: propose it in the log or the `AGS` page instead.
 - **Large files never go into git history.** Results that matter become `ART` pages;
   ask before adding anything over a few MB.

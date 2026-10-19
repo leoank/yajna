@@ -8,6 +8,10 @@ link the file.
 
 ## 2026-10-19
 
+- **2026-10-19 18:00** Code project template: *Status* and *Roadmap* dropped (*Progress* carries
+  the plan), *Open questions* back after *Progress*; *Design*, *Lessons*, *Experiments*
+  unchanged.
+
 - **2026-10-19 17:00** Project pages gain a *Progress* checklist after the *Introduction*,
   in both templates: what is planned, ticked as it lands. Conventions, the skill and the
   project command fill and keep it.

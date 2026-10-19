@@ -39,6 +39,7 @@ questions and files a code project needs. Load the `yajna` skill first.
   `README.md` index: context, decision, consequences.
 - The first phase's spikes as experiments (`yajna new experiment ... --project`), each
   a question the architecture rests on, run as `compute` runs with a reproducible script.
-- The project page uses the code template (`--code`): *Introduction*, *Status*, *Design*
-  (linking the design doc and decisions), *Roadmap*, *Lessons*, *Experiments*. Rewrite
-  *Status*; the spikes' open questions go under *Roadmap*.
+- The project page uses the code template (`--code`): *Introduction*, *Progress*, *Open
+  questions* (what the spikes must answer), *Design* (linking the design doc and
+  decisions), *Lessons*, *Experiments*. The phases go into *Progress* as
+  its checklist.

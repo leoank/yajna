@@ -20,16 +20,12 @@ when it lands. Add items as plans change; keep the done ones. `yajna tasks` list
 open items with the rest.
 - [ ] 
 
-## Status
-What exists and works right now, in a paragraph; what is broken or missing. Rewrite,
-do not append.
+## Open questions
+- 
 
 ## Design
 Where the architecture and its decisions live (`code/$slug/docs/`), and the few choices
 a reader must know before touching the code.
-
-## Roadmap
-- 
 
 ## Lessons
 What was tried and dropped, and why, so nobody tries it again.
