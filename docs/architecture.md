@@ -411,8 +411,8 @@ Validation failures are build failures. The same indexer runs in CI via `nix fla
   target, not the source of truth. No sync with Benchling is planned. We may occasionally
   want to import from it: notebook entries come out of the API with full body content
   (dated days and typed note parts), and plasmids come out as GenBank from the API or the
-  UI. That would be a one-off `yajna import benchling` command writing ordinary pages and
-  `.gb` files, not a sync mode. API access depends on the tenant having the Developer
+  UI. That is the one-off `yajna import benchling` command (built 2026-10-19) writing
+  ordinary pages and `.gb` files from hand-exported files, not a sync mode. API access depends on the tenant having the Developer
   Platform capability; the UI export of GenBank files works regardless.
 - **Notion**: same problem. An exporter could publish project status pages there for others.
 - **Weights & Biases, MLflow**: good dashboards. Keep metrics as local JSONL (the truth) and

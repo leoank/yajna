@@ -356,7 +356,7 @@ fn split_raw(text: &str) -> (Option<&str>, &str) {
 }
 
 /// Apply line edits to the frontmatter of a page's text.
-fn edit_frontmatter(text: &str, edit: impl FnOnce(&mut Vec<String>)) -> String {
+pub(crate) fn edit_frontmatter(text: &str, edit: impl FnOnce(&mut Vec<String>)) -> String {
     let (fm, body) = split_raw(text);
     let Some(fm) = fm else {
         return text.to_string();
@@ -366,7 +366,7 @@ fn edit_frontmatter(text: &str, edit: impl FnOnce(&mut Vec<String>)) -> String {
     format!("---\n{}\n---\n{body}", lines.join("\n"))
 }
 
-fn set_field(lines: &mut Vec<String>, key: &str, value: &str) {
+pub(crate) fn set_field(lines: &mut Vec<String>, key: &str, value: &str) {
     let line = format!("{key}: {}", dump_scalar(value));
     match lines.iter().position(|l| l.starts_with(&format!("{key}:"))) {
         Some(i) => lines[i] = line,

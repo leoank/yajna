@@ -1626,6 +1626,132 @@ fn export_bundles_what_changed_since_the_last_export() {
 }
 
 #[test]
+fn import_benchling_genbank_and_entries() {
+    let v = vault();
+    assert_eq!(v.run(&["new", "project", "Cloning"]).code, 0);
+    let src = v.root.join("export");
+    fs::create_dir_all(src.join("seq")).unwrap();
+    fs::write(
+        src.join("seq/plasmids.gb"),
+        "LOCUS       pYJ001        2686 bp    DNA     circular SYN 19-OCT-2026\nDEFINITION  pUC19 backbone with sfGFP.\nFEATURES             Location/Qualifiers\n     CDS             100..817\n                     /label=\"sfGFP\"\nORIGIN\n        1 tcgcgcgttt\n//\nLOCUS       pYJ002        3000 bp    DNA     circular SYN 19-OCT-2026\n//\n",
+    )
+    .unwrap();
+    fs::write(
+        src.join("entry.json"),
+        r#"{"id": "etr_abc", "displayId": "EXP123", "name": "Cloning sfGFP: day one",
+            "createdAt": "2026-03-04T10:00:00Z", "modifiedAt": "2026-03-05T12:00:00Z",
+            "creator": {"handle": "ank", "name": "Ankur"}, "webURL": "https://x.benchling.com/e/etr_abc",
+            "days": [{"date": "2026-03-04", "notes": [
+                {"type": "text", "text": "Digest with @EcoRI, ask @sam"},
+                {"type": "list_checkbox", "checked": true, "text": "gel run"},
+                {"type": "list_checkbox", "checked": false, "text": "sequence"},
+                {"type": "table", "table": {"name": "Gel", "columnLabels": ["lane", "band"], "rows": [{"cells": [{"text": "1"}, {"text": "2.7 kb"}]}]}},
+                {"type": "registration_table"}]}]}"#,
+    )
+    .unwrap();
+    let srcs = src.to_str().unwrap();
+    let out = v.run(&[
+        "import",
+        "benchling",
+        srcs,
+        "--project",
+        "PRJ-0001",
+        "--dry-run",
+    ]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(out.stdout.contains("would import 3"), "{}", out.stdout);
+    assert!(!v.root.join("notes/materials/MAT-0001-pyj001.md").exists());
+
+    let out = v.run(&["import", "benchling", srcs, "--project", "PRJ-0001"]);
+    assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
+    assert!(
+        out.stdout.contains("imported 3, skipped 0"),
+        "{}",
+        out.stdout
+    );
+    let mat = v.read(&v.root.join("notes/materials/MAT-0001-pyj001.md"));
+    assert!(
+        mat.contains("kind: plasmid")
+            && mat.contains("benchling: genbank:pYJ001")
+            && mat.contains("source: Benchling"),
+        "{mat}"
+    );
+    assert!(
+        mat.contains("pUC19 backbone with sfGFP. 2686 bp circular DNA."),
+        "{mat}"
+    );
+    assert!(mat.contains("| CDS | sfGFP | 100..817 |"), "{mat}");
+    let gb = v.read(&v.root.join("notes/materials/MAT-0001/pyj001.gb"));
+    assert!(
+        gb.starts_with("LOCUS       pYJ001")
+            && gb.trim_end().ends_with("//")
+            && !gb.contains("pYJ002")
+    );
+    let exp = v.read(
+        &v.root
+            .join("notes/projects/PRJ-0001-cloning/experiments/EXP-0001-cloning-sfgfp-day-one.md"),
+    );
+    assert!(
+        exp.contains("title: \"Cloning sfGFP: day one\"") && exp.contains("status: concluded\n"),
+        "{exp}"
+    );
+    assert!(
+        exp.contains("created: 2026-03-04\n") && exp.contains("benchling: entry:etr_abc"),
+        "{exp}"
+    );
+    assert!(
+        exp.contains("## 2026-03-04\n") && exp.contains("&#64;EcoRI"),
+        "{exp}"
+    );
+    assert!(exp.contains("- [x] gel run\n- [ ] sequence\n"), "{exp}");
+    assert!(
+        exp.contains("| 1 | 2.7 kb |") && exp.contains("`registration_table` part is not imported"),
+        "{exp}"
+    );
+    let out = v.run(&["validate"]);
+    assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
+
+    // a second import changes nothing
+    let out = v.run(&["import", "benchling", srcs, "--project", "PRJ-0001"]);
+    assert!(
+        out.stdout.contains("imported 0, skipped 3"),
+        "{}",
+        out.stdout
+    );
+    // entries need a project; junk is refused
+    let out = v.run(&[
+        "import",
+        "benchling",
+        src.join("entry.json").to_str().unwrap(),
+    ]);
+    assert_eq!(
+        out.code, 0,
+        "already imported entries need nothing: {}",
+        out.stderr
+    );
+    fs::write(src.join("other.json"), r#"{"id": "etr_new", "name": "N"}"#).unwrap();
+    let out = v.run(&[
+        "import",
+        "benchling",
+        src.join("other.json").to_str().unwrap(),
+    ]);
+    assert_eq!(out.code, 1);
+    assert!(out.stderr.contains("--project"), "{}", out.stderr);
+    fs::write(src.join("bad.json"), r#"{"x": 1}"#).unwrap();
+    assert_eq!(
+        v.run(&[
+            "import",
+            "benchling",
+            src.join("bad.json").to_str().unwrap(),
+            "--project",
+            "PRJ-0001"
+        ])
+        .code,
+        1
+    );
+}
+
+#[test]
 fn site_serve_answers_http_and_rerenders() {
     use std::io::{BufRead, BufReader, Read, Write};
     let v = indexed_lab();

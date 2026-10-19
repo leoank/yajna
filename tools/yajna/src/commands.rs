@@ -102,6 +102,25 @@ pub fn run(vault: &Vault, cmd: &Cmd, prompter: &mut dyn Prompter) -> Res<i32> {
             *dry_run,
             *allow_dirty,
         ),
+        Cmd::Import {
+            source:
+                crate::cli::ImportSource::Benchling {
+                    paths,
+                    project,
+                    kind,
+                    status,
+                    dry_run,
+                },
+        } => crate::import::cmd_import_benchling(
+            vault,
+            paths,
+            &crate::import::Options {
+                project: project.as_deref(),
+                kind,
+                status,
+                dry_run: *dry_run,
+            },
+        ),
         Cmd::Renumber { old, new } => crate::parallel::renumber(vault, old, new.as_deref()),
         Cmd::Worktree {
             project,

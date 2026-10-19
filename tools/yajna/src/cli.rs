@@ -126,6 +126,11 @@ pub enum Cmd {
         #[arg(long)]
         allow_dirty: bool,
     },
+    /// one-off import of files exported from another tool, written as ordinary pages
+    Import {
+        #[command(subcommand)]
+        source: ImportSource,
+    },
     /// give a curated page a new ID and rewrite every reference (resolves a branch collision)
     Renumber {
         /// the ID to replace, e.g. EXP-0012
@@ -203,6 +208,29 @@ pub enum Cmd {
         /// the new repo's namespace (default: the last path segment of --to)
         #[arg(long)]
         namespace: Option<String>,
+    },
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum ImportSource {
+    /// GenBank files (.gb/.gbk/.genbank) become materials; entry JSON from the Benchling API
+    /// (GET /entries/{id}, one entry, a list, or {"entries": [...]}) becomes experiments
+    Benchling {
+        /// files or directories exported from Benchling
+        #[arg(required = true)]
+        paths: Vec<PathBuf>,
+        /// PRJ-xxxx the imported notebook entries belong to
+        #[arg(long)]
+        project: Option<String>,
+        /// material kind for GenBank records
+        #[arg(long, default_value = "plasmid")]
+        kind: String,
+        /// status of imported experiments
+        #[arg(long, default_value = "concluded")]
+        status: String,
+        /// list what would be imported and stop
+        #[arg(long)]
+        dry_run: bool,
     },
 }
 

@@ -1,6 +1,7 @@
 mod cli;
 mod commands;
 mod export;
+mod import;
 mod index;
 mod init;
 mod parallel;

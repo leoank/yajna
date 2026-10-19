@@ -344,6 +344,30 @@ sources, `manifest.json` (commit, time, who, selection, and a SHA-256 per page),
 `notes/exports.tsv`; commit it, and the next export takes only what changed since. Upload
 the bundle to the ELN by hand until its API is wired in.
 
+## Importing from Benchling
+
+A one-off import of files exported from Benchling by hand, written as ordinary pages that
+are edited here from then on. Nothing is synced back.
+
+```
+yajna import benchling exports/ --project PRJ-0004 --dry-run
+yajna import benchling exports/ --project PRJ-0004 [--kind plasmid] [--status concluded]
+```
+
+- GenBank files (`.gb`, `.gbk`, `.genbank`; the UI exports them on every tenant) become
+  `MAT` pages, one per record, of kind `plasmid` unless `--kind` says otherwise. The
+  record is kept as `notes/materials/MAT-xxxx/<locus>.gb`; the page gets its definition,
+  length, topology and a feature table. Stock fields (location, quantity, status) are not
+  in the export and are left for you.
+- Notebook entries saved as the API returns them (`GET /entries/{id}`: one entry, a list,
+  or `{"entries": [...]}`) become `EXP` pages in `--project`, `created` on the entry's
+  date, one section per entry day with text, lists, checkboxes and tables. Parts that are
+  bound to Benchling (registration, results, plate and inventory tables) are named, not
+  imported. The UI's PDF export of an entry cannot be imported.
+- `@` and `[[` from Benchling text are kept literal so they never read as citations or
+  links. Every page carries `benchling: <key>`, so importing the same files again skips
+  them.
+
 ## Working in parallel
 
 Several agents can work on one notebook at once, each in its own git worktree on its own
