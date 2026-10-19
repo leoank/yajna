@@ -323,6 +323,27 @@ Tags carry the tree: put the theme first (`tags: [timing, confinement]`). `outco
 colours the node (positive green, negative red, inconclusive amber, infra grey, open
 white). `influenced_by` draws the dotted edges.
 
+## Exporting to an ELN
+
+The notebook is the record; an institutional ELN, when one is required, gets read-only
+snapshots of it (ADR-0010). Nobody edits there and nothing comes back.
+
+```
+yajna export --dry-run          # what would go: pages changed since the last export
+yajna export                    # cut the bundle; the first export takes every page
+yajna export EXP-0007 RUN-...   # just these pages
+yajna export --since <commit>   # changed since a given commit instead
+```
+
+The notebook must validate and have no uncommitted changes, so a bundle always matches
+the commit stamped on it (`--allow-dirty` overrides and marks the manifest). A bundle is
+a directory and a `.tar.gz` of it under `~/.cache/yajna/exports/` (`--out` elsewhere):
+one HTML page per notebook page with links only to pages inside the bundle, the markdown
+sources, `manifest.json` (commit, time, who, selection, and a SHA-256 per page),
+`SHA256SUMS` over every file, all read-only. Each export appends a row to
+`notes/exports.tsv`; commit it, and the next export takes only what changed since. Upload
+the bundle to the ELN by hand until its API is wired in.
+
 ## Working in parallel
 
 Several agents can work on one notebook at once, each in its own git worktree on its own

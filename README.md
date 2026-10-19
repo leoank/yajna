@@ -42,6 +42,7 @@ yajna timeline MAT-0210                          # everything recorded about a m
 yajna tree PRJ-0001                              # experiments by theme, outcome, runs, influence
 yajna runs EXP-0007 --by loss                    # an experiment's runs ordered by a metric
 yajna site --serve --open                        # the static site in a browser, refreshed as pages change
+yajna export                                     # read-only bundle of what changed, for an institutional ELN
 yajna worktree PRJ-0003 aero-map                 # a branch and worktree with its own agent author
 yajna validate --against main                    # curated IDs allocated on both branches?
 yajna renumber EXP-0012                          # resolve one: new ID, every reference rewritten

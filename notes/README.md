@@ -35,7 +35,8 @@ open items with the rest.
 - [x] Phase 1: the index, `show`, `timeline`, `tree` and `runs`, the static site with `--serve`, CI (ADR-0019)
 - [x] Agent tooling: the Claude Code plugin (skill and `/yajna:project` commands), agents as authors, reproducible runs
 - [x] Parallel work: `worktree`, `validate --against`, `renumber` (ADR-0021)
-- [ ] Phase 1: the one-way ELN exporter (ADR-0010 put it at the start of Phase 1)
+- [x] Phase 1: the one-way ELN exporter, `yajna export` (ADR-0010)
+- [ ] Phase 1: upload to the institutional ELN, and its import format, once the ELN is named
 - [ ] Phase 1b: collaboration through Google Docs (`yajna sync`)
 - [ ] Phase 2: data and runs (git-annex, `ART` pages, `experiment` and `autoresearch` commands)
 - [ ] Phase 2b: bench planning (run sheets, inventory, schedules)
@@ -52,6 +53,9 @@ open items with the rest.
   installed, so two copies load. Should it skip the copy when the plugin is present?
 - Experiments keep counter IDs (ADR-0021). Do branch collisions stay rare enough that they
   never need volume IDs?
+
+- Which ELN does the lab use, and does it take an upload through an API, an import
+  format, or only files? That decides the last renderer of `yajna export`.
 
 ## Design
 The architecture is `docs/architecture.md` and its decision records are

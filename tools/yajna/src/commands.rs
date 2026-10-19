@@ -86,6 +86,22 @@ pub fn run(vault: &Vault, cmd: &Cmd, prompter: &mut dyn Prompter) -> Res<i32> {
         Cmd::Tasks { done } => cmd_tasks(vault, *done),
         Cmd::Ref { key, note } => cmd_ref(vault, key, *note),
         Cmd::Validate { against } => cmd_validate(vault, against.as_deref()),
+        Cmd::Export {
+            ids,
+            all,
+            since,
+            out,
+            dry_run,
+            allow_dirty,
+        } => crate::export::cmd_export(
+            vault,
+            ids,
+            *all,
+            since.as_deref(),
+            out.as_deref(),
+            *dry_run,
+            *allow_dirty,
+        ),
         Cmd::Renumber { old, new } => crate::parallel::renumber(vault, old, new.as_deref()),
         Cmd::Worktree {
             project,

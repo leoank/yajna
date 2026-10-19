@@ -1498,6 +1498,134 @@ fn worktree_branches_with_its_own_author() {
 }
 
 #[test]
+fn export_bundles_what_changed_since_the_last_export() {
+    let v = git_lab();
+    let out_dir = v.root.join("eln");
+    let out = |args: &[&str]| {
+        let mut a = vec!["export", "--out", out_dir.to_str().unwrap()];
+        a.extend_from_slice(args);
+        v.run(&a)
+    };
+    // the first export takes everything
+    let r = out(&[]);
+    assert_eq!(r.code, 0, "{}{}", r.stdout, r.stderr);
+    assert!(r.stdout.contains("2 page(s), all pages"), "{}", r.stdout);
+    let bundles: Vec<PathBuf> = fs::read_dir(&out_dir)
+        .unwrap()
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.is_dir())
+        .collect();
+    assert_eq!(bundles.len(), 1);
+    let b = &bundles[0];
+    let name = b.file_name().unwrap().to_string_lossy().to_string();
+    assert!(name.starts_with("eln-yajna-"), "{name}");
+    assert!(out_dir.join(format!("{name}.tar.gz")).is_file());
+    for f in [
+        "index.html",
+        "manifest.json",
+        "SHA256SUMS",
+        "PRJ-0001.html",
+        "EXP-0001.html",
+    ] {
+        assert!(b.join(f).is_file(), "{f}");
+    }
+    assert!(b
+        .join("source/notes/projects/PRJ-0001-toy/README.md")
+        .is_file());
+    let manifest: serde_json::Value =
+        serde_json::from_str(&v.read(&b.join("manifest.json"))).unwrap();
+    let head = git(&v.root, &["rev-parse", "HEAD"]);
+    assert_eq!(manifest["commit"], head.trim());
+    assert_eq!(manifest["pages"].as_array().unwrap().len(), 2);
+    let sums = v.read(&b.join("SHA256SUMS"));
+    assert!(
+        sums.contains("  EXP-0001.html\n") && sums.contains("  manifest.json\n"),
+        "{sums}"
+    );
+    assert!(
+        fs::metadata(b.join("index.html"))
+            .unwrap()
+            .permissions()
+            .readonly(),
+        "read-only"
+    );
+    let record = v.root.join("notes/exports.tsv");
+    assert!(v
+        .read(&record)
+        .starts_with("exported_at\tcommit\tbundle\tpages\tselection\n"));
+
+    // uncommitted changes are refused, so a bundle always matches its commit
+    let r = out(&[]);
+    assert_eq!(r.code, 1, "exports.tsv itself is uncommitted");
+    assert!(r.stderr.contains("uncommitted changes"), "{}", r.stderr);
+    git(&v.root, &["add", "-A"]);
+    git(&v.root, &["commit", "-q", "-m", "export recorded"]);
+    let r = out(&[]);
+    assert_eq!(r.code, 0);
+    assert!(r.stdout.contains("nothing to export"), "{}", r.stdout);
+
+    // a change to a page and to a run's sidecar exports just those pages
+    let exp = first_md(&v.root.join("notes/projects/PRJ-0001-toy/experiments"));
+    fs::write(
+        &exp,
+        v.read(&exp) + "\nSee [[PRJ-0001]] and [[EXP-0002]] and `[[EXP-0009]]`.\n",
+    )
+    .unwrap();
+    assert_eq!(
+        v.run(&["new", "experiment", "Second", "--project", "PRJ-0001"])
+            .code,
+        0
+    );
+    git(&v.root, &["add", "-A"]);
+    git(&v.root, &["commit", "-q", "-m", "work"]);
+    let r = out(&["--dry-run"]);
+    assert!(
+        r.stdout
+            .contains("2 page(s) would be exported (changed since"),
+        "{}",
+        r.stdout
+    );
+    std::thread::sleep(std::time::Duration::from_millis(1100));
+    let r = out(&[]);
+    assert_eq!(r.code, 0, "{}{}", r.stdout, r.stderr);
+    let newest = fs::read_dir(&out_dir)
+        .unwrap()
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.is_dir() && p != b)
+        .max()
+        .unwrap();
+    let html = v.read(&newest.join("EXP-0001.html"));
+    assert!(
+        html.contains("<a href=\"EXP-0002.html\">EXP-0002</a>"),
+        "in the bundle: linked"
+    );
+    assert!(
+        !html.contains("PRJ-0001.html") && html.contains("PRJ-0001"),
+        "outside the bundle: plain text"
+    );
+    assert!(
+        html.contains("<code>[[EXP-0009]]</code>"),
+        "code spans untouched"
+    );
+    assert!(!newest.join("PRJ-0001.html").exists());
+    assert_eq!(v.read(&record).lines().count(), 3);
+
+    // named pages, and errors
+    git(&v.root, &["add", "-A"]);
+    git(&v.root, &["commit", "-q", "-m", "second export"]);
+    let r = out(&["PRJ-0001", "--dry-run"]);
+    assert!(
+        r.stdout
+            .contains("1 page(s) would be exported (named: PRJ-0001)"),
+        "{}",
+        r.stdout
+    );
+    assert_eq!(out(&["EXP-0099"]).code, 1);
+}
+
+#[test]
 fn site_serve_answers_http_and_rerenders() {
     use std::io::{BufRead, BufReader, Read, Write};
     let v = indexed_lab();

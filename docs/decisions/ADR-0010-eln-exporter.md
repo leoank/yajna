@@ -27,3 +27,6 @@ ELN objects, or any state in the ELN that the repo depends on.
 - The ELN is an archive of snapshots. Nobody edits there.
 - The exporter lands at the start of Phase 1, not later, so that the first real records are
   covered.
+- Built on 2026-10-19 as `yajna export` with an HTML bundle (pages, sources, manifest,
+  SHA-256 sums, `.tar.gz`) and `notes/exports.tsv` as the record of exports. The target
+  ELN is still unnamed, so upload is by hand and the ELN-specific renderer is not written.

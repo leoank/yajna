@@ -15,7 +15,7 @@ use crate::index::{Entity, Index, LogEntry};
 use crate::query;
 use crate::vault::{Res, Vault, LINK_RE, NS_ID_RE};
 
-const CSS: &str = r#"
+pub(crate) const CSS: &str = r#"
 body{font:15px/1.5 system-ui,sans-serif;max-width:60rem;margin:2rem auto;padding:0 1rem;color:#222}
 a{color:#1a5fb4;text-decoration:none}a:hover{text-decoration:underline}
 nav{font-size:.9em;color:#666;margin-bottom:1.5rem}nav a{margin-right:1rem}
@@ -29,7 +29,7 @@ th{background:#f4f4f4}code,pre{font-family:ui-monospace,monospace;font-size:.9em
 svg text{font:12px system-ui,sans-serif}
 "#;
 
-fn esc(s: &str) -> String {
+pub(crate) fn esc(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")

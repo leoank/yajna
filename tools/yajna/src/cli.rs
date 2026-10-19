@@ -105,6 +105,27 @@ pub enum Cmd {
         #[arg(long, value_name = "REF")]
         against: Option<String>,
     },
+    /// a dated, read-only bundle of pages for an institutional ELN (ADR-0010); by default
+    /// every page changed since the last export recorded in notes/exports.tsv
+    Export {
+        /// export these IDs only
+        ids: Vec<String>,
+        /// export every page
+        #[arg(long)]
+        all: bool,
+        /// export pages changed since this commit instead of since the last export
+        #[arg(long, value_name = "REV")]
+        since: Option<String>,
+        /// directory to write the bundle into (default: <cache>/exports)
+        #[arg(long)]
+        out: Option<PathBuf>,
+        /// list what would be exported and stop
+        #[arg(long)]
+        dry_run: bool,
+        /// export even with uncommitted changes in the notebook (marked dirty in the manifest)
+        #[arg(long)]
+        allow_dirty: bool,
+    },
     /// give a curated page a new ID and rewrite every reference (resolves a branch collision)
     Renumber {
         /// the ID to replace, e.g. EXP-0012
