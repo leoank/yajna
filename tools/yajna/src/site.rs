@@ -261,6 +261,31 @@ fn tree_svg(ix: &Index, project: &str) -> String {
     )
 }
 
+/// A project's experiments with the one-line description the project page gives each.
+fn experiments_table(ix: &Index, project: &str) -> String {
+    let exps = ix.entities(
+        "WHERE type = 'experiment' AND project = ?1",
+        &[&project.to_string()],
+    );
+    if exps.is_empty() {
+        return String::new();
+    }
+    let mut out = String::from(
+        "<h2>Experiments</h2><table><tr><th>id</th><th>status</th><th>title</th><th>in short</th></tr>\n",
+    );
+    for e in exps {
+        out.push_str(&format!(
+            "<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>\n",
+            link_to(ix, &e.id),
+            status_span(&e),
+            esc(&e.title),
+            esc(&ix.note(project, &e.id).unwrap_or_default())
+        ));
+    }
+    out.push_str("</table>");
+    out
+}
+
 fn runs_table(ix: &Index, experiment: &str) -> String {
     let rows = ix.results(experiment);
     let runs = ix.entities(
@@ -278,8 +303,9 @@ fn runs_table(ix: &Index, experiment: &str) -> String {
             }
         }
     }
-    let mut out =
-        String::from("<h2>Runs</h2><table><tr><th>run</th><th>status</th><th>finished</th>");
+    let mut out = String::from(
+        "<h2>Runs</h2><table><tr><th>run</th><th>status</th><th>finished</th><th>in short</th>",
+    );
     for c in &columns {
         out.push_str(&format!("<th>{}</th>", esc(c)));
     }
@@ -289,14 +315,15 @@ fn runs_table(ix: &Index, experiment: &str) -> String {
         seen.push(run.id.clone());
         let row = rows.iter().find(|r| r.run == run.id);
         out.push_str(&format!(
-            "<tr><td>{}</td><td>{}</td><td>{}</td>",
+            "<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td>",
             link_to(ix, &run.id),
             esc(&run.status.clone().unwrap_or_default()),
             esc(run
                 .meta
                 .get("finished")
                 .and_then(|v| v.as_str())
-                .unwrap_or(""))
+                .unwrap_or("")),
+            esc(&ix.note(experiment, &run.id).unwrap_or_default())
         ));
         for c in &columns {
             let v = row
@@ -309,7 +336,7 @@ fn runs_table(ix: &Index, experiment: &str) -> String {
     }
     for r in rows.iter().filter(|r| !seen.contains(&r.run)) {
         out.push_str(&format!(
-            "<tr><td>{}</td><td></td><td>{}</td>",
+            "<tr><td>{}</td><td></td><td>{}</td><td></td>",
             esc(&r.run),
             esc(&r.finished)
         ));
@@ -341,6 +368,7 @@ fn entity_page(ix: &Index, e: &Entity) -> String {
         if !svg.is_empty() {
             body.push_str(&format!("<h2>Experiment tree</h2>\n{svg}\n"));
         }
+        body.push_str(&experiments_table(ix, &e.id));
     }
     body.push_str(&markdown(ix, &e.body));
     if e.etype == "experiment" {

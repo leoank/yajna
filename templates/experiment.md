@@ -25,7 +25,8 @@ If H1 is true we expect ... ; if false we expect ...
 ## Success criteria
 
 ## Runs
-Links to RUN pages (or a rendered view of results.tsv for metric-producing experiments).
+One line per run after its link, what was tried and what it showed; `yajna validate`
+rejects a bare link here. Metric runs also land in results.tsv.
 
 ## Conclusion
 Written once, by a human, when status becomes `concluded`.

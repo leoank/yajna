@@ -67,6 +67,11 @@ is set, a new page offers to open in it.
   The namespace must be in `[repos]`; the target is checked only when that repo's `path`
   is on disk. Frontmatter ID fields accept namespaced IDs too.
 - Never reuse or hand-edit an ID.
+- A project page lists its experiments and an experiment page its runs as
+  `- [[ID]] one line on what it asks and what came of it`. The line after the link is
+  required there (`yajna validate` rejects a bare `- [[EXP-0003]]`), is what `yajna site`
+  shows in the project's experiments table and the experiment's runs table, and is the
+  summary a reader gets without opening the page. Links in prose need no such line.
 
 ## Creating pages
 

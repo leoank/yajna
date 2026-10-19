@@ -801,6 +801,28 @@ fn indexed_lab() -> Vault {
         );
         assert_eq!(out.code, 0, "{}", out.stderr);
     }
+    // the project page lists its experiments with one line each, the experiment its runs
+    let prj = v
+        .root
+        .join("notes/projects/PRJ-0001-archaeal-division/README.md");
+    fs::write(
+        &prj,
+        v.read(&prj) + "- [[EXP-0001]] timing of ESCRT recruitment, positive\n- [[EXP-0002]] the same under confinement\n- [[EXP-0003]] membrane tension as a confound\n",
+    )
+    .unwrap();
+    let first_run = walk(
+        &v.root
+            .join("notes/projects/PRJ-0001-archaeal-division/runs"),
+    )
+    .into_iter()
+    .find(|p| p.extension().map(|e| e == "md").unwrap_or(false))
+    .unwrap();
+    let first_run_id = first_run.file_stem().unwrap().to_string_lossy().to_string();
+    fs::write(
+        &e1,
+        v.read(&e1) + &format!("\n- [[{first_run_id}]] the baseline sweep point\n"),
+    )
+    .unwrap();
     assert_eq!(v.run(&["ref", "shih2015cloning", "--note"]).code, 0);
     assert_eq!(
         v.run(&[
@@ -966,6 +988,10 @@ fn site_renders_tree_links_and_log() {
         project.contains(">timing<") && project.contains(">mechanics<"),
         "{project}"
     );
+    assert!(
+        project.contains("<h2>Experiments</h2>") && project.contains("the same under confinement"),
+        "{project}"
+    );
     let exp = v.read(&out_dir.join("EXP-0001.html"));
     assert!(
         exp.contains("<a href=\"PRO-0001.html\">the protocol</a>"),
@@ -981,6 +1007,10 @@ fn site_renders_tree_links_and_log() {
     );
     assert!(
         exp.contains("<h2>Runs</h2>") && exp.contains("0.31"),
+        "{exp}"
+    );
+    assert!(
+        exp.contains("<th>in short</th>") && exp.contains("the baseline sweep point"),
         "{exp}"
     );
     assert!(
@@ -1136,6 +1166,59 @@ fn skill_is_embedded_and_installed() {
         0
     );
     assert!(fresh.root.join(".claude/skills/yajna/SKILL.md").is_file());
+}
+
+#[test]
+fn listed_experiments_and_runs_need_a_description() {
+    let v = vault();
+    v.run(&["new", "project", "P"]);
+    v.run(&["new", "experiment", "E", "--project", "PRJ-0001"]);
+    let prj = v.root.join("notes/projects/PRJ-0001-p/README.md");
+    fs::write(&prj, v.read(&prj) + "- [[EXP-0001]]\n").unwrap();
+    let out = v.run(&["validate"]);
+    assert_eq!(out.code, 1);
+    assert!(
+        out.stdout
+            .contains("EXP-0001 is listed without a short description"),
+        "{}",
+        out.stdout
+    );
+    fs::write(
+        &prj,
+        v.read(&prj).replace(
+            "- [[EXP-0001]]\n",
+            "- [[EXP-0001]] what it asks, in one line\n",
+        ),
+    )
+    .unwrap();
+    assert_eq!(v.run(&["validate"]).code, 0);
+    // a bare link in prose is fine; a bare listed run is not
+    let exp = walk(&v.root.join("notes/projects/PRJ-0001-p/experiments"))
+        .into_iter()
+        .find(|p| p.extension().map(|e| e == "md").unwrap_or(false))
+        .unwrap();
+    v.run(&["new", "run", "--experiment", "EXP-0001"]);
+    let run_id = walk(&v.root.join("notes/projects/PRJ-0001-p/runs"))
+        .into_iter()
+        .find(|p| p.extension().map(|e| e == "md").unwrap_or(false))
+        .unwrap()
+        .file_stem()
+        .unwrap()
+        .to_string_lossy()
+        .to_string();
+    fs::write(
+        &exp,
+        v.read(&exp) + &format!("\nSee [[PRJ-0001]].\n- [[{run_id}]]\n"),
+    )
+    .unwrap();
+    let out = v.run(&["validate"]);
+    assert_eq!(out.code, 1);
+    assert!(
+        out.stdout
+            .contains(&format!("{run_id} is listed without a short description")),
+        "{}",
+        out.stdout
+    );
 }
 
 #[test]

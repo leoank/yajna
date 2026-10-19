@@ -15,6 +15,10 @@ use crate::vault::{
 };
 
 static STEP_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(\d+)\.\s+(.*?)\s*$").unwrap());
+/// `- [[ID]] description` list items: what a project page lists its experiments with and an
+/// experiment page its runs; the description is required.
+static LISTED_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^\s*[-*]\s+\[\[([^\]|]+)(?:\|[^\]]*)?\]\]\s*(.*?)\s*$").unwrap());
 
 struct Problems {
     root: PathBuf,
@@ -309,6 +313,28 @@ pub fn validate(vault: &Vault) -> Res<(Vec<String>, usize)> {
             if let Some(index) = lookup(ns) {
                 if !index.contains_key(id) {
                     problems.add(&page.path, format!("link to unknown id {ns}/{id}"));
+                }
+            }
+        }
+
+        // Listed children carry a short description: experiments on a project page, runs on
+        // an experiment page.
+        let child_prefix = match meta.get("type").and_then(|v| v.as_str()) {
+            Some("project") => Some("EXP-"),
+            Some("experiment") => Some("RUN-"),
+            _ => None,
+        };
+        if let Some(prefix) = child_prefix {
+            for line in page.body.lines() {
+                let Some(m) = LISTED_RE.captures(line) else {
+                    continue;
+                };
+                let target = m[1].trim();
+                if target.starts_with(prefix) && m[2].is_empty() {
+                    problems.add(
+                        &page.path,
+                        format!("{target} is listed without a short description after the link"),
+                    );
                 }
             }
         }

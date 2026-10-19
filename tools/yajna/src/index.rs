@@ -2,7 +2,7 @@
 //! cache, never the truth: it lives outside the repo and is rebuilt whenever a page is
 //! newer than it. Validation failures are build failures.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::{Path, PathBuf};
@@ -18,10 +18,15 @@ use crate::validate::{self, ids_in, parse_steps};
 use crate::vault::{rel, Res, Vault, LINK_RE, NS_ID_RE, PATH_FIELDS};
 
 /// Bumped whenever the tables change; an index built by another version is rebuilt.
-const SCHEMA: i64 = 1;
+const SCHEMA: i64 = 2;
 
 static LOG_LINE_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^- (\d\d:\d\d) (.*)$").unwrap());
+/// `- [[ID]] one line about it`: a link with its description, as project pages list
+/// experiments and experiment pages list runs.
+static LISTED_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?m)^\s*[-*]\s+\[\[([^\]|]+)(?:\|[^\]]*)?\]\]\s*(.*?)\s*$").unwrap()
+});
 static TASK_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^\s*- \[( |x|X)\] (.+?)\s*$").unwrap());
 
@@ -31,7 +36,7 @@ CREATE TABLE entity(
   id TEXT PRIMARY KEY, type TEXT NOT NULL, title TEXT NOT NULL, status TEXT, kind TEXT,
   outcome TEXT, project TEXT, experiment TEXT, created TEXT, author TEXT, tags TEXT,
   path TEXT NOT NULL, meta TEXT NOT NULL, body TEXT NOT NULL);
-CREATE TABLE link(src TEXT NOT NULL, dst TEXT NOT NULL, ns TEXT, version TEXT, context TEXT NOT NULL);
+CREATE TABLE link(src TEXT NOT NULL, dst TEXT NOT NULL, ns TEXT, version TEXT, context TEXT NOT NULL, note TEXT);
 CREATE INDEX link_dst ON link(dst);
 CREATE TABLE log_entry(path TEXT NOT NULL, line INTEGER NOT NULL, date TEXT NOT NULL,
   author TEXT NOT NULL, time TEXT NOT NULL, text TEXT NOT NULL);
@@ -222,6 +227,14 @@ impl Index {
                     insert_link(&tx, &id, &dst, Some(&n), None, k)?;
                 }
             }
+            // the one-line descriptions of listed links, by target
+            let mut notes: BTreeMap<String, String> = BTreeMap::new();
+            for m in LISTED_RE.captures_iter(&page.body) {
+                let target = m[1].trim().split('@').next().unwrap_or("").to_string();
+                if !m[2].is_empty() {
+                    notes.insert(target, m[2].to_string());
+                }
+            }
             for m in LINK_RE.captures_iter(&page.body) {
                 let target = m[1].trim();
                 let (target, version) = match target.split_once('@') {
@@ -235,7 +248,8 @@ impl Index {
                     continue;
                 }
                 let ns = c.get(1).map(|m| m.as_str());
-                insert_link(&tx, &id, &c[2], ns, version, "body")?;
+                let note = notes.get(target).map(String::as_str);
+                insert_link_note(&tx, &id, &c[2], ns, version, "body", note)?;
             }
             if ptype == "protocol" {
                 let (steps, _) = parse_steps(&page.body);
@@ -438,6 +452,17 @@ impl Index {
         rows
     }
 
+    /// The one-line description `src` gives for `dst` in a `- [[dst]] ...` list item.
+    pub fn note(&self, src: &str, dst: &str) -> Option<String> {
+        self.conn
+            .query_row(
+                "SELECT note FROM link WHERE src = ?1 AND dst = ?2 AND note IS NOT NULL LIMIT 1",
+                [src, dst],
+                |r| r.get(0),
+            )
+            .ok()
+    }
+
     pub fn tasks(&self, done: bool) -> Vec<Task> {
         let Ok(mut st) = self.conn.prepare(
             "SELECT path, line, id, section, done, text FROM task WHERE done = 0 OR ?1 ORDER BY path, line",
@@ -553,9 +578,21 @@ fn insert_link(
     version: Option<&str>,
     context: &str,
 ) -> Res<()> {
+    insert_link_note(tx, src, dst, ns, version, context, None)
+}
+
+fn insert_link_note(
+    tx: &Connection,
+    src: &str,
+    dst: &str,
+    ns: Option<&str>,
+    version: Option<&str>,
+    context: &str,
+    note: Option<&str>,
+) -> Res<()> {
     tx.execute(
-        "INSERT INTO link VALUES (?1,?2,?3,?4,?5)",
-        params![src, dst, ns, version, context],
+        "INSERT INTO link VALUES (?1,?2,?3,?4,?5,?6)",
+        params![src, dst, ns, version, context, note],
     )
     .map_err(|e| e.to_string())?;
     Ok(())

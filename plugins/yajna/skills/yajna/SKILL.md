@@ -48,6 +48,11 @@ ID, so create the run first, then write the script at the path printed on the pa
 - **Link with `[[ID]]`**, `[[ID|label]]`, `[[PRO-0012@3]]` for a protocol version,
   `[[ns/ID]]` into another repo listed in `[repos]`. A link to an unknown ID fails
   validation. Cite papers as `@citekey` from `references/library.bib`.
+- **List children with one line each.** On a project page `- [[EXP-0007]] what it asks
+  and what came of it`; on an experiment page `- [[RUN-20261016-k7f3]] what was tried and
+  what it showed`. A bare `- [[ID]]` fails validation; the line is what the site shows
+  next to the ID. Add the line when you create the page and rewrite it when the outcome
+  is known.
 - **Log, do not narrate in pages.** `yajna log` appends `- HH:MM text` to
   `notes/log/<year>/<date>.<author>.md`. Lines are appended, never reordered or edited.
   Log when you start, when something surprises you, and when you finish.

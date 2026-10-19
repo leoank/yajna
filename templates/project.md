@@ -24,4 +24,5 @@ What we think is true right now, in a paragraph. Rewrite, do not append.
 - 
 
 ## Experiments
-Filled by tooling once the index exists. Until then, link them here.
+One line per experiment after its link, what it asks and what came of it; `yajna validate`
+rejects a bare link here. Newest last.

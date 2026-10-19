@@ -8,6 +8,13 @@ link the file.
 
 ## 2026-10-19
 
+- **2026-10-19 13:30** Listed links carry a one-line description: `- [[EXP-0003]] what it
+  asks and what came of it` on project pages, `- [[RUN-...]] what was tried and what it
+  showed` on experiment pages. `validate` rejects a bare listed link, the index stores the
+  line as `link.note` (schema 2), and the site shows it in a new experiments table on the
+  project page and an "in short" column of the runs table. Templates, conventions, skill
+  and the project command say so.
+
 - **2026-10-19 12:00** `yajna site --serve [--port N] [--open]` renders the site and serves
   it from the binary (std-only HTTP, loopback), re-rendering before a request whenever a
   page, the bibliography or `yajna.toml` changed since the last render.

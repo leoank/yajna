@@ -29,5 +29,5 @@ a reader must know before touching the code.
 What was tried and dropped, and why, so nobody tries it again.
 
 ## Experiments
-Spikes and benchmarks the design rests on. Filled by tooling once the index exists;
-until then, link them here.
+One line per experiment after its link, what it asks and what came of it; `yajna validate`
+rejects a bare link here. Newest last.

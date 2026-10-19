@@ -58,7 +58,8 @@ experiments, open questions) and get an explicit yes before writing anything.
    own with the reason for each.
 2. `yajna new experiment "<question>" --project PRJ-xxxx` for each first experiment;
    fill *Question*, *Hypothesis and predictions*, *Plan* and *Success criteria* from the
-   interview. Leave *Conclusion* empty.
+   interview. Leave *Conclusion* empty. List each under *Experiments* on the project page
+   as `- [[EXP-xxxx]] one line on what it asks`.
 3. Note cited reading with `@citekey`; `yajna ref <key> --note` creates a reading note
    where one is missing.
 4. Log one line linking the new pages; update your `AGS` page's `created_entities`.
