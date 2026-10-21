@@ -1,5 +1,6 @@
 ---
-id: EXP-0001
+id: EXP-20261019-j4xp01
+previous_id: EXP-0001
 type: experiment
 schema_version: 1
 title: Does yajna import benchling read real Benchling exports?

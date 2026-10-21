@@ -1,5 +1,6 @@
 ---
-id: EXP-0002
+id: EXP-20261021-as4202
+previous_id: EXP-0002
 type: experiment
 schema_version: 1
 title: Does yajna sync work against the real Google Docs API?
