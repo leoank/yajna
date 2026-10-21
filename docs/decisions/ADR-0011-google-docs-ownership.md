@@ -20,5 +20,8 @@ lab members individually, or through a folder shared from that account. Credenti
 ## Consequences
 
 - The docs survive a change of institution.
+- Built on 2026-10-19 as `yajna sync` (publish mode): `yajna sync login` stores the token
+  outside the repo, at `YAJNA_GDOC_CREDENTIALS` or `~/.config/yajna/gdoc.json`; the scope
+  is `drive.file`, so yajna sees only the docs it created.
 - If the lab later needs the docs in a shared drive, ownership transfer or re-publishing
   under new IDs is the migration; the repo's `doc_id` fields are the only thing to update.

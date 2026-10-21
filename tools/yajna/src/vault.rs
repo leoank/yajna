@@ -249,6 +249,17 @@ pub struct Config {
     pub namespace: Option<String>,
     #[serde(default)]
     pub repos: BTreeMap<String, Repo>,
+    #[serde(default)]
+    pub sync: SyncConfig,
+}
+
+/// `[sync]` in yajna.toml: where new Google Docs go, and where links to unsynced pages point.
+#[derive(Debug, Default, Deserialize)]
+pub struct SyncConfig {
+    /// Drive folder ID that new docs are created in (shared with the readers)
+    pub folder: Option<String>,
+    /// base URL of the published static site
+    pub site_url: Option<String>,
 }
 
 /// One `[repos]` entry: `ns = "github:owner/repo"` or `ns = { url = "...", path = "../repo" }`.

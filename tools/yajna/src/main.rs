@@ -8,6 +8,7 @@ mod parallel;
 mod query;
 mod refs;
 mod site;
+mod sync;
 mod tui;
 mod validate;
 mod vault;

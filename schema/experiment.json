@@ -101,6 +101,31 @@
         "type": "string",
         "pattern": "^([a-z][a-z0-9_-]*/)?BLD-\\d{4,}$"
       }
+    },
+    "sync": {
+      "type": "object",
+      "description": "Google Docs sync (architecture 5.8): provider, mode, and the doc ID allocated on first publish",
+      "required": [
+        "provider"
+      ],
+      "properties": {
+        "provider": {
+          "enum": [
+            "gdoc"
+          ]
+        },
+        "mode": {
+          "enum": [
+            "publish",
+            "mirror",
+            "import"
+          ]
+        },
+        "doc_id": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": true

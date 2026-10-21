@@ -38,7 +38,9 @@ open items with the rest.
 - [x] Phase 1: the one-way ELN exporter, `yajna export` (ADR-0010)
 - [ ] Verify `import benchling` against real exports from the lab's tenant ([[EXP-0001]])
 - [ ] Phase 1: upload to the institutional ELN, and its import format, once the ELN is named
-- [ ] Phase 1b: collaboration through Google Docs (`yajna sync`)
+- [x] Phase 1b: `yajna sync` publishes marked pages to Google Docs and pulls comments back (ADR-0011)
+- [ ] Phase 1b verified: the PI reads and comments on a published page and the comments arrive in the repo ([[EXP-0002]])
+- [ ] Phase 1b later: `mirror` and `import` modes, once publishing is routine
 - [ ] Phase 2: data and runs (git-annex, `ART` pages, `experiment` and `autoresearch` commands)
 - [ ] Phase 2b: bench planning (run sheets, inventory, schedules)
 - [ ] Phase 3: the server and agents over HTTP and MCP
@@ -91,3 +93,4 @@ What was tried and dropped, and why, so nobody tries it again.
 One line per experiment after its link, what it asks and what came of it; `yajna validate`
 rejects a bare link here. Newest last.
 - [[EXP-0001]] does `import benchling` read real Benchling exports; planned, deferred until exports from the lab's tenant are at hand
+- [[EXP-0002]] does `yajna sync` work against the real Google Docs API; planned, deferred until an OAuth client exists for the personal account

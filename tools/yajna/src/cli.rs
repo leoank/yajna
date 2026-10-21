@@ -131,6 +131,21 @@ pub enum Cmd {
         #[command(subcommand)]
         source: ImportSource,
     },
+    /// publish pages marked `sync: {provider: gdoc, mode: publish}` to Google Docs and pull
+    /// their comments back under `## Review` (ADR-0011)
+    #[command(args_conflicts_with_subcommands = true)]
+    Sync {
+        #[command(subcommand)]
+        action: Option<SyncAction>,
+        /// only these IDs
+        ids: Vec<String>,
+        /// say what would happen, offline
+        #[arg(long)]
+        dry_run: bool,
+        /// publish without pulling comments
+        #[arg(long)]
+        no_comments: bool,
+    },
     /// give a curated page a new ID and rewrite every reference (resolves a branch collision)
     Renumber {
         /// the ID to replace, e.g. EXP-0012
@@ -208,6 +223,17 @@ pub enum Cmd {
         /// the new repo's namespace (default: the last path segment of --to)
         #[arg(long)]
         namespace: Option<String>,
+    },
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum SyncAction {
+    /// sign in once with the Google account that owns the docs; stores a refresh token
+    /// outside the repo
+    Login {
+        /// the OAuth client JSON (type Desktop app) from the Google Cloud console
+        #[arg(long)]
+        client: PathBuf,
     },
 }
 

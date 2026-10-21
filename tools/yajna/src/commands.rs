@@ -121,6 +121,16 @@ pub fn run(vault: &Vault, cmd: &Cmd, prompter: &mut dyn Prompter) -> Res<i32> {
                 dry_run: *dry_run,
             },
         ),
+        Cmd::Sync {
+            action: Some(crate::cli::SyncAction::Login { client }),
+            ..
+        } => crate::sync::login(client),
+        Cmd::Sync {
+            action: None,
+            ids,
+            dry_run,
+            no_comments,
+        } => crate::sync::cmd_sync(vault, ids, *dry_run, *no_comments),
         Cmd::Renumber { old, new } => crate::parallel::renumber(vault, old, new.as_deref()),
         Cmd::Worktree {
             project,

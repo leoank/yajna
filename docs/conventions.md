@@ -344,6 +344,37 @@ sources, `manifest.json` (commit, time, who, selection, and a SHA-256 per page),
 `notes/exports.tsv`; commit it, and the next export takes only what changed since. Upload
 the bundle to the ELN by hand until its API is wired in.
 
+## Sharing pages through Google Docs
+
+People who never open the repo read and comment on Google Docs (architecture 5.8,
+ADR-0011). Mark a page for it in its frontmatter:
+
+```yaml
+sync: {provider: gdoc, mode: publish}
+```
+
+```
+yajna sync login --client client_secret.json   # once: the Google account that owns the docs
+yajna sync --dry-run                            # what would be created or updated, offline
+yajna sync [ID ...]                             # publish, and pull comments back
+```
+
+- The first `yajna sync` creates a doc for each marked page and writes its ID back as
+  `doc_id`; the doc keeps that ID, URL and sharing for good. Later runs re-upload only
+  when the rendered page changed.
+- The doc shows the page's ID, status and title, then the body. `[[links]]` to other
+  synced pages point at their docs, to the site when `[sync] site_url` is set in
+  `yajna.toml`, and are plain text otherwise. `[sync] folder` is the Drive folder new docs
+  are created in; share it with the readers once.
+- Comments and replies come back into the page under `## Review` as checkboxes, before
+  any re-upload. Tick one to resolve the comment in the doc at the next sync. Items stay
+  even if the comment is deleted in the doc; the section itself is never published.
+- Only `publish` is built. `mirror` (edits in the doc come back) and `import` (the doc is
+  the truth) wait until publishing is routine.
+- Credentials are a refresh token in `~/.config/yajna/gdoc.json` (or wherever
+  `YAJNA_GDOC_CREDENTIALS` points, such as a secret from neusis), never in a repo. The
+  token's scope is `drive.file`: yajna sees only the docs it created.
+
 ## Importing from Benchling
 
 A one-off import of files exported from Benchling by hand, written as ordinary pages that

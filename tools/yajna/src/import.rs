@@ -23,7 +23,7 @@ pub struct Options<'a> {
 
 /// Text from Benchling must not turn into notebook syntax: `@name` would read as a citation
 /// and `[[x]]` as a link.
-fn literal(s: &str) -> String {
+pub(crate) fn literal(s: &str) -> String {
     s.replace('@', "&#64;").replace("[[", "&#91;&#91;")
 }
 

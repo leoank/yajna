@@ -1751,6 +1751,242 @@ fn import_benchling_genbank_and_entries() {
     );
 }
 
+/// What the fake Google API has seen and holds.
+#[derive(Default)]
+struct Drive {
+    docs: std::collections::BTreeMap<String, (String, String)>, // id -> (last html upload, yajna_hash)
+    uploads: usize,
+    comments: std::collections::BTreeMap<String, Vec<serde_json::Value>>,
+    resolved: Vec<String>,
+}
+
+/// A fake of the Drive endpoints `yajna sync` uses, on a free port.
+fn fake_drive() -> (String, std::sync::Arc<std::sync::Mutex<Drive>>) {
+    use std::io::{BufRead, BufReader, Read, Write};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    let state = std::sync::Arc::new(std::sync::Mutex::new(Drive::default()));
+    let st = state.clone();
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let mut stream = stream.unwrap();
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            let mut line = String::new();
+            reader.read_line(&mut line).unwrap();
+            let mut parts = line.split_whitespace();
+            let (method, target) = (
+                parts.next().unwrap_or("").to_string(),
+                parts.next().unwrap_or("").to_string(),
+            );
+            let mut len = 0;
+            loop {
+                let mut h = String::new();
+                reader.read_line(&mut h).unwrap();
+                if h.trim().is_empty() {
+                    break;
+                }
+                if let Some(v) = h.to_ascii_lowercase().strip_prefix("content-length:") {
+                    len = v.trim().parse().unwrap();
+                }
+            }
+            let mut body = vec![0; len];
+            reader.read_exact(&mut body).unwrap();
+            let body = String::from_utf8_lossy(&body).to_string();
+            let path = target.split('?').next().unwrap().to_string();
+            let mut d = st.lock().unwrap();
+            let seg: Vec<&str> = path.trim_start_matches('/').split('/').collect();
+            let hash_of = |b: &str| {
+                b.split("\"yajna_hash\":\"")
+                    .nth(1)
+                    .map(|r| r[..r.find('"').unwrap()].to_string())
+                    .unwrap_or_default()
+            };
+            let html_of = |b: &str| b[b.find("<html>").unwrap_or(0)..].to_string();
+            let reply = match (method.as_str(), seg.as_slice()) {
+                ("POST", ["upload", "drive", "v3", "files"]) => {
+                    let id = format!("doc{}", d.docs.len() + 1);
+                    d.docs.insert(id.clone(), (html_of(&body), hash_of(&body)));
+                    d.uploads += 1;
+                    serde_json::json!({"id": id})
+                }
+                ("PATCH", ["upload", "drive", "v3", "files", id]) => {
+                    d.docs
+                        .insert(id.to_string(), (html_of(&body), hash_of(&body)));
+                    d.uploads += 1;
+                    serde_json::json!({"id": id})
+                }
+                ("GET", ["drive", "v3", "files", id]) => {
+                    let h = d.docs.get(*id).map(|x| x.1.clone()).unwrap_or_default();
+                    serde_json::json!({"id": id, "trashed": false, "appProperties": {"yajna_hash": h}})
+                }
+                ("GET", ["drive", "v3", "files", id, "comments"]) => {
+                    serde_json::json!({"comments": d.comments.get(*id).cloned().unwrap_or_default()})
+                }
+                ("POST", ["drive", "v3", "files", id, "comments", cid, "replies"]) => {
+                    assert!(body.contains("\"resolve\""), "{body}");
+                    let cid = cid.to_string();
+                    for c in d.comments.get_mut(*id).into_iter().flatten() {
+                        if c["id"] == cid.as_str() {
+                            c["resolved"] = true.into();
+                        }
+                    }
+                    d.resolved.push(cid);
+                    serde_json::json!({"id": "r1"})
+                }
+                _ => serde_json::json!({"error": format!("{method} {path}")}),
+            };
+            let text = reply.to_string();
+            write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{text}", text.len()).unwrap();
+        }
+    });
+    (base, state)
+}
+
+#[test]
+fn sync_publishes_and_pulls_comments_back() {
+    let v = vault();
+    v.run(&["new", "project", "Archaea"]);
+    v.run(&["new", "protocol", "Transformation"]);
+    v.run(&["new", "experiment", "Timing", "--project", "PRJ-0001"]);
+    let prj = v.root.join("notes/projects/PRJ-0001-archaea/README.md");
+    let exp = first_md(&v.root.join("notes/projects/PRJ-0001-archaea/experiments"));
+    for p in [&prj, &exp] {
+        fs::write(
+            p,
+            v.read(p).replace(
+                "\ntags: []\n",
+                "\ntags: []\nsync: {provider: gdoc, mode: publish}\n",
+            ),
+        )
+        .unwrap();
+    }
+    fs::write(
+        &exp,
+        v.read(&exp) + "\nPart of [[PRJ-0001|the project]]; not [[PRO-0001]].\n",
+    )
+    .unwrap();
+    assert_eq!(v.run(&["validate"]).code, 0);
+    let (base, drive) = fake_drive();
+    let env = [("YAJNA_GDOC_API", base.as_str()), ("YAJNA_GDOC_TOKEN", "t")];
+    let sync = |args: &[&str]| {
+        let mut a = vec!["sync"];
+        a.extend_from_slice(args);
+        v.run_with(&a, None, &env)
+    };
+
+    let out = sync(&["--dry-run"]);
+    assert!(out.stdout.contains("create a new doc"), "{}", out.stdout);
+    assert_eq!(drive.lock().unwrap().uploads, 0, "dry run is offline");
+
+    // first sync: both pages get a doc, their IDs land in the frontmatter, links point at docs
+    let out = sync(&[]);
+    assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
+    assert!(
+        out.stdout.contains("2 page(s) synced: 2 published"),
+        "{}",
+        out.stdout
+    );
+    let prj_text = v.read(&prj);
+    assert!(
+        prj_text.contains("sync: {provider: gdoc, mode: publish, doc_id: doc"),
+        "{prj_text}"
+    );
+    let exp_doc = v
+        .read(&exp)
+        .split("doc_id: ")
+        .nth(1)
+        .unwrap()
+        .split('}')
+        .next()
+        .unwrap()
+        .to_string();
+    let prj_doc = prj_text
+        .split("doc_id: ")
+        .nth(1)
+        .unwrap()
+        .split('}')
+        .next()
+        .unwrap()
+        .to_string();
+    let html = drive.lock().unwrap().docs[&exp_doc].0.clone();
+    assert!(
+        html.contains(&format!(
+            "href=\"https://docs.google.com/document/d/{prj_doc}/edit\">the project</a>"
+        )),
+        "{html}"
+    );
+    assert!(
+        html.contains("not PRO-0001") && html.contains("<b>EXP-0001</b>"),
+        "{html}"
+    );
+    assert_eq!(v.run(&["validate"]).code, 0);
+
+    // nothing changed: nothing uploaded
+    let before = drive.lock().unwrap().uploads;
+    let out = sync(&[]);
+    assert!(out.stdout.contains("0 published"), "{}", out.stdout);
+    assert_eq!(drive.lock().unwrap().uploads, before);
+
+    // a comment in the doc comes back under ## Review, and is not republished into the doc
+    drive.lock().unwrap().comments.insert(prj_doc.clone(), vec![serde_json::json!({
+        "id": "c1", "author": {"displayName": "The PI"}, "content": "Is this @ 37C?",
+        "quotedFileContent": {"value": "Current belief"}, "createdTime": "2026-10-19T10:00:00Z", "resolved": false,
+        "replies": [{"author": {"displayName": "Ank"}, "content": "yes", "createdTime": "2026-10-19T11:00:00Z"}]})]);
+    let out = sync(&[]);
+    assert!(out.stdout.contains("1 new comment(s)"), "{}", out.stdout);
+    let prj_text = v.read(&prj);
+    assert!(prj_text.contains("## Review\n") && prj_text.contains("- [ ] The PI, 2026-10-19 on \"Current belief\": Is this &#64; 37C? <!-- gdoc:c1 -->\n  - Ank, 2026-10-19: yes\n"), "{prj_text}");
+    assert!(
+        !drive.lock().unwrap().docs[&prj_doc].0.contains("The PI"),
+        "Review stays out of the doc"
+    );
+    assert_eq!(v.run(&["validate"]).code, 0);
+    assert!(v.run(&["tasks"]).stdout.contains("Review: The PI"));
+
+    // ticking it resolves the comment in the doc; editing the page republishes
+    fs::write(
+        &prj,
+        v.read(&prj)
+            .replace("- [ ] The PI", "- [x] The PI")
+            .replace("## Open questions", "## Open questions\n- Is 37C right?"),
+    )
+    .unwrap();
+    let out = sync(&["PRJ-0001"]);
+    assert!(
+        out.stdout
+            .contains("1 page(s) synced: 1 published, 0 new comment(s), 1 resolved"),
+        "{}",
+        out.stdout
+    );
+    assert_eq!(drive.lock().unwrap().resolved, vec!["c1"]);
+    assert!(drive.lock().unwrap().docs[&prj_doc]
+        .0
+        .contains("Is 37C right?"));
+    let out = sync(&[]);
+    assert!(
+        out.stdout
+            .contains("0 published, 0 new comment(s), 0 resolved"),
+        "{}",
+        out.stdout
+    );
+
+    // other modes are skipped, other providers too
+    fs::write(&exp, v.read(&exp).replace("mode: publish", "mode: mirror")).unwrap();
+    let out = sync(&[]);
+    assert!(
+        out.stdout.contains("mode mirror is not built yet"),
+        "{}",
+        out.stdout
+    );
+    let out = v.run_with(
+        &["sync"],
+        None,
+        &[("YAJNA_GDOC_CREDENTIALS", "/nonexistent")],
+    );
+    assert_eq!(out.code, 1);
+    assert!(out.stderr.contains("yajna sync login"), "{}", out.stderr);
+}
+
 #[test]
 fn site_serve_answers_http_and_rerenders() {
     use std::io::{BufRead, BufReader, Read, Write};
