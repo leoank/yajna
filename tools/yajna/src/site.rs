@@ -26,7 +26,9 @@ th{background:#f4f4f4}code,pre{font-family:ui-monospace,monospace;font-size:.9em
 .status{display:inline-block;padding:0 .4em;border-radius:3px;background:#eee;font-size:.85em}
 .positive{background:#cfe8cf}.negative{background:#f3c9c9}.inconclusive{background:#f7e3b0}.infra{background:#ddd}
 .tl td:first-child{white-space:nowrap;color:#666}
-svg text{font:12px system-ui,sans-serif}
+svg text{font:11px system-ui,sans-serif;paint-order:stroke;stroke:#fff;stroke-width:3px;stroke-linejoin:round}
+td:first-child a{white-space:nowrap}
+.tree{overflow-x:auto;max-width:100%}.tree svg{display:block}
 "#;
 
 pub(crate) fn esc(s: &str) -> String {
@@ -192,6 +194,19 @@ fn log_rows(ix: &Index, entries: &[LogEntry]) -> String {
     out
 }
 
+/// A node's label: a date ID on two lines (`EXP-20261016` over `rq1407`), so neighbouring
+/// labels fit between nodes; a counter ID on one.
+fn node_label(id: &str, x: f64) -> String {
+    match id.rsplit_once('-') {
+        Some((head, tail)) if head.contains('-') => format!(
+            "<tspan x=\"{x}\">{}</tspan><tspan x=\"{x}\" dy=\"12\">{}</tspan>",
+            esc(head),
+            esc(tail)
+        ),
+        _ => esc(id),
+    }
+}
+
 /// The AutoGo-style experiment tree: themes as rows, experiments in creation order,
 /// outcome as colour, a solid line along each theme and dotted lines for `influenced_by`.
 fn tree_svg(ix: &Index, project: &str) -> String {
@@ -199,7 +214,7 @@ fn tree_svg(ix: &Index, project: &str) -> String {
     if themes.is_empty() {
         return String::new();
     }
-    let (x0, dx, dy, r) = (140.0, 110.0, 56.0, 9.0);
+    let (x0, dx, dy, r) = (140.0, 120.0, 60.0, 9.0);
     let mut pos: BTreeMap<String, (f64, f64)> = BTreeMap::new();
     let mut nodes = String::new();
     let mut lines = String::new();
@@ -239,7 +254,7 @@ fn tree_svg(ix: &Index, project: &str) -> String {
                 esc(&e.title),
                 esc(&e.status.clone().unwrap_or_default()),
                 y + r + 14.0,
-                esc(&e.id)
+                node_label(&e.id, x)
             ));
         }
         widest = widest.max(exps.len());
@@ -370,7 +385,9 @@ fn entity_page(ix: &Index, e: &Entity) -> String {
     if e.etype == "project" {
         let svg = tree_svg(ix, &e.id);
         if !svg.is_empty() {
-            body.push_str(&format!("<h2>Experiment tree</h2>\n{svg}\n"));
+            body.push_str(&format!(
+                "<h2>Experiment tree</h2>\n<div class=\"tree\">{svg}</div>\n"
+            ));
         }
         body.push_str(&experiments_table(ix, &e.id));
     }

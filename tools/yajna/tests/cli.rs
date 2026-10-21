@@ -1029,6 +1029,11 @@ fn site_renders_tree_links_and_log() {
     let project = v.read(&out_dir.join("PRJ-0001.html"));
     assert!(project.contains("<svg"), "tree on the project page");
     assert!(
+        project.contains("<div class=\"tree\"><svg")
+            && project.contains(">EXP-20261021</tspan><tspan"),
+        "date IDs label on two lines in a scrolling box"
+    );
+    assert!(
         project.contains("stroke-dasharray"),
         "influence edge is dotted"
     );
