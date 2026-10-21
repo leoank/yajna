@@ -65,9 +65,10 @@ is set, a new page offers to open in it.
   four-character suffix stay valid.
 - Projects, protocols, materials, equipment and builds get counter IDs from
   `notes/counters.yaml`: `PRJ-0002`, `PRO-0012`, `MAT-0210`.
-- A repo from before ADR-0022 moves over with `yajna migrate-ids` (each worktree gets the
-  same IDs); a migrated page keeps its old ID as `previous_id`, the CLI still accepts the
-  old ID, and validation names the new one on a stale link.
+- Older IDs move over with `yajna migrate-ids`: counter experiments and analyses, and date
+  IDs with the 4-character suffix. Every worktree gets the same IDs. A migrated page keeps
+  its old ID as `previous_id`, the CLI still accepts the old ID, and validation names the
+  new one on a stale link.
 - Link with `[[EXP-0007]]` or `[[EXP-0007|the timing experiment]]`. Pin a protocol version
   with `[[PRO-0012@3]]`. A link to an ID that does not exist fails validation.
 - Link into another repo with its namespace: `[[rc2s2/EXP-0003]]`, `[[yajna/PRO-0012@3]]`.

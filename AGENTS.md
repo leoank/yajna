@@ -32,6 +32,8 @@ then runs the checked-out source through `cargo run`, so edits take effect immed
 - The index (`tools/yajna/src/index.rs`) is a cache outside the repo (ADR-0019); every
   query command and the site read it and rebuild it when stale. A new table or column
   bumps `SCHEMA` there.
+- Integration tests set `YAJNA_FIXED_TIME`, which makes new date IDs that time plus a
+  sequence (`EXP-20261021-000001`); leave it unset everywhere else.
 - `tools/zotero/` and `tools/corpus/` are run from a lab root, never from here.
 - Releases for machines without Nix: tag `vX.Y.Z` matching `tools/yajna/Cargo.toml` and
   `.github/workflows/release.yml` attaches the four binaries to the GitHub release.

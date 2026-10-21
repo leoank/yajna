@@ -88,7 +88,9 @@ impl Vault {
             .args(args)
             .env_remove("EDITOR")
             .env_remove("YAJNA_ANSWERS")
-            .env("YAJNA_CACHE", self.root.join(".cache"));
+            .env("YAJNA_CACHE", self.root.join(".cache"))
+            // reproducible date IDs: EXP-20261021-000001 of the counter days is EXP-20261021-000001 here
+            .env("YAJNA_FIXED_TIME", "2026-10-21T00:00:00Z");
         for (k, v) in env {
             cmd.env(k, v);
         }
@@ -134,7 +136,9 @@ fn new_log_result_tasks_validate() {
 
     let out = v.run(&["new", "experiment", "ESCRT timing", "--project", "PRJ-0001"]);
     assert_eq!(out.code, 0, "{}", out.stderr);
-    assert!(out.stdout.contains("experiments/EXP-0001-escrt-timing.md"));
+    assert!(out
+        .stdout
+        .contains("experiments/EXP-20261021-000001-escrt-timing.md"));
 
     assert_eq!(
         v.run(&["new", "material", "Strain xyz", "--kind", "strain"])
@@ -150,19 +154,19 @@ fn new_log_result_tasks_validate() {
     );
     fs::write(&pro, text).unwrap();
 
-    let out = v.run(&["new", "run", "--experiment", "EXP-0001"]);
+    let out = v.run(&["new", "run", "--experiment", "EXP-20261021-000001"]);
     assert_eq!(out.code, 0, "{}", out.stderr);
     let re = regex_lite(&out.stdout, "runs/RUN-");
     assert!(re, "{}", out.stdout);
     let run = v.path(&out);
-    assert!(v.read(&run).contains("experiment: EXP-0001"));
+    assert!(v.read(&run).contains("experiment: EXP-20261021-000001"));
 
     let out = v.run(&[
         "log",
         "Started",
         "induction",
         "for",
-        "[[EXP-0001]]",
+        "[[EXP-20261021-000001]]",
         "--time",
         "09:10",
     ]);
@@ -173,22 +177,26 @@ fn new_log_result_tasks_validate() {
         .unwrap();
     assert!(v
         .read(&day)
-        .contains("- 09:10 Started induction for [[EXP-0001]]\n"));
+        .contains("- 09:10 Started induction for [[EXP-20261021-000001]]\n"));
 
     let output =
         "training...\n===RESULT=== {\"loss\": 0.42, \"steps\": 3000, \"tag\": \"baseline\"}\n";
-    let out = v.run_with(&["result", "--experiment", "EXP-0001"], Some(output), &[]);
+    let out = v.run_with(
+        &["result", "--experiment", "EXP-20261021-000001"],
+        Some(output),
+        &[],
+    );
     assert_eq!(out.code, 0, "{}", out.stderr);
-    let tsv = v
-        .root
-        .join("notes/projects/PRJ-0001-archaeal-division/experiments/EXP-0001/results.tsv");
+    let tsv = v.root.join(
+        "notes/projects/PRJ-0001-archaeal-division/experiments/EXP-20261021-000001/results.tsv",
+    );
     assert!(tsv.is_file());
     let run_page = v.path(&out);
     let page = v.read(&run_page);
     assert!(page.contains("status: done\n"), "{page}");
     assert!(page.contains("| loss | 0.42 |"), "{page}");
     let out = v.run_with(
-        &["result", "--experiment", "EXP-0001"],
+        &["result", "--experiment", "EXP-20261021-000001"],
         Some("===RESULT=== {\"loss\": 0.40, \"steps\": 3000, \"lr\": 0.001}\n"),
         &[],
     );
@@ -286,22 +294,26 @@ fn interactive_new() {
     assert_eq!(out.code, 0, "{}", out.stderr);
     assert!(
         out.stdout
-            .contains("experiments/EXP-0001-interactive-one.md"),
+            .contains("experiments/EXP-20261021-000001-interactive-one.md"),
         "{}",
         out.stdout
     );
     let out = v.run_with(
         &["new"],
         None,
-        &[("YAJNA_ANSWERS", "run\nEXP-0001\ncompute")],
+        &[("YAJNA_ANSWERS", "run\nEXP-20261021-000001\ncompute")],
     );
     assert_eq!(out.code, 0, "{}", out.stderr);
     assert!(out.stdout.contains("runs/RUN-"));
     let run = v.read(&v.path(&out));
     assert!(run.contains("kind: compute"));
-    assert!(run.contains("experiment: EXP-0001"));
+    assert!(run.contains("experiment: EXP-20261021-000001"));
     // The scripted answer for a run's kind may be empty: the default (first enum value) wins.
-    let out = v.run_with(&["new"], None, &[("YAJNA_ANSWERS", "run\nEXP-0001\n")]);
+    let out = v.run_with(
+        &["new"],
+        None,
+        &[("YAJNA_ANSWERS", "run\nEXP-20261021-000001\n")],
+    );
     assert_eq!(out.code, 0, "{}", out.stderr);
     assert!(v.read(&v.path(&out)).contains("kind: bench"));
 }
@@ -417,7 +429,7 @@ fn namespaced_links_need_a_registered_repo() {
     let exp = v.path(&out);
     fs::write(
         &exp,
-        v.read(&exp) + "\nSee [[rc2s2/EXP-0003]] and [[yajna/PRO-0012@2]].\n",
+        v.read(&exp) + "\nSee [[rc2s2/EXP-20261021-000003]] and [[yajna/PRO-0012@2]].\n",
     )
     .unwrap();
     let out = v.run(&["validate"]);
@@ -575,15 +587,19 @@ fn lab_with_project() -> Vault {
     )
     .unwrap();
     assert_eq!(v.run(&["ref", "shih2015cloning", "--note"]).code, 0);
-    assert_eq!(v.run(&["new", "run", "--experiment", "EXP-0001"]).code, 0);
+    assert_eq!(
+        v.run(&["new", "run", "--experiment", "EXP-20261021-000001"])
+            .code,
+        0
+    );
     fs::create_dir_all(
         v.root
-            .join("notes/projects/PRJ-0002-toy-model/experiments/EXP-0001"),
+            .join("notes/projects/PRJ-0002-toy-model/experiments/EXP-20261021-000001"),
     )
     .unwrap();
     fs::write(
         v.root
-            .join("notes/projects/PRJ-0002-toy-model/experiments/EXP-0001/notes.txt"),
+            .join("notes/projects/PRJ-0002-toy-model/experiments/EXP-20261021-000001/notes.txt"),
         "sidecar\n",
     )
     .unwrap();
@@ -614,7 +630,10 @@ fn init_project_from_a_lab() {
     );
     assert!(page.contains("code: .\n"), "{page}");
     assert!(page.contains("title: Toy model\n"), "{page}");
-    let exp = v.read(&v.root.join("notes/experiments/EXP-0001-timing.md"));
+    let exp = v.read(
+        &v.root
+            .join("notes/experiments/EXP-20261021-000001-timing.md"),
+    );
     assert!(exp.contains("project: PRJ-0001\n"), "{exp}");
     assert!(exp.contains("protocols: [yajna/PRO-0001]\n"), "{exp}");
     assert!(
@@ -625,7 +644,7 @@ fn init_project_from_a_lab() {
     );
     assert!(v
         .root
-        .join("notes/experiments/EXP-0001/notes.txt")
+        .join("notes/experiments/EXP-20261021-000001/notes.txt")
         .is_file());
     assert_eq!(walk(&v.root.join("notes/runs")).len(), 1);
     assert!(v
@@ -636,7 +655,7 @@ fn init_project_from_a_lab() {
     assert!(bib.contains("@article{shih2015cloning,"), "{bib}");
     assert!(!bib.contains("other2020"), "{bib}");
     let counters = v.read(&v.root.join("notes/counters.yaml"));
-    assert!(counters.contains("PRJ: 1\nEXP: 1\nANA: 0\n"), "{counters}");
+    assert!(counters.ends_with("PRJ: 1\n"), "{counters}");
     let cfg = v.read(&v.root.join("yajna.toml"));
     assert!(cfg.contains("namespace = \"toy\""), "{cfg}");
     assert!(cfg.contains("\nyajna = { path = \""), "{cfg}");
@@ -648,7 +667,9 @@ fn init_project_from_a_lab() {
     // the lab is checked out at the registered path, so its IDs are resolved
     let out = v.run(&["validate"]);
     assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
-    let exp_path = v.root.join("notes/experiments/EXP-0001-timing.md");
+    let exp_path = v
+        .root
+        .join("notes/experiments/EXP-20261021-000001-timing.md");
     fs::write(&exp_path, exp + "\nAlso [[yajna/PRO-0099]].\n").unwrap();
     let out = v.run(&["validate"]);
     assert_eq!(out.code, 1);
@@ -726,7 +747,7 @@ fn graduate_moves_code_and_notebook() {
     assert!(page.contains("origin: yajna/PRJ-0002\n"), "{page}");
     assert!(into
         .root
-        .join("notes/experiments/EXP-0001-timing.md")
+        .join("notes/experiments/EXP-20261021-000001-timing.md")
         .is_file());
 
     // the lab page points onward
@@ -804,7 +825,7 @@ fn indexed_lab() -> Vault {
         &e2,
         v.read(&e2)
             .replace("tags: []", "tags: [timing]")
-            .replace("influenced_by: []", "influenced_by: [EXP-0001]"),
+            .replace("influenced_by: []", "influenced_by: [EXP-20261021-000001]"),
     )
     .unwrap();
     let out = v.run(&[
@@ -819,7 +840,7 @@ fn indexed_lab() -> Vault {
     fs::write(&e3, v.read(&e3).replace("tags: []", "tags: [mechanics]")).unwrap();
     for (loss, lr) in [("0.42", "0.01"), ("0.31", "0.001"), ("0.35", "0.003")] {
         let out = v.run_with(
-            &["result", "--experiment", "EXP-0001"],
+            &["result", "--experiment", "EXP-20261021-000001"],
             Some(&format!(
                 "===RESULT=== {{\"loss\": {loss}, \"lr\": {lr}}}\n"
             )),
@@ -833,7 +854,7 @@ fn indexed_lab() -> Vault {
         .join("notes/projects/PRJ-0001-archaeal-division/README.md");
     fs::write(
         &prj,
-        v.read(&prj) + "- [[EXP-0001]] timing of ESCRT recruitment, positive\n- [[EXP-0002]] the same under confinement\n- [[EXP-0003]] membrane tension as a confound\n",
+        v.read(&prj) + "- [[EXP-20261021-000001]] timing of ESCRT recruitment, positive\n- [[EXP-20261021-000002]] the same under confinement\n- [[EXP-20261021-000003]] membrane tension as a confound\n",
     )
     .unwrap();
     let first_run = walk(
@@ -853,7 +874,7 @@ fn indexed_lab() -> Vault {
     assert_eq!(
         v.run(&[
             "log",
-            "Thawed [[MAT-0001]] for [[EXP-0001]]",
+            "Thawed [[MAT-0001]] for [[EXP-20261021-000001]]",
             "--date",
             "2026-10-15",
             "--time",
@@ -871,7 +892,7 @@ fn indexed_lab() -> Vault {
             "2026-10-16",
             "--time",
             "11:00",
-            "Drafted [[EXP-0002]]"
+            "Drafted [[EXP-20261021-000002]]"
         ])
         .code,
         0
@@ -925,7 +946,7 @@ fn show_timeline_tree_runs() {
     let out = v.run(&["show", "MAT-0001"]);
     assert_eq!(out.code, 0, "{}", out.stderr);
     assert!(
-        out.stdout.contains("EXP-0001  (materials)"),
+        out.stdout.contains("EXP-20261021-000001  (materials)"),
         "{}",
         out.stdout
     );
@@ -943,22 +964,23 @@ fn show_timeline_tree_runs() {
     assert!(out.stdout.starts_with("2026-10-15 09:10"), "{}", out.stdout);
     assert!(
         out.stdout
-            .contains("2026-10-15 09:10 [tester] Thawed [[MAT-0001]] for [[EXP-0001]]"),
+            .contains("2026-10-15 09:10 [tester] Thawed [[MAT-0001]] for [[EXP-20261021-000001]]"),
         "{}",
         out.stdout
     );
     assert!(
         out.stdout
-            .contains("experiment EXP-0001 (materials)  ESCRT timing"),
+            .contains("experiment EXP-20261021-000001 (materials)  ESCRT timing"),
         "{}",
         out.stdout
     );
-    let out = v.run(&["timeline", "EXP-0001"]);
+    let out = v.run(&["timeline", "EXP-20261021-000001"]);
     assert_eq!(out.code, 0, "{}", out.stderr);
     assert_eq!(out.stdout.matches("run RUN-").count(), 3, "{}", out.stdout);
     assert!(out.stdout.contains("loss=0.31"), "{}", out.stdout);
     assert!(
-        out.stdout.contains("experiment EXP-0002 (influenced_by)"),
+        out.stdout
+            .contains("experiment EXP-20261021-000002 (influenced_by)"),
         "{}",
         out.stdout
     );
@@ -970,25 +992,29 @@ fn show_timeline_tree_runs() {
     assert!(out.stdout.contains("concluded/positive"), "{}", out.stdout);
     assert!(out.stdout.contains("(3 runs)"), "{}", out.stdout);
     assert!(
-        out.stdout.contains("EXP-0002") && out.stdout.contains("<- EXP-0001"),
+        out.stdout.contains("EXP-20261021-000002") && out.stdout.contains("<- EXP-20261021-000001"),
         "{}",
         out.stdout
     );
 
-    // "all runs for EXP-0001 by metric"
-    let out = v.run(&["runs", "EXP-0001", "--by", "loss"]);
+    // "all runs for EXP-20261021-000001 by metric"
+    let out = v.run(&["runs", "EXP-20261021-000001", "--by", "loss"]);
     assert_eq!(out.code, 0, "{}", out.stderr);
     let rows: Vec<&str> = out.stdout.lines().skip(1).collect();
     assert_eq!(rows.len(), 3, "{}", out.stdout);
     assert!(rows[0].ends_with("0.31\t0.001"), "{}", out.stdout);
     assert!(rows[2].contains("0.42"), "{}", out.stdout);
-    let out = v.run(&["runs", "EXP-0001", "--by", "loss", "--desc"]);
+    let out = v.run(&["runs", "EXP-20261021-000001", "--by", "loss", "--desc"]);
     assert!(
         out.stdout.lines().nth(1).unwrap().contains("0.42"),
         "{}",
         out.stdout
     );
-    assert_eq!(v.run(&["runs", "EXP-0001", "--by", "nothing"]).code, 1);
+    assert_eq!(
+        v.run(&["runs", "EXP-20261021-000001", "--by", "nothing"])
+            .code,
+        1
+    );
     assert_eq!(v.run(&["runs", "PRO-0001"]).code, 1);
     assert_eq!(v.run(&["show", "EXP-0099"]).code, 1);
 }
@@ -1018,7 +1044,7 @@ fn site_renders_tree_links_and_log() {
         project.contains("<h2>Experiments</h2>") && project.contains("the same under confinement"),
         "{project}"
     );
-    let exp = v.read(&out_dir.join("EXP-0001.html"));
+    let exp = v.read(&out_dir.join("EXP-20261021-000001.html"));
     assert!(
         exp.contains("<a href=\"PRO-0001.html\">the protocol</a>"),
         "{exp}"
@@ -1045,13 +1071,13 @@ fn site_renders_tree_links_and_log() {
     );
     let mat = v.read(&out_dir.join("MAT-0001.html"));
     assert!(
-        mat.contains("Linked from") && mat.contains("EXP-0001.html"),
+        mat.contains("Linked from") && mat.contains("EXP-20261021-000001.html"),
         "{mat}"
     );
     assert!(out_dir.join("ref-shih2015cloning.html").is_file());
     let log = v.read(&out_dir.join("log.html"));
     assert!(
-        log.contains("agent:planner") && log.contains("<a href=\"EXP-0002.html\">"),
+        log.contains("agent:planner") && log.contains("<a href=\"EXP-20261021-000002.html\">"),
         "{log}"
     );
     assert!(v
@@ -1076,7 +1102,7 @@ fn agents_author_their_pages_and_runs_carry_a_script() {
             "new",
             "run",
             "--experiment",
-            "EXP-0001",
+            "EXP-20261021-000001",
             "--kind",
             "compute",
             "--script",
@@ -1097,7 +1123,7 @@ fn agents_author_their_pages_and_runs_carry_a_script() {
     let stub = v.read(&script);
     assert!(stub.starts_with("#!/usr/bin/env bash"), "{stub}");
     assert!(
-        stub.contains("Re-creates RUN-") && stub.contains("for EXP-0001"),
+        stub.contains("Re-creates RUN-") && stub.contains("for EXP-20261021-000001"),
         "{stub}"
     );
     // the human's log file stays the human's even when an agent logs
@@ -1115,7 +1141,7 @@ fn agents_author_their_pages_and_runs_carry_a_script() {
         &[
             "result",
             "--experiment",
-            "EXP-0001",
+            "EXP-20261021-000001",
             "--script",
             "notes/projects/PRJ-0001-p/runs/run.sh",
         ],
@@ -1133,7 +1159,7 @@ fn agents_author_their_pages_and_runs_carry_a_script() {
         &[
             "result",
             "--experiment",
-            "EXP-0001",
+            "EXP-20261021-000001",
             "--script",
             "nowhere.sh",
         ],
@@ -1219,20 +1245,20 @@ fn listed_experiments_and_runs_need_a_description() {
     v.run(&["new", "project", "P"]);
     v.run(&["new", "experiment", "E", "--project", "PRJ-0001"]);
     let prj = v.root.join("notes/projects/PRJ-0001-p/README.md");
-    fs::write(&prj, v.read(&prj) + "- [[EXP-0001]]\n").unwrap();
+    fs::write(&prj, v.read(&prj) + "- [[EXP-20261021-000001]]\n").unwrap();
     let out = v.run(&["validate"]);
     assert_eq!(out.code, 1);
     assert!(
         out.stdout
-            .contains("EXP-0001 is listed without a short description"),
+            .contains("EXP-20261021-000001 is listed without a short description"),
         "{}",
         out.stdout
     );
     fs::write(
         &prj,
         v.read(&prj).replace(
-            "- [[EXP-0001]]\n",
-            "- [[EXP-0001]] what it asks, in one line\n",
+            "- [[EXP-20261021-000001]]\n",
+            "- [[EXP-20261021-000001]] what it asks, in one line\n",
         ),
     )
     .unwrap();
@@ -1242,7 +1268,7 @@ fn listed_experiments_and_runs_need_a_description() {
         .into_iter()
         .find(|p| p.extension().map(|e| e == "md").unwrap_or(false))
         .unwrap();
-    v.run(&["new", "run", "--experiment", "EXP-0001"]);
+    v.run(&["new", "run", "--experiment", "EXP-20261021-000001"]);
     let run_id = walk(&v.root.join("notes/projects/PRJ-0001-p/runs"))
         .into_iter()
         .find(|p| p.extension().map(|e| e == "md").unwrap_or(false))
@@ -1293,22 +1319,33 @@ fn git_lab() -> Vault {
 #[test]
 fn validate_against_finds_ids_allocated_on_both_branches() {
     let v = git_lab();
+    let real_time = [("YAJNA_FIXED_TIME", "")];
     git(&v.root, &["checkout", "-q", "-b", "toy/aero"]);
+    assert_eq!(v.run(&["new", "project", "Branch one"]).code, 0);
+    // experiments carry date IDs, so making them on both branches never collides
     assert_eq!(
-        v.run(&["new", "experiment", "Branch one", "--project", "PRJ-0001"])
-            .code,
+        v.run_with(
+            &["new", "experiment", "Branch exp", "--project", "PRJ-0001"],
+            None,
+            &real_time
+        )
+        .code,
         0
     );
     git(&v.root, &["add", "-A"]);
     git(&v.root, &["commit", "-q", "-m", "branch"]);
-    // nothing on main yet: no collision
     let out = v.run(&["validate", "--against", "main"]);
     assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
-    // main allocates EXP-0002 too
+    // main allocates PRJ-0002 too
     git(&v.root, &["checkout", "-q", "main"]);
+    assert_eq!(v.run(&["new", "project", "Main one"]).code, 0);
     assert_eq!(
-        v.run(&["new", "experiment", "Main one", "--project", "PRJ-0001"])
-            .code,
+        v.run_with(
+            &["new", "experiment", "Main exp", "--project", "PRJ-0001"],
+            None,
+            &real_time
+        )
+        .code,
         0
     );
     assert_eq!(v.run(&["new", "protocol", "Shared"]).code, 0);
@@ -1323,17 +1360,22 @@ fn validate_against_finds_ids_allocated_on_both_branches() {
     let out = v.run(&["validate", "--against", "main"]);
     assert_eq!(out.code, 1, "{}{}", out.stdout, out.stderr);
     assert!(
-        out.stdout.contains("EXP-0002 was also created on main"),
+        out.stdout.contains("PRJ-0002 was also created on main"),
         "{}",
         out.stdout
     );
     assert!(
-        out.stdout.contains("yajna renumber EXP-0002"),
+        out.stdout.contains("yajna renumber PRJ-0002"),
         "{}",
         out.stdout
     );
+    assert!(
+        !out.stdout.contains("EXP-"),
+        "experiments do not collide: {}",
+        out.stdout
+    );
     // the fix: renumber on the branch, then the merge is clean
-    let out = v.run(&["renumber", "EXP-0002", "EXP-0003"]);
+    let out = v.run(&["renumber", "PRJ-0002", "PRJ-0003"]);
     assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
     git(&v.root, &["add", "-A"]);
     git(&v.root, &["commit", "-q", "-m", "renumber"]);
@@ -1350,54 +1392,56 @@ fn validate_against_finds_ids_allocated_on_both_branches() {
 #[test]
 fn renumber_moves_page_sidecar_and_every_reference() {
     let v = vault();
-    assert_eq!(v.run(&["new", "project", "Toy"]).code, 0);
-    assert_eq!(
-        v.run(&["new", "experiment", "Timing", "--project", "PRJ-0001"])
-            .code,
-        0
-    );
-    let out = v.run_with(
-        &["result", "--experiment", "EXP-0001"],
-        Some("===RESULT=== {\"loss\": 0.5}\n"),
-        &[],
-    );
-    assert_eq!(out.code, 0, "{}", out.stderr);
-    let prj = v.root.join("notes/projects/PRJ-0001-toy/README.md");
-    fs::write(&prj, v.read(&prj) + "- [[EXP-0001]] timing, in short\n\nSee [[EXP-0001@2|it]], not EXP-00011 or [[other/EXP-0001]].\n").unwrap();
     fs::write(
         v.root.join("yajna.toml"),
         v.read(&v.root.join("yajna.toml")) + "[repos]\nother = \"github:x/other\"\n",
     )
     .unwrap();
+    assert_eq!(v.run(&["new", "project", "Toy"]).code, 0);
+    assert_eq!(v.run(&["new", "protocol", "Transformation"]).code, 0);
     assert_eq!(
-        v.run(&["log", "ran [[EXP-0001]]", "--time", "09:00"]).code,
+        v.run(&["new", "experiment", "Timing", "--project", "PRJ-0001"])
+            .code,
+        0
+    );
+    let exp = first_md(&v.root.join("notes/projects/PRJ-0001-toy/experiments"));
+    fs::write(
+        &exp,
+        v.read(&exp)
+            .replace("protocols: []", "protocols: [PRO-0001@1]")
+            + "\nUses [[PRO-0001@2|it]], not PRO-00011 or [[other/PRO-0001]].\n",
+    )
+    .unwrap();
+    assert_eq!(
+        v.run(&["log", "ran [[PRO-0001]]", "--time", "09:00"]).code,
         0
     );
 
-    let out = v.run(&["renumber", "EXP-0001", "EXP-0007"]);
+    let out = v.run(&["renumber", "PRO-0001", "PRO-0007"]);
     assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
-    let exps = v.root.join("notes/projects/PRJ-0001-toy/experiments");
-    assert!(exps.join("EXP-0007-timing.md").is_file());
-    assert!(!exps.join("EXP-0001-timing.md").exists());
-    assert!(exps.join("EXP-0007/results.tsv").is_file(), "sidecar moved");
     assert!(v
-        .read(&exps.join("EXP-0007-timing.md"))
-        .contains("id: EXP-0007\n"));
-    let page = v.read(&prj);
-    assert!(page.contains("- [[EXP-0007]] timing, in short"), "{page}");
+        .root
+        .join("notes/protocols/PRO-0007-transformation.md")
+        .is_file());
+    assert!(!v
+        .root
+        .join("notes/protocols/PRO-0001-transformation.md")
+        .exists());
+    assert!(v
+        .read(&v.root.join("notes/protocols/PRO-0007-transformation.md"))
+        .contains("id: PRO-0007\n"));
+    let page = v.read(&exp);
+    assert!(page.contains("protocols: [PRO-0007@1]"), "{page}");
     assert!(
-        page.contains("[[EXP-0007@2|it]]")
-            && page.contains("EXP-00011")
-            && page.contains("[[other/EXP-0001]]"),
+        page.contains("[[PRO-0007@2|it]]")
+            && page.contains("PRO-00011")
+            && page.contains("[[other/PRO-0001]]"),
         "{page}"
     );
-    let run = first_md(&v.root.join("notes/projects/PRJ-0001-toy/runs"));
-    assert!(v.read(&run).contains("experiment: EXP-0007\n"));
     assert!(v
         .read(&v.root.join("notes/counters.yaml"))
-        .contains("EXP: 7\n"));
+        .contains("PRO: 7\n"));
     assert_eq!(v.run(&["validate"]).code, 0);
-    assert_eq!(v.run(&["timeline", "EXP-0007"]).code, 0);
 
     // without a new ID the next free one is taken; projects move their directory
     let out = v.run(&["renumber", "PRJ-0001"]);
@@ -1406,21 +1450,19 @@ fn renumber_moves_page_sidecar_and_every_reference() {
         .root
         .join("notes/projects/PRJ-0002-toy/README.md")
         .is_file());
-    let exp = v.read(
-        &v.root
-            .join("notes/projects/PRJ-0002-toy/experiments/EXP-0007-timing.md"),
-    );
-    assert!(exp.contains("project: PRJ-0002\n"), "{exp}");
+    let moved = first_md(&v.root.join("notes/projects/PRJ-0002-toy/experiments"));
+    assert!(v.read(&moved).contains("project: PRJ-0002\n"));
     assert_eq!(v.run(&["validate"]).code, 0);
 
     assert_eq!(
-        v.run(&["renumber", "EXP-0007", "PRJ-0009"]).code,
+        v.run(&["renumber", "PRO-0007", "PRJ-0009"]).code,
         1,
         "prefix kept"
     );
-    assert_eq!(v.run(&["renumber", "EXP-0099"]).code, 1, "unknown id");
-    let r = run.file_stem().unwrap().to_string_lossy().to_string();
-    assert_eq!(v.run(&["renumber", &r]).code, 1, "volume ids never collide");
+    assert_eq!(v.run(&["renumber", "PRO-0099"]).code, 1, "unknown id");
+    let out = v.run(&["renumber", "EXP-20261021-000001"]);
+    assert_eq!(out.code, 1, "date ids never collide");
+    assert!(out.stderr.contains("migrate-ids"), "{}", out.stderr);
 }
 
 #[test]
@@ -1469,7 +1511,7 @@ fn worktree_branches_with_its_own_author() {
         "new",
         "run",
         "--experiment",
-        "EXP-0001",
+        "EXP-20261021-000001",
         "--kind",
         "compute",
     ]);
@@ -1495,7 +1537,7 @@ fn worktree_branches_with_its_own_author() {
         1
     );
     assert_eq!(
-        v.run(&["worktree", "EXP-0001", "x"]).code,
+        v.run(&["worktree", "EXP-20261021-000001", "x"]).code,
         1,
         "a project is required"
     );
@@ -1530,7 +1572,7 @@ fn export_bundles_what_changed_since_the_last_export() {
         "manifest.json",
         "SHA256SUMS",
         "PRJ-0001.html",
-        "EXP-0001.html",
+        "EXP-20261021-000001.html",
     ] {
         assert!(b.join(f).is_file(), "{f}");
     }
@@ -1544,7 +1586,7 @@ fn export_bundles_what_changed_since_the_last_export() {
     assert_eq!(manifest["pages"].as_array().unwrap().len(), 2);
     let sums = v.read(&b.join("SHA256SUMS"));
     assert!(
-        sums.contains("  EXP-0001.html\n") && sums.contains("  manifest.json\n"),
+        sums.contains("  EXP-20261021-000001.html\n") && sums.contains("  manifest.json\n"),
         "{sums}"
     );
     assert!(
@@ -1573,7 +1615,8 @@ fn export_bundles_what_changed_since_the_last_export() {
     let exp = first_md(&v.root.join("notes/projects/PRJ-0001-toy/experiments"));
     fs::write(
         &exp,
-        v.read(&exp) + "\nSee [[PRJ-0001]] and [[EXP-0002]] and `[[EXP-0009]]`.\n",
+        v.read(&exp)
+            + "\nSee [[PRJ-0001]] and [[EXP-20261021-000002]] and `[[EXP-20261021-000009]]`.\n",
     )
     .unwrap();
     assert_eq!(
@@ -1600,9 +1643,9 @@ fn export_bundles_what_changed_since_the_last_export() {
         .filter(|p| p.is_dir() && p != b)
         .max()
         .unwrap();
-    let html = v.read(&newest.join("EXP-0001.html"));
+    let html = v.read(&newest.join("EXP-20261021-000001.html"));
     assert!(
-        html.contains("<a href=\"EXP-0002.html\">EXP-0002</a>"),
+        html.contains("<a href=\"EXP-20261021-000002.html\">EXP-20261021-000002</a>"),
         "in the bundle: linked"
     );
     assert!(
@@ -1610,7 +1653,7 @@ fn export_bundles_what_changed_since_the_last_export() {
         "outside the bundle: plain text"
     );
     assert!(
-        html.contains("<code>[[EXP-0009]]</code>"),
+        html.contains("<code>[[EXP-20261021-000009]]</code>"),
         "code spans untouched"
     );
     assert!(!newest.join("PRJ-0001.html").exists());
@@ -1691,10 +1734,9 @@ fn import_benchling_genbank_and_entries() {
             && gb.trim_end().ends_with("//")
             && !gb.contains("pYJ002")
     );
-    let exp = v.read(
-        &v.root
-            .join("notes/projects/PRJ-0001-cloning/experiments/EXP-0001-cloning-sfgfp-day-one.md"),
-    );
+    let exp = v.read(&v.root.join(
+        "notes/projects/PRJ-0001-cloning/experiments/EXP-20261021-000001-cloning-sfgfp-day-one.md",
+    ));
     assert!(
         exp.contains("title: \"Cloning sfGFP: day one\"") && exp.contains("status: concluded\n"),
         "{exp}"
@@ -1920,7 +1962,7 @@ fn sync_publishes_and_pulls_comments_back() {
         "{html}"
     );
     assert!(
-        html.contains("not PRO-0001") && html.contains("<b>EXP-0001</b>"),
+        html.contains("not PRO-0001") && html.contains("<b>EXP-20261021-000001</b>"),
         "{html}"
     );
     assert_eq!(v.run(&["validate"]).code, 0);
@@ -1993,37 +2035,72 @@ fn sync_publishes_and_pulls_comments_back() {
 
 #[test]
 fn migrate_ids_moves_experiments_to_date_ids_the_same_way_everywhere() {
-    let v = git_lab(); // PRJ-0001 with EXP-0001, committed
-    assert_eq!(
-        v.run(&["new", "experiment", "Second", "--project", "PRJ-0001"])
-            .code,
-        0
-    );
-    let out = v.run_with(
-        &["result", "--experiment", "EXP-0002"],
-        Some("===RESULT=== {\"loss\": 1}\n"),
-        &[],
-    );
-    assert_eq!(out.code, 0, "{}", out.stderr);
-    let prj = v.root.join("notes/projects/PRJ-0001-toy/README.md");
+    // a notebook from before ADR-0022: counter experiments, a run and a session with the
+    // old 4-character suffix
+    let v = vault();
+    assert_eq!(v.run(&["new", "project", "Toy"]).code, 0);
+    let dir = v.root.join("notes/projects/PRJ-0001-toy");
+    let page = |id: &str, ty: &str, extra: &str| {
+        format!("---\nid: {id}\ntype: {ty}\nschema_version: 1\ntitle: {id} page\nproject: PRJ-0001\ncreated: 2026-10-16\nauthor: tester\n{extra}---\n")
+    };
+    fs::create_dir_all(dir.join("experiments/EXP-0002")).unwrap();
+    fs::create_dir_all(dir.join("runs/RUN-20261016-k7f3")).unwrap();
+    fs::write(
+        dir.join("experiments/EXP-0001-first.md"),
+        page("EXP-0001", "experiment", "status: concluded\n"),
+    )
+    .unwrap();
+    fs::write(
+        dir.join("experiments/EXP-0002-second.md"),
+        page(
+            "EXP-0002",
+            "experiment",
+            "status: active\ninfluenced_by: [EXP-0001]\n",
+        ) + "\n## Runs\n- [[RUN-20261016-k7f3]] the sweep point\n\nData in `notes/projects/PRJ-0001-toy/experiments/EXP-0002/results.tsv`.\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.join("experiments/EXP-0002/results.tsv"),
+        "run\tfinished\tloss\nRUN-20261016-k7f3\t2026-10-16T09:31+01:00\t0.5\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.join("runs/RUN-20261016-k7f3/run.sh"),
+        "#!/bin/sh\necho RUN-20261016-k7f3\n",
+    )
+    .unwrap();
+    fs::write(dir.join("runs/RUN-20261016-k7f3.md"), page("RUN-20261016-k7f3", "run",
+        "kind: compute\nexperiment: EXP-0002\nstatus: done\nstarted: 2026-10-16T09:30+01:00\nscript: notes/projects/PRJ-0001-toy/runs/RUN-20261016-k7f3/run.sh\n")).unwrap();
+    fs::write(v.root.join("notes/agents/AGS-20261016-ab2c.md"), "---\nid: AGS-20261016-ab2c\ntype: agent_session\nschema_version: 1\ntitle: s\nmodel: x\nstarted: 2026-10-16T07:00+01:00\ncreated_entities: [EXP-0001, RUN-20261016-k7f3]\noutcome: done\ncreated: 2026-10-16\nauthor: agent:claude\n---\n").unwrap();
+    fs::write(
+        v.root.join("notes/counters.yaml"),
+        "PRJ: 1\nEXP: 2\nPRO: 0\n",
+    )
+    .unwrap();
+    let prj = dir.join("README.md");
     fs::write(
         &prj,
         v.read(&prj)
             + "- [[EXP-0001]] the first\n- [[EXP-0002]] the second, after [[EXP-0001@1|it]]\n",
     )
     .unwrap();
-    let e2 = v
-        .root
-        .join("notes/projects/PRJ-0001-toy/experiments/EXP-0002-second.md");
-    fs::write(
-        &e2,
-        v.read(&e2)
-            .replace("influenced_by: []", "influenced_by: [EXP-0001]"),
-    )
-    .unwrap();
+    assert_eq!(
+        v.run(&[
+            "log",
+            "ran [[RUN-20261016-k7f3]] for [[EXP-0002]]",
+            "--date",
+            "2026-10-16",
+            "--time",
+            "09:31"
+        ])
+        .code,
+        0
+    );
+    let out = v.run(&["validate"]);
+    assert_eq!(out.code, 0, "the legacy notebook is valid: {}", out.stdout);
+    git(&v.root, &["init", "-q", "-b", "main"]);
     git(&v.root, &["add", "-A"]);
-    git(&v.root, &["commit", "-q", "-m", "second"]);
-    // a second worktree of the same history
+    git(&v.root, &["commit", "-q", "-m", "legacy"]);
     let other = empty();
     git(
         &v.root,
@@ -2043,7 +2120,7 @@ fn migrate_ids_moves_experiments_to_date_ids_the_same_way_everywhere() {
 
     let dry = v.run(&["migrate-ids", "--dry-run"]);
     assert!(
-        dry.stdout.contains("2 page(s) would be migrated"),
+        dry.stdout.contains("4 page(s) would be migrated"),
         "{}",
         dry.stdout
     );
@@ -2051,61 +2128,94 @@ fn migrate_ids_moves_experiments_to_date_ids_the_same_way_everywhere() {
     assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
     let out_w = w.run(&["migrate-ids"]);
     assert_eq!(out_w.code, 0, "{}", out_w.stderr);
-    let mapping = |o: &str| {
+    let mapping = |o: &str| -> std::collections::BTreeMap<String, String> {
         o.lines()
-            .filter(|l| l.starts_with("EXP-0") && l.contains(" -> "))
-            .map(|l| l.split("  ").next().unwrap().to_string())
-            .collect::<Vec<_>>()
+            .filter(|l| !l.starts_with("renamed") && l.contains(" -> "))
+            .map(|l| {
+                let m = l.split("  ").next().unwrap();
+                let (a, b) = m.split_once(" -> ").unwrap();
+                (a.to_string(), b.to_string())
+            })
+            .collect()
     };
+    let map = mapping(&out.stdout);
     assert_eq!(
-        mapping(&out.stdout),
+        map,
         mapping(&out_w.stdout),
         "every worktree migrates to the same IDs"
     );
-    let ids: Vec<String> = mapping(&out.stdout)
-        .iter()
-        .map(|m| m.split(" -> ").nth(1).unwrap().to_string())
-        .collect();
-    let (n1, n2) = (&ids[0], &ids[1]);
-    assert!(regex_like_date_id(n1) && regex_like_date_id(n2), "{ids:?}");
-    assert!(n1 < n2, "the old order survives: {ids:?}");
+    let (n1, n2, run, ags) = (
+        &map["EXP-0001"],
+        &map["EXP-0002"],
+        &map["RUN-20261016-k7f3"],
+        &map["AGS-20261016-ab2c"],
+    );
+    assert!(
+        regex_like_date_id(n1) && regex_like_date_id(n2) && n1 < n2,
+        "{map:?}"
+    );
+    // a run keeps its day and takes its recorded time of day: 08:30 UTC is 306000 tenths
+    assert!(
+        run.starts_with("RUN-20261016-9atg") && regex_like_date_id(run),
+        "{run}"
+    );
+    assert!(ags.starts_with("AGS-20261016-6jy0"), "{ags}");
 
-    let exps = v.root.join("notes/projects/PRJ-0001-toy/experiments");
+    let exps = dir.join("experiments");
     let page2 = v.read(&exps.join(format!("{n2}-second.md")));
     assert!(
         page2.contains(&format!("id: {n2}\nprevious_id: EXP-0002\n")),
         "{page2}"
     );
-    assert!(page2.contains(&format!("influenced_by: [{n1}]")), "{page2}");
-    assert!(exps.join(n2).join("results.tsv").is_file(), "sidecar moved");
-    let run = first_md(&v.root.join("notes/projects/PRJ-0001-toy/runs"));
-    assert!(v.read(&run).contains(&format!("experiment: {n2}\n")));
+    assert!(
+        page2.contains(&format!("influenced_by: [{n1}]"))
+            && page2.contains(&format!("- [[{run}]] the sweep point")),
+        "{page2}"
+    );
+    assert!(
+        page2.contains(&format!("experiments/{n2}/results.tsv")),
+        "paths are rewritten too: {page2}"
+    );
+    let tsv = v.read(&exps.join(n2).join("results.tsv"));
+    assert!(
+        tsv.contains(&format!("\n{run}\t")),
+        "results.tsv names the new run: {tsv}"
+    );
+    let run_page = v.read(&dir.join("runs").join(format!("{run}.md")));
+    assert!(
+        run_page.contains(&format!("experiment: {n2}\n"))
+            && run_page.contains(&format!(
+                "script: notes/projects/PRJ-0001-toy/runs/{run}/run.sh"
+            )),
+        "{run_page}"
+    );
+    assert!(
+        dir.join("runs").join(run).join("run.sh").is_file(),
+        "the run's folder moved"
+    );
+    let agent = v.read(&v.root.join("notes/agents").join(format!("{ags}.md")));
+    assert!(
+        agent.contains(&format!("created_entities: [{n1}, {run}]")),
+        "{agent}"
+    );
     let prj_text = v.read(&prj);
     assert!(
         prj_text.contains(&format!("- [[{n2}]] the second, after [[{n1}@1|it]]")),
         "{prj_text}"
     );
-    assert!(v
-        .read(&v.root.join("yajna.toml"))
-        .contains("experiment_ids = \"date\""));
     assert!(!v.read(&v.root.join("notes/counters.yaml")).contains("EXP:"));
     let out = v.run(&["validate"]);
     assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
-    // old IDs still find their pages; new experiments get date IDs
-    let out = v.run(&["show", "EXP-0002"]);
+
+    // old IDs still find their pages and are written as the current ones
+    let out = v.run(&["show", "RUN-20261016-k7f3"]);
     assert_eq!(out.code, 0, "{}", out.stderr);
-    assert!(out.stdout.starts_with(n2.as_str()), "{}", out.stdout);
+    assert!(out.stdout.starts_with(run.as_str()), "{}", out.stdout);
     let out = v.run(&["new", "run", "--experiment", "EXP-0002"]);
-    assert_eq!(
-        out.code, 0,
-        "an old ID still resolves for new pages: {}",
-        out.stderr
-    );
-    assert!(
-        v.read(&v.path(&out))
-            .contains(&format!("experiment: {n2}\n")),
-        "and is written as the current ID"
-    );
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(v
+        .read(&v.path(&out))
+        .contains(&format!("experiment: {n2}\n")));
     assert_eq!(v.run(&["validate"]).code, 0);
     fs::write(&prj, v.read(&prj) + "\nSee [[EXP-0001]].\n").unwrap();
     let out = v.run(&["validate"]);
@@ -2116,22 +2226,23 @@ fn migrate_ids_moves_experiments_to_date_ids_the_same_way_everywhere() {
         out.stdout
     );
     fs::write(&prj, v.read(&prj).replace("\nSee [[EXP-0001]].\n", "")).unwrap();
-    let out = v.run(&["new", "experiment", "Third", "--project", "PRJ-0001"]);
-    let third = v.path(&out);
-    let third_id = third
-        .file_name()
-        .unwrap()
-        .to_string_lossy()
-        .split('-')
-        .take(3)
-        .collect::<Vec<_>>()
-        .join("-");
-    assert!(
-        regex_like_date_id(&third_id) && third_id.as_str() > n2.as_str(),
-        "{third_id}"
-    );
+    // a re-run repairs a path the first pass missed and leaves prose that names an old ID
+    let note = v.root.join("notes/agents").join(format!("{ags}.md"));
+    fs::write(
+        &note,
+        v.read(&note)
+            + "\nEXP-0002 became a date ID; data in `experiments/EXP-0002/results.tsv`.\n",
+    )
+    .unwrap();
     let out = v.run(&["migrate-ids"]);
     assert!(out.stdout.contains("nothing to migrate"), "{}", out.stdout);
+    let text = v.read(&note);
+    assert!(
+        text.contains(&format!(
+            "\nEXP-0002 became a date ID; data in `experiments/{n2}/results.tsv`.\n"
+        )),
+        "{text}"
+    );
 }
 
 #[test]
@@ -2174,7 +2285,7 @@ fn site_serve_answers_http_and_rerenders() {
         home.contains("text/html") && home.contains("Archaeal division"),
         "{home}"
     );
-    assert!(get("/EXP-0001.html").contains("ESCRT timing"));
+    assert!(get("/EXP-20261021-000001.html").contains("ESCRT timing"));
     assert!(get("/nope.html").starts_with("HTTP/1.1 404"));
     assert!(
         get("/../yajna.toml").starts_with("HTTP/1.1 404"),

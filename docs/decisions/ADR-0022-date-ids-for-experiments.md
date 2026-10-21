@@ -20,12 +20,14 @@ random suffix does not sort by time within a day.
   volume ID uses the same suffix; older four-character IDs stay valid.
 - `PRJ`, `PRO`, `MAT`, `EQP` and `BLD` keep counters: they are made rarely, on `main`, and
   people cite them by number.
-- A repo opts in with `experiment_ids = "date"` in `yajna.toml`; `yajna init` writes it.
-  `yajna migrate-ids` moves an existing repo: each counter ID becomes a date ID built from
-  when git first recorded the page, with the old number as the last two characters, so
-  every worktree migrates to the same IDs and branches still merge. Each migrated page
-  keeps `previous_id`; the CLI resolves an old ID to the current one and validation names
-  the successor of a stale link.
+- Experiments and analyses have no counter. `yajna migrate-ids` moves older IDs: each
+  counter ID becomes a date ID built from when git first recorded the page, with the old
+  number as the last two characters; each 4-character date ID keeps its day and takes its
+  time of day from the page's `started` or `finished`, else from git. Nothing random goes
+  in, so every worktree migrates to the same IDs and branches still merge. Each migrated
+  page keeps `previous_id`; the CLI resolves an old ID to the current one, validation names
+  the successor of a stale link, and re-running the command repairs references a
+  migration missed.
 
 ## Consequences
 

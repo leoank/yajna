@@ -172,7 +172,6 @@ fn config_text(shape: &str, ns: &str, author: &str, repos: &[(String, String)]) 
          vault = \"notes\"       # the notebook directory, relative to this file\n\
          timezone = {tz:?}\n\
          bibliography = {bib:?}\n\
-         experiment_ids = \"date\"   # experiments and analyses get date IDs (ADR-0022)\n\
          \n\
          [repos]             # namespaces this repo links to, e.g. rc2s2 = \"github:leoank/rc2s2\"\n"
     );
@@ -291,12 +290,8 @@ pub fn import_project(
         put(root, "notes/references/library.bib", &bib)?;
     }
 
-    let mut counters: Vec<(String, i64)> = vec![(String::from("PRJ"), 1)];
-    if !lab.date_ids() {
-        for p in ["EXP", "ANA"] {
-            counters.push((p.to_string(), *highest.get(p).unwrap_or(&0)));
-        }
-    }
+    // experiments and analyses carry date IDs; only the project page counts
+    let counters: Vec<(String, i64)> = vec![(String::from("PRJ"), 1)];
     put(root, "notes/counters.yaml", &counters_text(&counters))?;
     println!(
         "imported {prj} from {} as {ns}/{SOLE_PROJECT}: {pages} page(s), {notes} reading note(s), {} citation(s)",

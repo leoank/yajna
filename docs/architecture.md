@@ -206,7 +206,7 @@ rc2s2-a-remote-command-and-control-session-server/   # was code/<slug>/ in the l
   yajna.toml                 # shape = "project", namespace = "rc2s2", [repos] yajna = ...
   notes/
     README.md                # the project page, origin: yajna/PRJ-0002
-    experiments/EXP-0001-*.md
+    experiments/EXP-20261019-j4xp01-*.md
     runs/RUN-*.md
     analyses/  artifacts/  agents/  log/<year>/  references/
     tasks.md  counters.yaml

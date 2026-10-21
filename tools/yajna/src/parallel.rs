@@ -12,11 +12,11 @@ use regex::Regex;
 
 use crate::vault::{rel, slugify, Res, Vault, NS_ID_RE};
 
-/// Curated IDs come from `counters.yaml` and are the ones two branches can both allocate.
+/// Counter IDs come from `counters.yaml` and are the ones two branches can both allocate.
 static CURATED_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^((PRJ|EXP|PRO|MAT|ANA|EQP|BLD)-(\d+))$").unwrap());
+    LazyLock::new(|| Regex::new(r"^((PRJ|PRO|MAT|EQP|BLD)-(\d+))$").unwrap());
 static CURATED_FILE_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^((?:PRJ|EXP|PRO|MAT|ANA|EQP|BLD)-\d+)(?:-.*)?\.md$").unwrap());
+    LazyLock::new(|| Regex::new(r"^((?:PRJ|PRO|MAT|EQP|BLD)-\d+)(?:-.*)?\.md$").unwrap());
 static CURATED_DIR_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^(PRJ-\d+)(?:-.*)?$").unwrap());
 const SHARED: &[&str] = &["PRO", "MAT", "EQP", "BLD"];
@@ -126,7 +126,7 @@ pub fn against(vault: &Vault, reference: &str) -> Res<(Vec<String>, Vec<String>)
 pub fn renumber(vault: &Vault, old: &str, new: Option<&str>) -> Res<i32> {
     let Some(c) = CURATED_RE.captures(old) else {
         return Err(format!(
-            "{old}: only curated IDs (PRJ, EXP, PRO, MAT, ANA, EQP, BLD) are renumbered; volume IDs never collide"
+            "{old}: only counter IDs (PRJ, PRO, MAT, EQP, BLD) are renumbered; date IDs never collide, and older experiment IDs move with `yajna migrate-ids`"
         ));
     };
     let prefix = c[2].to_string();
@@ -173,6 +173,54 @@ pub fn renumber(vault: &Vault, old: &str, new: Option<&str>) -> Res<i32> {
     Ok(0)
 }
 
+/// Rewrite every reference to `old` as `new` in the repo's markdown and the vault's
+/// scripts and results tables: `[[links]]`, frontmatter fields, and paths that contain the
+/// ID. Returns the number of files rewritten.
+/// `paths_only` rewrites only IDs inside paths (`experiments/EXP-0003/run.log`): the repair
+/// pass, which must leave prose that names an old ID on purpose alone.
+fn rewrite_refs(vault: &Vault, old: &str, new: &str, paths_only: bool) -> Res<usize> {
+    let new = new.to_string();
+    let mut files = Vec::new();
+    collect(&vault.root, &vault.notes, &mut files);
+    let mut rewritten = 0;
+    for f in files {
+        let Ok(text) = fs::read_to_string(&f) else {
+            continue;
+        };
+        // `ns/ID` is a link into another repo only when `ns` is in [repos]; otherwise the
+        // prefix is a directory in a path (`runs/RUN-.../run.sh`) and the ID is rewritten.
+        // A page's own `previous_id` line is the record of the old ID and stays.
+        let out: String = text
+            .split_inclusive('\n')
+            .map(|line| {
+                if line.starts_with("previous_id:") {
+                    return line.to_string();
+                }
+                NS_ID_RE
+                    .replace_all(line, |c: &regex::Captures| {
+                        if &c[2] != old {
+                            return c[0].to_string();
+                        }
+                        match c.get(1) {
+                            None if paths_only => c[0].to_string(),
+                            None => new.clone(),
+                            Some(ns) if !vault.cfg.repos.contains_key(ns.as_str()) => {
+                                format!("{}/{new}", ns.as_str())
+                            }
+                            Some(_) => c[0].to_string(),
+                        }
+                    })
+                    .into_owned()
+            })
+            .collect();
+        if out != text {
+            fs::write(&f, &out).map_err(|e| format!("{}: {e}", f.display()))?;
+            rewritten += 1;
+        }
+    }
+    Ok(rewritten)
+}
+
 /// Give `page` the ID `new` in place of `old`: rename its file (or project directory) and
 /// sidecar directory, and rewrite every reference in the repo's markdown and the vault's
 /// scripts. Namespaced IDs point into other repos and are left alone. Returns the number of
@@ -215,28 +263,7 @@ pub fn move_id(vault: &Vault, page: &crate::vault::Page, old: &str, new: &str) -
         );
     }
 
-    // 2. references: [[OLD]], frontmatter fields and paths that contain the ID. Namespaced
-    //    IDs point into other repos and are left alone.
-    let mut files = Vec::new();
-    collect(&vault.root, &vault.notes, &mut files);
-    let mut rewritten = 0;
-    for f in files {
-        let Ok(text) = fs::read_to_string(&f) else {
-            continue;
-        };
-        let out = NS_ID_RE.replace_all(&text, |c: &regex::Captures| {
-            if c.get(1).is_none() && &c[2] == old {
-                new.clone()
-            } else {
-                c[0].to_string()
-            }
-        });
-        if out != text {
-            fs::write(&f, out.as_ref()).map_err(|e| format!("{}: {e}", f.display()))?;
-            rewritten += 1;
-        }
-    }
-    Ok(rewritten)
+    rewrite_refs(vault, old, &new, false)
 }
 
 // --- migrate-ids -------------------------------------------------------------------------
@@ -263,31 +290,73 @@ fn first_recorded(vault: &Vault, path: &str) -> Option<jiff::Zoned> {
     )
 }
 
+/// A time a page records for itself, if it falls on `date` (UTC, `YYYYMMDD`).
+fn recorded_time(
+    page: &crate::vault::Page,
+    date: &str,
+    git_time: Option<&jiff::Zoned>,
+) -> Option<jiff::Zoned> {
+    let utc = jiff::tz::TimeZone::UTC;
+    let mut candidates: Vec<jiff::Zoned> = ["started", "finished"]
+        .iter()
+        .filter_map(|k| page.field(k))
+        .filter_map(|t| {
+            t.parse::<jiff::Timestamp>()
+                .ok()
+                .or_else(|| t.parse::<jiff::Zoned>().ok().map(|z| z.timestamp()))
+        })
+        .map(|t| t.to_zoned(utc.clone()))
+        .collect();
+    candidates.extend(git_time.cloned());
+    candidates
+        .into_iter()
+        .find(|z| z.strftime("%Y%m%d").to_string() == date)
+}
+
 /// `yajna migrate-ids` (ADR-0022): give every counter-ID experiment and analysis a date ID,
-/// keep the old one as `previous_id`, and switch the repo to `experiment_ids = "date"`.
-/// The new ID is built from when git first recorded the page plus the old number, so every
-/// worktree of the repo migrates to the same IDs and the branches still merge.
+/// and every date ID with the older 4-character random suffix the time-sortable one; each
+/// page keeps its old ID as `previous_id`. New IDs come only from what the history and the
+/// pages record (when git first saw the page, its `started` or `finished`, the old number or
+/// suffix), so every worktree of the repo migrates to the same IDs and branches still merge.
 pub fn migrate_ids(vault: &Vault, dry_run: bool) -> Res<i32> {
     static COUNTER_ID: LazyLock<Regex> =
         LazyLock::new(|| Regex::new(r"^(EXP|ANA)-(\d+)$").unwrap());
+    static SHORT_DATE_ID: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"^(RUN|ART|AGS|EXP|ANA)-(\d{8})-([0-9a-z]{4})$").unwrap());
+    let utc = jiff::tz::TimeZone::UTC;
     let mut used: std::collections::BTreeSet<String> = vault.index()?.into_keys().collect();
     let mut plan = Vec::new();
     for page in vault.pages()? {
         let Some(id) = page.id().map(str::to_string) else {
             continue;
         };
-        let Some(c) = COUNTER_ID.captures(&id) else {
+        let path = rel(&page.path, &vault.root).to_string();
+        let (prefix, when, mut tail) = if let Some(c) = COUNTER_ID.captures(&id) {
+            let n: u32 = c[2].parse().unwrap_or(0);
+            let when = first_recorded(vault, &path).unwrap_or_else(|| {
+                page.field("created")
+                    .and_then(|d| d.parse::<jiff::civil::Date>().ok())
+                    .and_then(|d| d.at(12, 0, 0, 0).to_zoned(utc.clone()).ok())
+                    .unwrap_or_else(|| jiff::Zoned::now().with_time_zone(utc.clone()))
+            });
+            (c[1].to_string(), when, n % 1024)
+        } else if let Some(c) = SHORT_DATE_ID.captures(&id) {
+            // keep the day; the time of day from the page or git when it is that day
+            let date = c[2].to_string();
+            let git_time = first_recorded(vault, &path);
+            let day: jiff::civil::Date = format!("{}-{}-{}", &date[..4], &date[4..6], &date[6..])
+                .parse()
+                .map_err(|e| format!("{id}: {e}"))?;
+            let when = recorded_time(&page, &date, git_time.as_ref())
+                .unwrap_or_else(|| day.at(12, 0, 0, 0).to_zoned(utc.clone()).unwrap());
+            let tail = c[3]
+                .bytes()
+                .fold(0u32, |a, b| a.wrapping_mul(31).wrapping_add(b as u32))
+                % 1024;
+            (c[1].to_string(), when, tail)
+        } else {
             continue;
         };
-        let (prefix, n): (String, u32) = (c[1].to_string(), c[2].parse().unwrap_or(0));
-        let path = rel(&page.path, &vault.root).to_string();
-        let when = first_recorded(vault, &path).unwrap_or_else(|| {
-            page.field("created")
-                .and_then(|d| d.parse::<jiff::civil::Date>().ok())
-                .and_then(|d| d.at(12, 0, 0, 0).to_zoned(jiff::tz::TimeZone::UTC).ok())
-                .unwrap_or_else(|| jiff::Zoned::now().with_time_zone(jiff::tz::TimeZone::UTC))
-        });
-        let mut tail = n % 1024;
         let mut new = crate::vault::date_id(&prefix, &when, tail);
         while used.contains(&new) {
             tail = (tail + 1) % 1024;
@@ -297,7 +366,7 @@ pub fn migrate_ids(vault: &Vault, dry_run: bool) -> Res<i32> {
         plan.push((page.path.clone(), id, new));
     }
     if plan.is_empty() {
-        println!("nothing to migrate: no experiment or analysis has a counter ID");
+        println!("nothing to migrate: every experiment, analysis, run, artifact and session has a current ID");
     }
     for (path, old, new) in &plan {
         println!("{old} -> {new}  {}", rel(path, &vault.root));
@@ -318,19 +387,18 @@ pub fn migrate_ids(vault: &Vault, dry_run: bool) -> Res<i32> {
         println!("{} page(s) would be migrated", plan.len());
         return Ok(0);
     }
-    // the repo now allocates date IDs; the old counters are retired
-    let config = vault.root.join(crate::vault::CONFIG_NAME);
-    let text = fs::read_to_string(&config).map_err(|e| e.to_string())?;
-    if !text
-        .lines()
-        .any(|l| l.trim_start().starts_with("experiment_ids"))
-    {
-        let line =
-            "experiment_ids = \"date\"   # experiments and analyses get date IDs (ADR-0022)\n";
-        let at = text.find("\n[").map(|i| i + 1).unwrap_or(text.len());
-        fs::write(&config, format!("{}{line}{}", &text[..at], &text[at..]))
-            .map_err(|e| e.to_string())?;
+    // references a migration missed (paths such as `experiments/EXP-0003/run.log`) are
+    // repaired through each page's previous_id; running this again changes nothing
+    let mut repaired = 0;
+    for page in vault.pages()? {
+        if let (Some(old), Some(id)) = (page.field("previous_id"), page.id()) {
+            repaired += rewrite_refs(vault, old, id, true)?;
+        }
     }
+    if repaired > 0 {
+        println!("{repaired} file(s) still named an old ID in a path; rewritten");
+    }
+    // experiments and analyses no longer count
     let counters: Vec<(String, i64)> = vault
         .read_counters()?
         .into_iter()
@@ -339,7 +407,7 @@ pub fn migrate_ids(vault: &Vault, dry_run: bool) -> Res<i32> {
     fs::write(&vault.counters_file, crate::vault::counters_text(&counters))
         .map_err(|e| e.to_string())?;
     println!(
-        "{} page(s) migrated; experiment_ids = \"date\" in yajna.toml; next: yajna validate, then commit",
+        "{} page(s) migrated; next: yajna validate, then commit",
         plan.len()
     );
     Ok(0)
@@ -375,7 +443,8 @@ fn collect(dir: &Path, vault: &Path, out: &mut Vec<PathBuf>) {
         let ext = p.extension().map(|x| x.to_string_lossy().to_string());
         match ext.as_deref() {
             Some("md") => out.push(p),
-            Some("sh" | "py") if p.starts_with(vault) => out.push(p),
+            // scripts and results tables in the vault name runs and experiments too
+            Some("sh" | "py" | "tsv") if p.starts_with(vault) => out.push(p),
             _ => {}
         }
     }
@@ -469,9 +538,10 @@ mod tests {
             curated_id("notes/projects/PRJ-0002-rc2s2/README.md").as_deref(),
             Some("PRJ-0002")
         );
+        // experiments take date IDs and never collide, so they are not counter IDs here
         assert_eq!(
-            curated_id("notes/projects/PRJ-0002-x/experiments/EXP-0011-does-it.md").as_deref(),
-            Some("EXP-0011")
+            curated_id("notes/projects/PRJ-0002-x/experiments/EXP-0011-does-it.md"),
+            None
         );
         assert_eq!(
             curated_id("notes/protocols/PRO-0012.md").as_deref(),

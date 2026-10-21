@@ -65,8 +65,8 @@ pub const ENTITIES: &[Entity] = &[
 ];
 pub const PROJECT_SCOPED: &[&str] = &["experiment", "run", "analysis", "artifact"];
 pub const VOLUME_PREFIXES: &[&str] = &["RUN", "ART", "AGS"];
-/// Curated entities that take date IDs instead of counter IDs when `experiment_ids = "date"`
-/// (ADR-0022): the ones created on branches, where a shared counter collides.
+/// Curated entities that take date IDs instead of counter IDs (ADR-0022): the ones created
+/// on branches, where a shared counter collides.
 pub const DATED_PREFIXES: &[&str] = &["EXP", "ANA"];
 /// Frontmatter fields whose IDs are not links: paths (an ID there is a directory name) and
 /// `previous_id`, the counter ID a page had before `yajna migrate-ids`.
@@ -269,8 +269,6 @@ pub struct Config {
     pub bibliography: Option<String>,
     pub shape: Option<String>,
     pub namespace: Option<String>,
-    /// `date` gives experiments and analyses date IDs (ADR-0022); absent means counters
-    pub experiment_ids: Option<String>,
     #[serde(default)]
     pub repos: BTreeMap<String, Repo>,
     #[serde(default)]
@@ -457,11 +455,6 @@ impl Vault {
             .unwrap_or_else(|| ident.to_string())
     }
 
-    /// Experiments and analyses take date IDs (`experiment_ids = "date"`, ADR-0022).
-    pub fn date_ids(&self) -> bool {
-        self.cfg.experiment_ids.as_deref() == Some("date")
-    }
-
     /// Where a project's experiments, runs, analyses and artifacts live: `notes/projects/PRJ-*/`
     /// in a lab, the vault itself in a project repo.
     pub fn project_dir(&self, prj: &str) -> Res<PathBuf> {
@@ -539,9 +532,23 @@ impl Vault {
     }
 
     pub fn allocate(&self, prefix: &str) -> Res<String> {
-        if VOLUME_PREFIXES.contains(&prefix)
-            || (self.date_ids() && DATED_PREFIXES.contains(&prefix))
-        {
+        if VOLUME_PREFIXES.contains(&prefix) || DATED_PREFIXES.contains(&prefix) {
+            // `YAJNA_FIXED_TIME` makes IDs reproducible (tests, examples): that time, and a
+            // sequence per prefix in place of the random characters
+            if let Some(fixed) = std::env::var("YAJNA_FIXED_TIME")
+                .ok()
+                .filter(|t| !t.is_empty())
+                .and_then(|t| t.parse::<jiff::Timestamp>().ok())
+            {
+                let start = format!("{prefix}-");
+                let n = self
+                    .index()?
+                    .keys()
+                    .filter(|k| k.starts_with(&start))
+                    .count() as u32
+                    + 1;
+                return Ok(date_id(prefix, &fixed.to_zoned(TimeZone::UTC), n));
+            }
             let now = Zoned::now().with_time_zone(TimeZone::UTC);
             return Ok(date_id(prefix, &now, fastrand::u32(..1024)));
         }

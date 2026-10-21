@@ -6,5 +6,4 @@ vault = "notes"       # the notebook directory, relative to this file
 timezone = "Europe/London"
 bibliography = "notes/references/library.bib"
 
-experiment_ids = "date"   # experiments and analyses get date IDs (ADR-0022)
 [repos]             # namespaces this repo links to, e.g. rc2s2 = "github:leoank/rc2s2"
