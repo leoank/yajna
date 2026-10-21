@@ -48,6 +48,7 @@ pub fn line(e: &Entity) -> String {
 }
 
 pub fn cmd_show(vault: &Vault, id: &str) -> Res<i32> {
+    let id = &vault.canonical_id(id);
     let ix = Index::open(vault, false)?;
     let e = find(&ix, id)?;
     println!("{}", line(&e));
@@ -174,6 +175,7 @@ fn metrics_summary(ix: &Index, run: &Entity) -> String {
 }
 
 pub fn cmd_timeline(vault: &Vault, id: &str) -> Res<i32> {
+    let id = &vault.canonical_id(id);
     let ix = Index::open(vault, false)?;
     for ev in timeline(&ix, id)? {
         println!("{:<10} {:<5} {}", ev.date, ev.time, ev.text);
@@ -196,7 +198,7 @@ pub fn tree(ix: &Index, project: &str) -> BTreeMap<String, Vec<Entity>> {
 pub fn cmd_tree(vault: &Vault, project: Option<&str>) -> Res<i32> {
     let ix = Index::open(vault, false)?;
     let project = match project {
-        Some(p) => p.to_string(),
+        Some(p) => vault.canonical_id(p),
         None if vault.is_project() => vault.single_project()?,
         None => return Err("a project is required: yajna tree PRJ-xxxx".to_string()),
     };
@@ -242,6 +244,7 @@ pub fn cmd_tree(vault: &Vault, project: Option<&str>) -> Res<i32> {
 }
 
 pub fn cmd_runs(vault: &Vault, experiment: &str, by: Option<&str>, desc: bool) -> Res<i32> {
+    let experiment = &vault.canonical_id(experiment);
     let ix = Index::open(vault, false)?;
     let e = find(&ix, experiment)?;
     if e.etype != "experiment" {

@@ -16,7 +16,7 @@
   "properties": {
     "id": {
       "type": "string",
-      "pattern": "^ART-\\d{8}-[a-z2-7]{4}$"
+      "pattern": "^ART-\\d{8}-[0-9a-z]{4}([0-9a-z]{2})?$"
     },
     "type": {
       "const": "artifact"
@@ -47,14 +47,14 @@
     },
     "session": {
       "type": "string",
-      "pattern": "^AGS-\\d{8}-[a-z2-7]{4}$"
+      "pattern": "^AGS-\\d{8}-[0-9a-z]{4}([0-9a-z]{2})?$"
     },
     "title": {
       "type": "string"
     },
     "run": {
       "type": "string",
-      "pattern": "^([a-z][a-z0-9_-]*/)?RUN-\\d{8}-[a-z2-7]{4}$"
+      "pattern": "^([a-z][a-z0-9_-]*/)?RUN-\\d{8}-[0-9a-z]{4}([0-9a-z]{2})?$"
     },
     "project": {
       "type": "string",

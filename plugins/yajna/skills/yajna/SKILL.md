@@ -43,7 +43,10 @@ ID, so create the run first, then write the script at the path printed on the pa
 
 ## Conventions you must follow
 
-- **IDs are allocated by the CLI** (`EXP-0007`, `RUN-20261016-k7f3`). Never reuse,
+- **IDs are allocated by the CLI**: date IDs for experiments, analyses, runs, artifacts and
+  sessions (`EXP-20261021-0k3m9x`), counters for projects, protocols, materials, equipment
+  and builds (`PRO-0012`). An ID from before `yajna migrate-ids` still works in commands;
+  write the current one in pages. Never reuse,
   renumber or hand-edit an ID or `notes/counters.yaml`.
 - **Link with `[[ID]]`**, `[[ID|label]]`, `[[PRO-0012@3]]` for a protocol version,
   `[[ns/ID]]` into another repo listed in `[repos]`. A link to an unknown ID fails
@@ -82,10 +85,10 @@ Other agents may be working in other worktrees of the same notebook at the same 
   `YAJNA_AUTHOR` over it. Start parallel work with `yajna worktree PRJ-xxxx <topic>`.
 - Stay inside your branch's project. Do not create or edit protocols, materials,
   equipment or builds on a branch; ask for them on `main`.
-- Prefer experiments that already exist on `main`. If you must create one on the branch,
-  run `yajna validate --against main` before you report the branch as ready; on a
-  collision run `yajna renumber <ID>` on the branch and validate again. Never edit an ID
-  by hand.
+- Create experiments and analyses on your branch freely: their date IDs never collide.
+  Projects and shared entities are made on `main`. If you did allocate a counter ID on the
+  branch, run `yajna validate --against main` before reporting the branch as ready and fix a
+  collision with `yajna renumber <ID>`. Never edit an ID by hand.
 - Merge `main` into your branch before allocating anything, and never use a bare
   `git stash`.
 

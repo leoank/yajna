@@ -47,7 +47,7 @@
     },
     "session": {
       "type": "string",
-      "pattern": "^AGS-\\d{8}-[a-z2-7]{4}$"
+      "pattern": "^AGS-\\d{8}-[0-9a-z]{4}([0-9a-z]{2})?$"
     },
     "title": {
       "type": "string"
@@ -88,7 +88,7 @@
       "type": "array",
       "items": {
         "type": "string",
-        "pattern": "^([a-z][a-z0-9_-]*/)?EXP-\\d{4,}$"
+        "pattern": "^([a-z][a-z0-9_-]*/)?EXP-(\\d{4,}|\\d{8}-[0-9a-z]{4}([0-9a-z]{2})?)$"
       }
     },
     "sync": {

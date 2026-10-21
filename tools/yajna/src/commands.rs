@@ -131,6 +131,7 @@ pub fn run(vault: &Vault, cmd: &Cmd, prompter: &mut dyn Prompter) -> Res<i32> {
             dry_run,
             no_comments,
         } => crate::sync::cmd_sync(vault, ids, *dry_run, *no_comments),
+        Cmd::MigrateIds { dry_run } => crate::parallel::migrate_ids(vault, *dry_run),
         Cmd::Renumber { old, new } => crate::parallel::renumber(vault, old, new.as_deref()),
         Cmd::Worktree {
             project,
@@ -207,7 +208,10 @@ pub fn create(
             ));
         }
     }
-    let mut project = project.map(str::to_string);
+    // an ID from before `yajna migrate-ids` is written as the page's current ID
+    let experiment_id = experiment.map(|e| vault.canonical_id(e));
+    let experiment = experiment_id.as_deref();
+    let mut project = project.map(|p| vault.canonical_id(p));
     if let (Some(exp), None) = (experiment, &project) {
         project = vault.find(exp)?.field("project").map(str::to_string);
     }
@@ -505,6 +509,8 @@ fn cmd_result(
         return Err("the result line must be a JSON object".to_string());
     };
 
+    let experiment_id = vault.canonical_id(experiment);
+    let experiment = experiment_id.as_str();
     let exp = vault.find(experiment)?;
     let project = exp.field("project").map(str::to_string);
     let ident = vault.allocate("RUN")?;

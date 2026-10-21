@@ -261,7 +261,11 @@ pub fn validate(vault: &Vault) -> Res<(Vec<String>, usize)> {
             .clone()
     };
 
-    // Links and references need the full ID set.
+    // Links and references need the full ID set, and old IDs their successors.
+    let previous: BTreeMap<String, String> = pages
+        .iter()
+        .filter_map(|p| Some((p.field("previous_id")?.to_string(), p.id()?.to_string())))
+        .collect();
     let keys = refs::bib_keys(vault);
     let bib = refs::bib_path(vault);
     for page in &pages {
@@ -297,7 +301,11 @@ pub fn validate(vault: &Vault) -> Res<(Vec<String>, usize)> {
         }
         for target in &targets {
             if !ids.contains_key(target) {
-                problems.add(&page.path, format!("link to unknown id {target}"));
+                let msg = match previous.get(target) {
+                    Some(now) => format!("link to {target}, which is now {now}"),
+                    None => format!("link to unknown id {target}"),
+                };
+                problems.add(&page.path, msg);
             }
         }
         let mut seen_ns = BTreeSet::new();

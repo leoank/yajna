@@ -1,7 +1,7 @@
 # yajna.nvim
 
 Follow links in a yajna vault from Neovim. Pure Lua, no `yajna` binary needed; pages are
-found by their filenames, which the conventions fix (`EXP-0001-slug.md`,
+found by their filenames, which the conventions fix (`EXP-20261019-j4xp01-slug.md`,
 `projects/PRJ-0001-slug/README.md`, `notes/README.md` in a project-shaped repo).
 
 In any markdown buffer under a directory with `yajna.toml`:

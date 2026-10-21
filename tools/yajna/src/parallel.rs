@@ -168,6 +168,17 @@ pub fn renumber(vault: &Vault, old: &str, new: Option<&str>) -> Res<i32> {
         None => vault.allocate(&prefix)?,
     };
 
+    let rewritten = move_id(vault, &page, old, &new)?;
+    println!("{old} -> {new}: {rewritten} file(s) rewritten; next: yajna validate");
+    Ok(0)
+}
+
+/// Give `page` the ID `new` in place of `old`: rename its file (or project directory) and
+/// sidecar directory, and rewrite every reference in the repo's markdown and the vault's
+/// scripts. Namespaced IDs point into other repos and are left alone. Returns the number of
+/// files rewritten.
+pub fn move_id(vault: &Vault, page: &crate::vault::Page, old: &str, new: &str) -> Res<usize> {
+    let new = new.to_string();
     // 1. renames: the page (or the project's directory) and the sidecar directory
     let mut renames: Vec<(PathBuf, PathBuf)> = Vec::new();
     let name = page
@@ -225,7 +236,112 @@ pub fn renumber(vault: &Vault, old: &str, new: Option<&str>) -> Res<i32> {
             rewritten += 1;
         }
     }
-    println!("{old} -> {new}: {rewritten} file(s) rewritten; next: yajna validate");
+    Ok(rewritten)
+}
+
+// --- migrate-ids -------------------------------------------------------------------------
+
+/// When git first recorded a page, as a UTC time; None for a page never committed.
+fn first_recorded(vault: &Vault, path: &str) -> Option<jiff::Zoned> {
+    let out = git(
+        &vault.root,
+        &[
+            "log",
+            "--follow",
+            "--diff-filter=A",
+            "--format=%at",
+            "--",
+            path,
+        ],
+    )
+    .ok()?;
+    let secs: i64 = out.lines().last()?.trim().parse().ok()?;
+    Some(
+        jiff::Timestamp::from_second(secs)
+            .ok()?
+            .to_zoned(jiff::tz::TimeZone::UTC),
+    )
+}
+
+/// `yajna migrate-ids` (ADR-0022): give every counter-ID experiment and analysis a date ID,
+/// keep the old one as `previous_id`, and switch the repo to `experiment_ids = "date"`.
+/// The new ID is built from when git first recorded the page plus the old number, so every
+/// worktree of the repo migrates to the same IDs and the branches still merge.
+pub fn migrate_ids(vault: &Vault, dry_run: bool) -> Res<i32> {
+    static COUNTER_ID: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"^(EXP|ANA)-(\d+)$").unwrap());
+    let mut used: std::collections::BTreeSet<String> = vault.index()?.into_keys().collect();
+    let mut plan = Vec::new();
+    for page in vault.pages()? {
+        let Some(id) = page.id().map(str::to_string) else {
+            continue;
+        };
+        let Some(c) = COUNTER_ID.captures(&id) else {
+            continue;
+        };
+        let (prefix, n): (String, u32) = (c[1].to_string(), c[2].parse().unwrap_or(0));
+        let path = rel(&page.path, &vault.root).to_string();
+        let when = first_recorded(vault, &path).unwrap_or_else(|| {
+            page.field("created")
+                .and_then(|d| d.parse::<jiff::civil::Date>().ok())
+                .and_then(|d| d.at(12, 0, 0, 0).to_zoned(jiff::tz::TimeZone::UTC).ok())
+                .unwrap_or_else(|| jiff::Zoned::now().with_time_zone(jiff::tz::TimeZone::UTC))
+        });
+        let mut tail = n % 1024;
+        let mut new = crate::vault::date_id(&prefix, &when, tail);
+        while used.contains(&new) {
+            tail = (tail + 1) % 1024;
+            new = crate::vault::date_id(&prefix, &when, tail);
+        }
+        used.insert(new.clone());
+        plan.push((page.path.clone(), id, new));
+    }
+    if plan.is_empty() {
+        println!("nothing to migrate: no experiment or analysis has a counter ID");
+    }
+    for (path, old, new) in &plan {
+        println!("{old} -> {new}  {}", rel(path, &vault.root));
+        if dry_run {
+            continue;
+        }
+        let page = vault.read(path)?;
+        move_id(vault, &page, old, new)?;
+        // the page has moved; keep the old ID on it so old references still find it
+        let moved = vault.find(new)?;
+        let text = fs::read_to_string(&moved.path).map_err(|e| e.to_string())?;
+        let text = crate::init::edit_frontmatter(&text, |lines| {
+            crate::init::insert_after(lines, "id", &format!("previous_id: {old}"));
+        });
+        fs::write(&moved.path, text).map_err(|e| e.to_string())?;
+    }
+    if dry_run {
+        println!("{} page(s) would be migrated", plan.len());
+        return Ok(0);
+    }
+    // the repo now allocates date IDs; the old counters are retired
+    let config = vault.root.join(crate::vault::CONFIG_NAME);
+    let text = fs::read_to_string(&config).map_err(|e| e.to_string())?;
+    if !text
+        .lines()
+        .any(|l| l.trim_start().starts_with("experiment_ids"))
+    {
+        let line =
+            "experiment_ids = \"date\"   # experiments and analyses get date IDs (ADR-0022)\n";
+        let at = text.find("\n[").map(|i| i + 1).unwrap_or(text.len());
+        fs::write(&config, format!("{}{line}{}", &text[..at], &text[at..]))
+            .map_err(|e| e.to_string())?;
+    }
+    let counters: Vec<(String, i64)> = vault
+        .read_counters()?
+        .into_iter()
+        .filter(|(k, _)| !crate::vault::DATED_PREFIXES.contains(&k.as_str()))
+        .collect();
+    fs::write(&vault.counters_file, crate::vault::counters_text(&counters))
+        .map_err(|e| e.to_string())?;
+    println!(
+        "{} page(s) migrated; experiment_ids = \"date\" in yajna.toml; next: yajna validate, then commit",
+        plan.len()
+    );
     Ok(0)
 }
 

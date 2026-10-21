@@ -495,28 +495,32 @@ fn init_project_in_a_code_repo() {
 
     // no --project needed: the repo's one project is implied
     let out = v.run(&["new", "experiment", "Timing"]);
+    // a new repo gives experiments date IDs (ADR-0022)
+    let exp = v.read(&v.path(&out));
+    let exp_id = exp
+        .lines()
+        .find_map(|l| l.strip_prefix("id: "))
+        .unwrap()
+        .to_string();
+    assert!(regex_like_date_id(&exp_id), "{exp_id}");
     assert_eq!(out.code, 0, "{}", out.stderr);
-    assert_eq!(out.stdout.trim(), "notes/experiments/EXP-0001-timing.md");
+    assert_eq!(
+        out.stdout.trim(),
+        format!("notes/experiments/{exp_id}-timing.md")
+    );
     assert!(v.read(&v.path(&out)).contains("project: PRJ-0001\n"));
-    let out = v.run(&[
-        "new",
-        "run",
-        "--experiment",
-        "EXP-0001",
-        "--kind",
-        "compute",
-    ]);
+    let out = v.run(&["new", "run", "--experiment", &exp_id, "--kind", "compute"]);
     assert_eq!(out.code, 0, "{}", out.stderr);
     assert!(out.stdout.starts_with("notes/runs/RUN-"), "{}", out.stdout);
     let out = v.run_with(
-        &["result", "--experiment", "EXP-0001"],
+        &["result", "--experiment", &exp_id],
         Some("===RESULT=== {\"loss\": 0.5}\n"),
         &[],
     );
     assert_eq!(out.code, 0, "{}", out.stderr);
     assert!(v
         .root
-        .join("notes/experiments/EXP-0001/results.tsv")
+        .join(format!("notes/experiments/{exp_id}/results.tsv"))
         .is_file());
     let out = v.run_with(
         &["new"],
@@ -525,7 +529,7 @@ fn init_project_in_a_code_repo() {
     );
     assert_eq!(out.code, 0, "{}", out.stderr);
     assert!(
-        out.stdout.contains("EXP-0002-interactive.md"),
+        out.stdout.contains("-interactive.md") && out.stdout.contains("notes/experiments/EXP-2"),
         "{}",
         out.stdout
     );
@@ -1988,6 +1992,149 @@ fn sync_publishes_and_pulls_comments_back() {
 }
 
 #[test]
+fn migrate_ids_moves_experiments_to_date_ids_the_same_way_everywhere() {
+    let v = git_lab(); // PRJ-0001 with EXP-0001, committed
+    assert_eq!(
+        v.run(&["new", "experiment", "Second", "--project", "PRJ-0001"])
+            .code,
+        0
+    );
+    let out = v.run_with(
+        &["result", "--experiment", "EXP-0002"],
+        Some("===RESULT=== {\"loss\": 1}\n"),
+        &[],
+    );
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let prj = v.root.join("notes/projects/PRJ-0001-toy/README.md");
+    fs::write(
+        &prj,
+        v.read(&prj)
+            + "- [[EXP-0001]] the first\n- [[EXP-0002]] the second, after [[EXP-0001@1|it]]\n",
+    )
+    .unwrap();
+    let e2 = v
+        .root
+        .join("notes/projects/PRJ-0001-toy/experiments/EXP-0002-second.md");
+    fs::write(
+        &e2,
+        v.read(&e2)
+            .replace("influenced_by: []", "influenced_by: [EXP-0001]"),
+    )
+    .unwrap();
+    git(&v.root, &["add", "-A"]);
+    git(&v.root, &["commit", "-q", "-m", "second"]);
+    // a second worktree of the same history
+    let other = empty();
+    git(
+        &v.root,
+        &[
+            "worktree",
+            "add",
+            "-q",
+            "-b",
+            "side",
+            other.root.join("w").to_str().unwrap(),
+        ],
+    );
+    let w = Vault {
+        _dir: tempfile::tempdir().unwrap(),
+        root: other.root.join("w"),
+    };
+
+    let dry = v.run(&["migrate-ids", "--dry-run"]);
+    assert!(
+        dry.stdout.contains("2 page(s) would be migrated"),
+        "{}",
+        dry.stdout
+    );
+    let out = v.run(&["migrate-ids"]);
+    assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
+    let out_w = w.run(&["migrate-ids"]);
+    assert_eq!(out_w.code, 0, "{}", out_w.stderr);
+    let mapping = |o: &str| {
+        o.lines()
+            .filter(|l| l.starts_with("EXP-0") && l.contains(" -> "))
+            .map(|l| l.split("  ").next().unwrap().to_string())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        mapping(&out.stdout),
+        mapping(&out_w.stdout),
+        "every worktree migrates to the same IDs"
+    );
+    let ids: Vec<String> = mapping(&out.stdout)
+        .iter()
+        .map(|m| m.split(" -> ").nth(1).unwrap().to_string())
+        .collect();
+    let (n1, n2) = (&ids[0], &ids[1]);
+    assert!(regex_like_date_id(n1) && regex_like_date_id(n2), "{ids:?}");
+    assert!(n1 < n2, "the old order survives: {ids:?}");
+
+    let exps = v.root.join("notes/projects/PRJ-0001-toy/experiments");
+    let page2 = v.read(&exps.join(format!("{n2}-second.md")));
+    assert!(
+        page2.contains(&format!("id: {n2}\nprevious_id: EXP-0002\n")),
+        "{page2}"
+    );
+    assert!(page2.contains(&format!("influenced_by: [{n1}]")), "{page2}");
+    assert!(exps.join(n2).join("results.tsv").is_file(), "sidecar moved");
+    let run = first_md(&v.root.join("notes/projects/PRJ-0001-toy/runs"));
+    assert!(v.read(&run).contains(&format!("experiment: {n2}\n")));
+    let prj_text = v.read(&prj);
+    assert!(
+        prj_text.contains(&format!("- [[{n2}]] the second, after [[{n1}@1|it]]")),
+        "{prj_text}"
+    );
+    assert!(v
+        .read(&v.root.join("yajna.toml"))
+        .contains("experiment_ids = \"date\""));
+    assert!(!v.read(&v.root.join("notes/counters.yaml")).contains("EXP:"));
+    let out = v.run(&["validate"]);
+    assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
+    // old IDs still find their pages; new experiments get date IDs
+    let out = v.run(&["show", "EXP-0002"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(out.stdout.starts_with(n2.as_str()), "{}", out.stdout);
+    let out = v.run(&["new", "run", "--experiment", "EXP-0002"]);
+    assert_eq!(
+        out.code, 0,
+        "an old ID still resolves for new pages: {}",
+        out.stderr
+    );
+    assert!(
+        v.read(&v.path(&out))
+            .contains(&format!("experiment: {n2}\n")),
+        "and is written as the current ID"
+    );
+    assert_eq!(v.run(&["validate"]).code, 0);
+    fs::write(&prj, v.read(&prj) + "\nSee [[EXP-0001]].\n").unwrap();
+    let out = v.run(&["validate"]);
+    assert!(
+        out.stdout
+            .contains(&format!("link to EXP-0001, which is now {n1}")),
+        "{}",
+        out.stdout
+    );
+    fs::write(&prj, v.read(&prj).replace("\nSee [[EXP-0001]].\n", "")).unwrap();
+    let out = v.run(&["new", "experiment", "Third", "--project", "PRJ-0001"]);
+    let third = v.path(&out);
+    let third_id = third
+        .file_name()
+        .unwrap()
+        .to_string_lossy()
+        .split('-')
+        .take(3)
+        .collect::<Vec<_>>()
+        .join("-");
+    assert!(
+        regex_like_date_id(&third_id) && third_id.as_str() > n2.as_str(),
+        "{third_id}"
+    );
+    let out = v.run(&["migrate-ids"]);
+    assert!(out.stdout.contains("nothing to migrate"), "{}", out.stdout);
+}
+
+#[test]
 fn site_serve_answers_http_and_rerenders() {
     use std::io::{BufRead, BufReader, Read, Write};
     let v = indexed_lab();
@@ -2042,6 +2189,18 @@ fn site_serve_answers_http_and_rerenders() {
     );
     child.kill().unwrap();
     let _ = child.wait();
+}
+
+/// `EXP-20261021-0k3m9x`: a date ID with the 6-character time-sortable suffix.
+fn regex_like_date_id(id: &str) -> bool {
+    let parts: Vec<&str> = id.split('-').collect();
+    parts.len() == 3
+        && parts[1].len() == 8
+        && parts[1].chars().all(|c| c.is_ascii_digit())
+        && parts[2].len() == 6
+        && parts[2]
+            .chars()
+            .all(|c| "0123456789abcdefghjkmnpqrstvwxyz".contains(c))
 }
 
 fn walk(dir: &Path) -> Vec<PathBuf> {

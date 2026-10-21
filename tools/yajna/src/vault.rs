@@ -65,8 +65,12 @@ pub const ENTITIES: &[Entity] = &[
 ];
 pub const PROJECT_SCOPED: &[&str] = &["experiment", "run", "analysis", "artifact"];
 pub const VOLUME_PREFIXES: &[&str] = &["RUN", "ART", "AGS"];
-/// Frontmatter fields that hold paths, not IDs: an ID inside them is a directory name.
-pub const PATH_FIELDS: &[&str] = &["code", "script", "path"];
+/// Curated entities that take date IDs instead of counter IDs when `experiment_ids = "date"`
+/// (ADR-0022): the ones created on branches, where a shared counter collides.
+pub const DATED_PREFIXES: &[&str] = &["EXP", "ANA"];
+/// Frontmatter fields whose IDs are not links: paths (an ID there is a directory name) and
+/// `previous_id`, the counter ID a page had before `yajna migrate-ids`.
+pub const PATH_FIELDS: &[&str] = &["code", "script", "path", "previous_id"];
 const ALIASES: &[(&str, &str)] = &[
     ("agent", "agent_session"),
     ("exp", "experiment"),
@@ -107,8 +111,9 @@ pub fn is_type(name: &str) -> bool {
     entity(&canonical_type(name)).is_some()
 }
 
-const ID_PATTERN: &str =
-    r"\b(?:PRJ|EXP|PRO|MAT|ANA|EQP|BLD)-\d{4,}\b|\b(?:RUN|ART|AGS)-\d{8}-[a-z2-7]{4}\b";
+// Date IDs first, so `EXP-20261021-0k3m9x` is never read as the counter ID `EXP-20261021`.
+// A date ID's suffix is 4 characters (older IDs) or 6 (time-sortable, ADR-0022).
+const ID_PATTERN: &str = r"\b(?:RUN|ART|AGS|EXP|ANA)-\d{8}-[0-9a-z]{4}(?:[0-9a-z]{2})?\b|\b(?:PRJ|EXP|PRO|MAT|ANA|EQP|BLD)-\d{4,}\b";
 pub static ID_FULL_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(&format!("^(?:{ID_PATTERN})$")).unwrap());
 /// An ID with an optional `namespace/` in front, as it appears in frontmatter and links.
@@ -116,7 +121,24 @@ pub static NS_ID_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(&format!(r"(?:\b([a-z][a-z0-9_-]*)/)?({ID_PATTERN})")).unwrap());
 pub static LINK_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\[\[([^\]|]+)(?:\|[^\]]*)?\]\]").unwrap());
-const BASE32: &[u8] = b"abcdefghijklmnopqrstuvwxyz234567";
+/// Base 32 in ASCII order (Crockford's letters, lowercase), so suffixes sort as they read.
+const SORTABLE32: &[u8] = b"0123456789abcdefghjkmnpqrstvwxyz";
+
+/// A date ID: the UTC date, then the time of day in tenths of a second as 4 sortable base-32
+/// characters, then 2 characters that tell apart IDs made in the same tenth. `tail` is
+/// those 2 characters' value (random for new IDs, the old number when migrating).
+pub fn date_id(prefix: &str, utc: &Zoned, tail: u32) -> String {
+    let secs = (utc.hour() as u32) * 3600 + (utc.minute() as u32) * 60 + utc.second() as u32;
+    let tenths = secs * 10 + (utc.subsec_nanosecond() as u32 / 100_000_000).min(9);
+    let mut suffix = String::new();
+    for shift in [15, 10, 5, 0] {
+        suffix.push(SORTABLE32[(tenths >> shift & 31) as usize] as char);
+    }
+    for shift in [5, 0] {
+        suffix.push(SORTABLE32[(tail >> shift & 31) as usize] as char);
+    }
+    format!("{prefix}-{}-{suffix}", utc.strftime("%Y%m%d"))
+}
 
 /// `text` cut into (is_code, piece): fenced blocks and inline code spans are code. A link or
 /// citation inside code is literal text, not a reference.
@@ -247,6 +269,8 @@ pub struct Config {
     pub bibliography: Option<String>,
     pub shape: Option<String>,
     pub namespace: Option<String>,
+    /// `date` gives experiments and analyses date IDs (ADR-0022); absent means counters
+    pub experiment_ids: Option<String>,
     #[serde(default)]
     pub repos: BTreeMap<String, Repo>,
     #[serde(default)]
@@ -407,11 +431,35 @@ impl Vault {
         Ok(out)
     }
 
+    /// The page with this ID, or the page that had it before `yajna migrate-ids`.
     pub fn find(&self, ident: &str) -> Res<Page> {
-        match self.index()?.get(ident) {
-            Some(path) => self.read(path),
-            None => Err(format!("{ident}: not found in {}", self.notes.display())),
+        if let Some(path) = self.index()?.get(ident) {
+            return self.read(path);
         }
+        if let Some(page) = self
+            .pages()?
+            .into_iter()
+            .find(|p| p.field("previous_id") == Some(ident))
+        {
+            return Ok(page);
+        }
+        Err(format!("{ident}: not found in {}", self.notes.display()))
+    }
+
+    /// The current ID for `ident`: itself, or the date ID of the page it was migrated to.
+    pub fn canonical_id(&self, ident: &str) -> String {
+        if self.index().map(|i| i.contains_key(ident)).unwrap_or(false) {
+            return ident.to_string();
+        }
+        self.find(ident)
+            .ok()
+            .and_then(|p| p.id().map(str::to_string))
+            .unwrap_or_else(|| ident.to_string())
+    }
+
+    /// Experiments and analyses take date IDs (`experiment_ids = "date"`, ADR-0022).
+    pub fn date_ids(&self) -> bool {
+        self.cfg.experiment_ids.as_deref() == Some("date")
     }
 
     /// Where a project's experiments, runs, analyses and artifacts live: `notes/projects/PRJ-*/`
@@ -491,15 +539,11 @@ impl Vault {
     }
 
     pub fn allocate(&self, prefix: &str) -> Res<String> {
-        if VOLUME_PREFIXES.contains(&prefix) {
-            let stamp = Zoned::now()
-                .with_time_zone(TimeZone::UTC)
-                .strftime("%Y%m%d")
-                .to_string();
-            let suffix: String = (0..4)
-                .map(|_| BASE32[fastrand::usize(..BASE32.len())] as char)
-                .collect();
-            return Ok(format!("{prefix}-{stamp}-{suffix}"));
+        if VOLUME_PREFIXES.contains(&prefix)
+            || (self.date_ids() && DATED_PREFIXES.contains(&prefix))
+        {
+            let now = Zoned::now().with_time_zone(TimeZone::UTC);
+            return Ok(date_id(prefix, &now, fastrand::u32(..1024)));
         }
         let mut counters = self.read_counters()?;
         let n = match counters.iter_mut().find(|(k, _)| k == prefix) {
@@ -627,6 +671,34 @@ pub fn rel<'a>(path: &'a Path, root: &Path) -> std::borrow::Cow<'a, str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn date_ids_sort_by_time() {
+        let at = |h: i8, m: i8, s: i8, ns: i32| {
+            jiff::civil::date(2026, 10, 21)
+                .at(h, m, s, ns)
+                .to_zoned(TimeZone::UTC)
+                .unwrap()
+        };
+        assert_eq!(date_id("EXP", &at(0, 0, 0, 0), 0), "EXP-20261021-000000");
+        let ids = [
+            date_id("EXP", &at(0, 0, 0, 0), 1023),
+            date_id("EXP", &at(0, 0, 0, 100_000_000), 0),
+            date_id("EXP", &at(9, 59, 59, 0), 5),
+            date_id("EXP", &at(10, 0, 0, 0), 4),
+            date_id("EXP", &at(23, 59, 59, 900_000_000), 1023),
+        ];
+        let mut sorted = ids.to_vec();
+        sorted.sort();
+        assert_eq!(sorted, ids, "lexical order is time order");
+        assert!(ids.iter().all(|i| ID_FULL_RE.is_match(i)), "{ids:?}");
+        // 23:59:59.9 is 863999 tenths: base-32 digits 26 11 23 31
+        assert_eq!(&ids[4][13..], "tbqzzz");
+        // the counter form is still an ID, and a date ID is never read as one
+        assert!(ID_FULL_RE.is_match("EXP-0007") && ID_FULL_RE.is_match("RUN-20261016-k7f3"));
+        let c = NS_ID_RE.captures("see EXP-20261021-0k3m9x.").unwrap();
+        assert_eq!(&c[2], "EXP-20261021-0k3m9x");
+    }
 
     #[test]
     fn code_is_not_prose() {

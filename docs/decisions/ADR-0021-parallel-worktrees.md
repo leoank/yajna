@@ -47,3 +47,5 @@ agents use the same author handle, and so do pages two branches both edit.
 - The index and the site are already per worktree (cached by root path, ADR-0019).
 - An agent's work is attributable to its worktree from the author alone.
 - Renumbering rewrites text across the repo; it is a commit of its own on the branch.
+- Since ADR-0022 experiments and analyses take date IDs and no longer collide; the
+  allocate-on-main rule now covers only projects and shared entities.

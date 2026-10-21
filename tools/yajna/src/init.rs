@@ -85,7 +85,7 @@ fn init_lab(root: &Path, ns: &str, author: &str) -> Res<()> {
     let vault = Vault::open(root.to_path_buf())?;
     put(root, "notes/README.md", &vault.template("init/README.md")?)?;
     put(root, "notes/tasks.md", &vault.template("init/tasks.md")?)?;
-    let zero: Vec<(String, i64)> = ["PRJ", "EXP", "PRO", "MAT", "ANA", "EQP", "BLD"]
+    let zero: Vec<(String, i64)> = ["PRJ", "PRO", "MAT", "EQP", "BLD"]
         .iter()
         .map(|p| (p.to_string(), 0))
         .collect();
@@ -104,7 +104,7 @@ fn init_project(root: &Path, title: &str, ns: &str, author: &str) -> Res<()> {
     put(
         root,
         "notes/counters.yaml",
-        &counters_text(&[("PRJ".into(), 1), ("EXP".into(), 0), ("ANA".into(), 0)]),
+        &counters_text(&[("PRJ".into(), 1)]),
     )?;
     let vault = Vault::open(root.to_path_buf())?;
     let created = vault.today();
@@ -172,6 +172,7 @@ fn config_text(shape: &str, ns: &str, author: &str, repos: &[(String, String)]) 
          vault = \"notes\"       # the notebook directory, relative to this file\n\
          timezone = {tz:?}\n\
          bibliography = {bib:?}\n\
+         experiment_ids = \"date\"   # experiments and analyses get date IDs (ADR-0022)\n\
          \n\
          [repos]             # namespaces this repo links to, e.g. rc2s2 = \"github:leoank/rc2s2\"\n"
     );
@@ -291,8 +292,10 @@ pub fn import_project(
     }
 
     let mut counters: Vec<(String, i64)> = vec![(String::from("PRJ"), 1)];
-    for p in ["EXP", "ANA"] {
-        counters.push((p.to_string(), *highest.get(p).unwrap_or(&0)));
+    if !lab.date_ids() {
+        for p in ["EXP", "ANA"] {
+            counters.push((p.to_string(), *highest.get(p).unwrap_or(&0)));
+        }
     }
     put(root, "notes/counters.yaml", &counters_text(&counters))?;
     println!(
@@ -374,7 +377,7 @@ pub(crate) fn set_field(lines: &mut Vec<String>, key: &str, value: &str) {
     }
 }
 
-fn insert_after(lines: &mut Vec<String>, key: &str, line: &str) {
+pub(crate) fn insert_after(lines: &mut Vec<String>, key: &str, line: &str) {
     let i = lines
         .iter()
         .position(|l| l.starts_with(&format!("{key}:")))

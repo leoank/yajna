@@ -146,6 +146,13 @@ pub enum Cmd {
         #[arg(long)]
         no_comments: bool,
     },
+    /// give counter-ID experiments and analyses date IDs and switch the repo to them (ADR-0022)
+    #[command(name = "migrate-ids")]
+    MigrateIds {
+        /// list the new IDs and stop
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// give a curated page a new ID and rewrite every reference (resolves a branch collision)
     Renumber {
         /// the ID to replace, e.g. EXP-0012

@@ -57,11 +57,17 @@ is set, a new page offers to open in it.
 
 ## IDs and links
 
-- Every entity page has an `id` and the filename starts with it: `EXP-0007-escrt-timing.md`.
-  The slug is decoration; renaming the file never breaks a link.
-- Curated entities get counter IDs from `yajna new`: `PRJ`, `EXP`, `PRO`, `MAT`, `ANA`,
-  `EQP`, `BLD`, four digits, allocated from `notes/counters.yaml`.
-- Volume entities get a date and a random suffix: `RUN-20261015-k7f3`, `ART-...`, `AGS-...`.
+- Every entity page has an `id` and the filename starts with it:
+  `EXP-20261021-0k3m9x-escrt-timing.md`. The slug is decoration; renaming the file never
+  breaks a link. IDs are global within the repo, not per project (ADR-0004).
+- Experiments, analyses, runs, artifacts and agent sessions get date IDs (ADR-0022): the UTC
+  date and six characters that sort by time of day, `EXP-20261021-0k3m9x`. Older IDs with a
+  four-character suffix stay valid.
+- Projects, protocols, materials, equipment and builds get counter IDs from
+  `notes/counters.yaml`: `PRJ-0002`, `PRO-0012`, `MAT-0210`.
+- A repo from before ADR-0022 moves over with `yajna migrate-ids` (each worktree gets the
+  same IDs); a migrated page keeps its old ID as `previous_id`, the CLI still accepts the
+  old ID, and validation names the new one on a stale link.
 - Link with `[[EXP-0007]]` or `[[EXP-0007|the timing experiment]]`. Pin a protocol version
   with `[[PRO-0012@3]]`. A link to an ID that does not exist fails validation.
 - Link into another repo with its namespace: `[[rc2s2/EXP-0003]]`, `[[yajna/PRO-0012@3]]`.
@@ -419,9 +425,9 @@ yajna renumber EXP-0012                     # the fix, on the branch: next free 
 2. **Each worktree has its own author.** `yajna worktree` writes `.yajna/author`
    (`agent:<agent>-<slug>-<topic>`, never committed), which every command uses unless
    `YAJNA_AUTHOR` or `--author` says otherwise. Log files then never collide.
-3. **Allocate curated IDs on `main`.** Create the branch's experiments (and analyses) on
-   `main`, commit, merge `main` into the branch, then fill them in there. A branch only
-   creates volume entities: runs, artifacts, agent sessions.
+3. **Allocate counter IDs on `main`.** Experiments and analyses have date IDs and are
+   created on the branch freely. A new project is created on `main`, committed, and
+   merged into the branch before work starts.
 4. **Shared entities live on `main`.** Protocols, materials, equipment and builds are
    created and edited there; branches link to them.
 5. **Check before merging.** A branch that allocated a curated ID runs

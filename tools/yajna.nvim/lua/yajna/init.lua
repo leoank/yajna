@@ -7,8 +7,15 @@ local M = {}
 
 --- The entity ID at the start of s: `PRJ-0001` (curated) or `RUN-20261016-k7f3` (volume).
 local function id_prefix(s)
-  return s:match("^(%u%u%u%-%d%d%d%d%d%d%d%d%-[a-z2-7][a-z2-7][a-z2-7][a-z2-7])")
-    or s:match("^(%u%u%u%-%d%d%d%d%d*)")
+  -- a date ID (`EXP-20261021-0k3m9x`, or the older 4-character suffix) before a counter ID,
+  -- so the date is never read as a number
+  for _, n in ipairs({ 6, 4 }) do
+    local m = s:match("^(%u%u%u%-%d%d%d%d%d%d%d%d%-" .. ("[%da-z]"):rep(n) .. ")")
+    if m and not s:sub(#m + 1, #m + 1):match("[%da-z]") then
+      return m
+    end
+  end
+  return s:match("^(%u%u%u%-%d%d%d%d%d*)")
 end
 M.id_prefix = id_prefix
 
