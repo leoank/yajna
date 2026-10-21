@@ -29,3 +29,9 @@ suffix sorts by time; migrate this notebook and every manthan worktree.
   [[EXP-20261021-as4202]].
 - manthan `main` (21 experiments) and `fbr-sim/main` (13) migrated with identical IDs for
   the shared ones; both validate. Comments in rc2s2 source files still name old IDs.
+- Later the same day: experiments and analyses lost their counter for good (the opt-in
+  setting removed), and `migrate-ids` learned to give older 4-character run, artifact and
+  session IDs the time-sortable suffix and to repair IDs left inside paths. Two bugs found
+  by its tests and fixed: a directory before an ID (`runs/RUN-…`) was mistaken for a repo
+  namespace, and the repair pass rewrote prose that named an old ID on purpose. This
+  notebook's two older session pages and 52 pages in manthan `main` (45 in fbr-sim) moved.

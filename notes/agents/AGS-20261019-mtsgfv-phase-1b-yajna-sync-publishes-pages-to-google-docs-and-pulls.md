@@ -1,5 +1,6 @@
 ---
-id: AGS-20261019-oumb
+id: AGS-20261019-mtsgfv
+previous_id: AGS-20261019-oumb
 type: agent_session
 schema_version: 1
 title: "Phase 1b: yajna sync publishes pages to Google Docs and pulls comments back"
