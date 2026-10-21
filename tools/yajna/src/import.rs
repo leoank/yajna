@@ -272,6 +272,7 @@ fn import_genbank(
             false,
             None,
             None,
+            None,
         )?;
         let page = vault.read(&path)?;
         let id = page.id().unwrap_or_default().to_string();
@@ -453,6 +454,7 @@ fn import_entry(
         None,
         None,
         false,
+        None,
         None,
         None,
     )?;

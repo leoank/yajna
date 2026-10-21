@@ -1,0 +1,120 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://yajna.local/schema/v1/doc.json",
+  "title": "doc",
+  "description": "A document for people: meeting notes, a proposal, a report, admin or logistics. Synced to Google Docs by default; lives in the vault or in a directory listed under [docs] in yajna.toml.",
+  "type": "object",
+  "required": [
+    "id",
+    "type",
+    "schema_version",
+    "created",
+    "author",
+    "title",
+    "kind",
+    "status"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^DOC-\\d{8}-[0-9a-z]{4}([0-9a-z]{2})?$"
+    },
+    "type": {
+      "const": "doc"
+    },
+    "schema_version": {
+      "const": 1
+    },
+    "title": {
+      "type": "string"
+    },
+    "kind": {
+      "enum": [
+        "meeting",
+        "proposal",
+        "report",
+        "admin",
+        "logistics",
+        "note"
+      ]
+    },
+    "status": {
+      "enum": [
+        "draft",
+        "final",
+        "archived"
+      ]
+    },
+    "date": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "the day a meeting happened or a document is due"
+    },
+    "project": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^([a-z][a-z0-9_-]*/)?PRJ-\\d{4,}$"
+    },
+    "attendees": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "created": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "author": {
+      "type": "string",
+      "pattern": "^(agent:)?[a-z][a-z0-9_-]*$"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "review": {
+      "enum": [
+        "pending",
+        "approved"
+      ]
+    },
+    "session": {
+      "type": "string",
+      "pattern": "^AGS-\\d{8}-[0-9a-z]{4}([0-9a-z]{2})?$"
+    },
+    "sync": {
+      "type": "object",
+      "description": "Google Docs sync (architecture 5.8): provider, mode, and the doc ID allocated on first publish",
+      "required": [
+        "provider"
+      ],
+      "properties": {
+        "provider": {
+          "enum": [
+            "gdoc"
+          ]
+        },
+        "mode": {
+          "enum": [
+            "publish",
+            "mirror",
+            "import"
+          ]
+        },
+        "doc_id": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": true
+}

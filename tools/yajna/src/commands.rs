@@ -36,7 +36,13 @@ pub fn run(vault: &Vault, cmd: &Cmd, prompter: &mut dyn Prompter) -> Res<i32> {
             code,
             author,
             script,
+            dir,
         } => {
+            // a doc asks where it goes unless --dir says (ADR-0023)
+            let doc_dir = match (etype.as_deref().map(canonical_type).as_deref(), dir) {
+                (Some("doc"), None) => Some(tui::doc_dir(vault, prompter)?),
+                (_, d) => d.clone(),
+            };
             let path = match etype {
                 None => tui::new(vault, prompter, author.as_deref())?,
                 Some(t) => create(
@@ -49,6 +55,7 @@ pub fn run(vault: &Vault, cmd: &Cmd, prompter: &mut dyn Prompter) -> Res<i32> {
                     *code,
                     author.as_deref(),
                     script.as_deref(),
+                    doc_dir.as_deref(),
                 )?,
             };
             println!("{}", rel(&path, &vault.root));
@@ -181,6 +188,7 @@ pub fn create(
     code: bool,
     author: Option<&str>,
     script: Option<&str>,
+    dir: Option<&str>,
 ) -> Res<PathBuf> {
     let etype = canonical_type(etype);
     let Some(ent) = entity(&etype) else {
@@ -241,6 +249,7 @@ pub fn create(
         .unwrap_or_else(|| match etype.as_str() {
             "run" => "bench".to_string(),
             "material" => "reagent".to_string(),
+            "doc" => "note".to_string(),
             _ => String::new(),
         });
     let ident = vault.allocate(ent.prefix)?;
@@ -258,8 +267,13 @@ pub fn create(
         "null".to_string()
     };
     let title_field = title_scalar(&title);
+    if dir.is_some() && etype != "doc" {
+        return Err("--dir only applies to docs".to_string());
+    }
     let template = if etype == "project" && code {
         "project-code"
+    } else if etype == "doc" && kind == "meeting" {
+        "doc-meeting"
     } else {
         ent.template
     };
@@ -294,7 +308,9 @@ pub fn create(
         } else {
             format!("{ident}-{slug}.md")
         };
-        if PROJECT_SCOPED.contains(&etype.as_str()) {
+        if etype == "doc" {
+            doc_dir(vault, dir.unwrap_or("notes/docs"))?.join(name)
+        } else if PROJECT_SCOPED.contains(&etype.as_str()) {
             vault
                 .project_dir(project.as_deref().unwrap())?
                 .join(ent.subdir)
@@ -368,6 +384,84 @@ pub fn write_skill(root: &Path) -> Res<PathBuf> {
     }
     fs::write(&path, skill_text()?).map_err(|e| format!("{}: {e}", path.display()))?;
     Ok(path)
+}
+
+/// Where a doc goes: `dir` under the repo root. A directory outside the vault that no
+/// `[docs] dirs` entry covers gets its top-level directory registered there, so validate,
+/// sync, the index and the site see the page.
+fn doc_dir(vault: &Vault, dir: &str) -> Res<PathBuf> {
+    let rel_dir = Path::new(dir.trim_end_matches('/'));
+    if rel_dir.is_absolute()
+        || rel_dir
+            .components()
+            .any(|c| matches!(c, std::path::Component::ParentDir))
+    {
+        return Err(format!(
+            "--dir {dir}: give a directory inside the repo, relative to its root"
+        ));
+    }
+    let full = vault.root.join(rel_dir);
+    if full.starts_with(&vault.notes) {
+        return Ok(full);
+    }
+    let covered = vault
+        .cfg
+        .docs
+        .dirs
+        .iter()
+        .any(|d| full.starts_with(vault.root.join(d)));
+    if !covered {
+        let top = rel_dir
+            .components()
+            .next()
+            .map(|c| c.as_os_str().to_string_lossy().to_string())
+            .ok_or("--dir: empty directory")?;
+        register_docs_dir(&vault.root, &top)?;
+        eprintln!(
+            "registered {top}/ under [docs] in yajna.toml: its doc pages are part of the notebook"
+        );
+    }
+    Ok(full)
+}
+
+/// Add `dir` to `[docs] dirs` in yajna.toml, creating the table when missing.
+fn register_docs_dir(root: &Path, dir: &str) -> Res<()> {
+    let path = root.join(crate::vault::CONFIG_NAME);
+    let text = fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    let current: Vec<String> = toml::from_str::<toml::Table>(&text)
+        .ok()
+        .and_then(|t| t.get("docs")?.get("dirs")?.as_array().cloned())
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default();
+    let mut dirs = current.clone();
+    dirs.push(dir.to_string());
+    let line = format!(
+        "dirs = [{}]   # directories outside the vault that hold doc pages",
+        dirs.iter()
+            .map(|d| format!("{d:?}"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
+    let out = match text.lines().position(|l| l.trim() == "[docs]") {
+        Some(i) => {
+            let mut lines: Vec<String> = text.lines().map(str::to_string).collect();
+            match lines[i + 1..]
+                .iter()
+                .position(|l| l.trim_start().starts_with("dirs"))
+                .map(|j| i + 1 + j)
+            {
+                Some(j) => lines[j] = line,
+                None => lines.insert(i + 1, line),
+            }
+            lines.join("\n") + "\n"
+        }
+        None => format!("{}\n\n[docs]\n{line}\n", text.trim_end()),
+    };
+    fs::write(&path, out).map_err(|e| e.to_string())
 }
 
 /// Create code/<slug>/ with a flake and README and register it in the root flake.

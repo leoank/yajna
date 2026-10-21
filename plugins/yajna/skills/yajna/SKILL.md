@@ -92,6 +92,13 @@ Other agents may be working in other worktrees of the same notebook at the same 
 - Merge `main` into your branch before allocating anything, and never use a bare
   `git stash`.
 
+## Docs for people
+
+Meeting notes, proposals, reports and admin pages are `doc` pages:
+`yajna new doc "<title>" --kind meeting|proposal|report|admin|logistics|note --dir <dir>`.
+Ask the author where it should live if they have not said (a thesis folder is common);
+they sync to Google Docs by default. Put a meeting's actions as checkboxes under *Actions*.
+
 ## Reproducible runs
 
 Every `compute` run you record must be re-creatable by someone who has only the repo:

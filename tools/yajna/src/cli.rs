@@ -45,6 +45,11 @@ pub enum Cmd {
         /// project: also scaffold code/<slug>/ with a flake
         #[arg(long)]
         code: bool,
+        /// doc: the directory to create it in, relative to the repo root (default notes/docs;
+        /// asked for when interactive). A directory outside the vault is registered under
+        /// [docs] in yajna.toml
+        #[arg(long)]
+        dir: Option<String>,
         /// author handle (default: $YAJNA_AUTHOR, else yajna.toml); agents pass agent:<name>
         #[arg(long)]
         author: Option<String>,

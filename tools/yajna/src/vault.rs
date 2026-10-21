@@ -62,12 +62,13 @@ pub const ENTITIES: &[Entity] = &[
     entity!("equipment", "EQP", "equipment", "equipment"),
     entity!("build", "BLD", "build", "builds"),
     entity!("agent_session", "AGS", "agent_session", "agents"),
+    entity!("doc", "DOC", "doc", "docs"),
 ];
 pub const PROJECT_SCOPED: &[&str] = &["experiment", "run", "analysis", "artifact"];
 pub const VOLUME_PREFIXES: &[&str] = &["RUN", "ART", "AGS"];
 /// Curated entities that take date IDs instead of counter IDs (ADR-0022): the ones created
 /// on branches, where a shared counter collides.
-pub const DATED_PREFIXES: &[&str] = &["EXP", "ANA"];
+pub const DATED_PREFIXES: &[&str] = &["EXP", "ANA", "DOC"];
 /// Frontmatter fields whose IDs are not links: paths (an ID there is a directory name) and
 /// `previous_id`, the counter ID a page had before `yajna migrate-ids`.
 pub const PATH_FIELDS: &[&str] = &["code", "script", "path", "previous_id"];
@@ -113,7 +114,7 @@ pub fn is_type(name: &str) -> bool {
 
 // Date IDs first, so `EXP-20261021-0k3m9x` is never read as the counter ID `EXP-20261021`.
 // A date ID's suffix is 4 characters (older IDs) or 6 (time-sortable, ADR-0022).
-const ID_PATTERN: &str = r"\b(?:RUN|ART|AGS|EXP|ANA)-\d{8}-[0-9a-z]{4}(?:[0-9a-z]{2})?\b|\b(?:PRJ|EXP|PRO|MAT|ANA|EQP|BLD)-\d{4,}\b";
+const ID_PATTERN: &str = r"\b(?:RUN|ART|AGS|EXP|ANA|DOC)-\d{8}-[0-9a-z]{4}(?:[0-9a-z]{2})?\b|\b(?:PRJ|EXP|PRO|MAT|ANA|EQP|BLD)-\d{4,}\b";
 pub static ID_FULL_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(&format!("^(?:{ID_PATTERN})$")).unwrap());
 /// An ID with an optional `namespace/` in front, as it appears in frontmatter and links.
@@ -273,6 +274,16 @@ pub struct Config {
     pub repos: BTreeMap<String, Repo>,
     #[serde(default)]
     pub sync: SyncConfig,
+    #[serde(default)]
+    pub docs: DocsConfig,
+}
+
+/// `[docs]` in yajna.toml: directories outside the vault (a thesis folder, say) whose doc
+/// pages belong to the notebook. Only files with a yajna `id` and `type` there count.
+#[derive(Debug, Default, Deserialize)]
+pub struct DocsConfig {
+    #[serde(default)]
+    pub dirs: Vec<String>,
 }
 
 /// `[sync]` in yajna.toml: where new Google Docs go, and where links to unsynced pages point.
@@ -410,12 +421,35 @@ impl Vault {
     pub fn pages(&self) -> Res<Vec<Page>> {
         let mut paths: Vec<PathBuf> = Vec::new();
         collect_md(&self.notes, &mut paths)?;
-        paths.sort_by_key(|p| {
+        let key = |p: &PathBuf| {
             p.components()
                 .map(|c| c.as_os_str().to_os_string())
                 .collect::<Vec<OsString>>()
-        });
-        paths.iter().map(|p| self.read(p)).collect()
+        };
+        paths.sort_by_key(key);
+        let mut pages: Vec<Page> = paths.iter().map(|p| self.read(p)).collect::<Res<_>>()?;
+        // doc pages in the registered directories outside the vault: only yajna pages, so a
+        // thesis chapter or a pandoc file beside them is left alone
+        let mut extra: Vec<PathBuf> = Vec::new();
+        for d in &self.cfg.docs.dirs {
+            let dir = self.root.join(d);
+            if !dir.starts_with(&self.notes) {
+                collect_md(&dir, &mut extra)?;
+            }
+        }
+        extra.sort_by_key(key);
+        for p in extra {
+            let page = self.read(&p)?;
+            let ours = page
+                .meta
+                .as_ref()
+                .map(|m| m.contains_key("id") && m.contains_key("type"))
+                .unwrap_or(false);
+            if ours {
+                pages.push(page);
+            }
+        }
+        Ok(pages)
     }
 
     /// ID -> path for every page that has an id (first page wins on duplicates).

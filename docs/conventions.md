@@ -382,6 +382,27 @@ yajna sync [ID ...]                             # publish, and pull comments bac
   `YAJNA_GDOC_CREDENTIALS` points, such as a secret from neusis), never in a repo. The
   token's scope is `drive.file`: yajna sees only the docs it created.
 
+## Docs: meetings, proposals and admin
+
+Documents written for people rather than as research records, such as meeting notes, a
+proposal, a report, or admin and logistics, are `doc` pages (ADR-0023). They are set to
+sync to Google Docs from the start.
+
+```
+yajna new doc "Committee meeting" --kind meeting      # asks where it goes
+yajna new doc "Thesis proposal" --kind proposal --dir thesis
+```
+
+- Kinds: `meeting`, `proposal`, `report`, `admin`, `logistics`, `note` (the default).
+  A meeting has agenda, notes, decisions and actions; actions are checkboxes, so
+  `yajna tasks` lists the open ones.
+- `yajna new doc` asks for the directory, completing `notes/docs`, the registered docs
+  directories and the repo's top-level directories; `--dir` answers it. The first doc in
+  a directory outside `notes/` registers its top-level directory under `[docs] dirs` in
+  `yajna.toml`, so validate, sync, tasks, the site and export see it. Only files with a
+  yajna `id` and `type` there are pages; a thesis chapter beside them is left alone.
+- Link experiments and runs with `[[ID]]`; in the published doc they become links.
+
 ## Importing from Benchling
 
 A one-off import of files exported from Benchling by hand, written as ordinary pages that

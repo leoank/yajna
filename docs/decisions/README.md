@@ -29,3 +29,4 @@ one rather than an edit.
 | [0020](ADR-0020-directory-names.md) | `notes/`, `code/` and `assets/` as the top-level directories; two project page templates | accepted |
 | [0021](ADR-0021-parallel-worktrees.md) | Several agents in parallel worktrees: one project per branch, IDs allocated on main, `validate --against`, `renumber`, `worktree` | accepted |
 | [0022](ADR-0022-date-ids-for-experiments.md) | Experiments and analyses take date IDs with a time-sortable suffix; `migrate-ids` | accepted |
+| [0023](ADR-0023-docs.md) | Docs: meeting notes, proposals and admin pages, synced, created where asked | accepted |

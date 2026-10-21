@@ -329,13 +329,13 @@ pub fn new(vault: &Vault, p: &mut dyn Prompter, author: Option<&str>) -> Res<Pat
     }
 
     let mut kind = None;
-    if etype == "run" || etype == "material" {
+    if etype == "run" || etype == "material" || etype == "doc" {
         let kinds = enum_values(&etype, "kind");
         let allowed = kinds.clone();
-        let default = if etype == "run" {
-            kinds.first().cloned().unwrap_or_default()
-        } else {
-            "reagent".to_string()
+        let default = match etype.as_str() {
+            "run" => kinds.first().cloned().unwrap_or_default(),
+            "doc" => "note".to_string(),
+            _ => "reagent".to_string(),
         };
         let msg = format!("one of {}", kinds.join(", "));
         kind = Some(p.ask(
@@ -351,6 +351,12 @@ pub fn new(vault: &Vault, p: &mut dyn Prompter, author: Option<&str>) -> Res<Pat
             &default,
         )?);
     }
+
+    let dir = if etype == "doc" {
+        Some(doc_dir(vault, p)?)
+    } else {
+        None
+    };
 
     let mut code = false;
     if etype == "project" {
@@ -370,9 +376,66 @@ pub fn new(vault: &Vault, p: &mut dyn Prompter, author: Option<&str>) -> Res<Pat
         code,
         author,
         None,
+        dir.as_deref(),
     )?;
     offer_editor(&path, p)?;
     Ok(path)
+}
+
+/// Where a new doc goes, relative to the repo root: asked with completion over `notes/docs`,
+/// the `[docs]` directories and the repo's top-level directories; `notes/docs` when nobody
+/// can be asked.
+pub fn doc_dir(vault: &Vault, p: &mut dyn Prompter) -> Res<String> {
+    use std::io::IsTerminal;
+    let default = "notes/docs".to_string();
+    if std::env::var("YAJNA_ANSWERS").is_err() && !std::io::stdin().is_terminal() {
+        return Ok(default);
+    }
+    let mut dirs: BTreeSet<String> = BTreeSet::new();
+    dirs.insert(default.clone());
+    let subdirs = |d: &Path| -> Vec<String> {
+        std::fs::read_dir(d)
+            .map(|rd| {
+                rd.flatten()
+                    .filter(|e| e.path().is_dir())
+                    .map(|e| e.file_name().to_string_lossy().to_string())
+                    .filter(|n| {
+                        !n.starts_with('.')
+                            && !["target", "result", "node_modules"].contains(&n.as_str())
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    for top in subdirs(&vault.root) {
+        if top == "code" {
+            continue;
+        }
+        for sub in subdirs(&vault.root.join(&top)) {
+            if top != "notes" || sub == "docs" {
+                dirs.insert(format!("{top}/{sub}"));
+            }
+        }
+        if top != "notes" {
+            dirs.insert(top);
+        }
+    }
+    for d in &vault.cfg.docs.dirs {
+        dirs.insert(d.clone());
+    }
+    let answer = p.ask(
+        "where (directory, relative to the repo root)",
+        Some(Completer::Words(dirs.into_iter().collect())),
+        Some(std::rc::Rc::new(|d: &str| {
+            if d.starts_with('/') || d.split('/').any(|c| c == "..") {
+                Err("a directory inside the repo".into())
+            } else {
+                Ok(())
+            }
+        })),
+        &default,
+    )?;
+    Ok(answer.trim().trim_end_matches('/').to_string())
 }
 
 /// Prompt for one log line; `[[` completes entity IDs.

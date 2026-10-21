@@ -43,6 +43,7 @@ yajna tree PRJ-0001                              # experiments by theme, outcome
 yajna runs EXP-0007 --by loss                    # an experiment's runs ordered by a metric
 yajna site --serve --open                        # the static site in a browser, refreshed as pages change
 yajna import benchling exports/ --project PRJ-0004 # GenBank files and entries, one-off
+yajna new doc "Committee meeting" --kind meeting  # meeting notes, proposals, admin; asks where
 yajna sync                                       # publish marked pages to Google Docs, pull comments back
 yajna export                                     # read-only bundle of what changed, for an institutional ELN
 yajna worktree PRJ-0003 aero-map                 # a branch and worktree with its own agent author

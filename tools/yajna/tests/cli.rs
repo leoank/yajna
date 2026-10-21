@@ -2251,6 +2251,135 @@ fn migrate_ids_moves_experiments_to_date_ids_the_same_way_everywhere() {
 }
 
 #[test]
+fn docs_go_where_asked_and_sync() {
+    let v = vault();
+    assert_eq!(v.run(&["new", "project", "Thesis"]).code, 0);
+    // a thesis folder with an ordinary pandoc file already in it
+    fs::create_dir_all(v.root.join("thesis")).unwrap();
+    fs::write(
+        v.root.join("thesis/chapter1.md"),
+        "---\ntitle: Chapter 1\nbibliography: refs.bib\n---\nText.\n",
+    )
+    .unwrap();
+
+    let out = v.run(&[
+        "new",
+        "doc",
+        "Committee meeting",
+        "--kind",
+        "meeting",
+        "--dir",
+        "thesis/meetings",
+        "--project",
+        "PRJ-0001",
+    ]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert_eq!(
+        out.stdout.trim(),
+        "thesis/meetings/DOC-20261021-000001-committee-meeting.md"
+    );
+    assert!(
+        out.stderr.contains("registered thesis/ under [docs]"),
+        "{}",
+        out.stderr
+    );
+    let cfg = v.read(&v.root.join("yajna.toml"));
+    assert!(cfg.contains("\n[docs]\ndirs = [\"thesis\"]"), "{cfg}");
+    let page = v.read(&v.path(&out));
+    assert!(
+        page.contains("kind: meeting\n")
+            && page.contains("sync: {provider: gdoc, mode: publish}")
+            && page.contains("## Actions"),
+        "{page}"
+    );
+    assert!(
+        page.contains("project: PRJ-0001\n") && page.contains("\ndate: 20"),
+        "{page}"
+    );
+    fs::write(v.path(&out), page.replace("## Actions\nEach action as a checkbox with who and by when; `yajna tasks` lists the open ones.\n- [ ] \n", "## Actions\n- [ ] send the slides to the committee\n")).unwrap();
+
+    // a second doc in the registered folder; the default location; the folder question
+    let out = v.run(&[
+        "new",
+        "doc",
+        "Budget",
+        "--kind",
+        "admin",
+        "--dir",
+        "thesis/admin",
+    ]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(!out.stderr.contains("registered"), "already covered");
+    assert_eq!(
+        v.read(&v.root.join("yajna.toml"))
+            .matches("dirs = ")
+            .count(),
+        1
+    );
+    let out = v.run(&["new", "doc", "Lab rota"]);
+    assert_eq!(
+        out.stdout.trim(),
+        "notes/docs/DOC-20261021-000003-lab-rota.md",
+        "{}",
+        out.stderr
+    );
+    assert!(v.read(&v.path(&out)).contains("kind: note "));
+    let out = v.run_with(
+        &["new"],
+        None,
+        &[(
+            "YAJNA_ANSWERS",
+            "doc\nVisa letter\nlogistics\nthesis/logistics",
+        )],
+    );
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(
+        out.stdout
+            .contains("thesis/logistics/DOC-20261021-000004-visa-letter.md"),
+        "{}",
+        out.stdout
+    );
+
+    let out = v.run(&["validate"]);
+    assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
+    assert!(
+        out.stdout.contains("5 page(s)"),
+        "the pandoc chapter is not a page: {}",
+        out.stdout
+    );
+    assert!(v
+        .run(&["tasks"])
+        .stdout
+        .contains("send the slides to the committee"));
+    let out = v.run(&["sync", "--dry-run"]);
+    assert!(
+        out.stdout
+            .contains("thesis/meetings/DOC-20261021-000001-committee-meeting.md: create a new doc"),
+        "{}",
+        out.stdout
+    );
+    let site = v.root.join("site");
+    assert_eq!(v.run(&["site", "--out", site.to_str().unwrap()]).code, 0);
+    assert!(v.read(&site.join("index.html")).contains("<h2>Docs</h2>"));
+    assert!(site.join("DOC-20261021-000001.html").is_file());
+
+    assert_eq!(v.run(&["new", "doc", "X", "--dir", "../outside"]).code, 1);
+    assert_eq!(
+        v.run(&[
+            "new",
+            "experiment",
+            "E",
+            "--project",
+            "PRJ-0001",
+            "--dir",
+            "thesis"
+        ])
+        .code,
+        1
+    );
+}
+
+#[test]
 fn site_serve_answers_http_and_rerenders() {
     use std::io::{BufRead, BufReader, Read, Write};
     let v = indexed_lab();
