@@ -31,5 +31,8 @@ mdBook, the design docs as a section, and a CLI reference generated from `--help
   precedence, and the top-level summary. The plugin install command in README and
   conventions was wrong (`--marketplace` does not exist); now `marketplace add` and
   `install yajna@yajna`.
-- Not done: enabling Pages in the repo settings (source: GitHub Actions) and the first
-  deploy; no release is tagged, so the install page says so.
+- Published: Pages enabled (source GitHub Actions), the guide live at
+  https://leoank.github.io/yajna/. Released v0.2.0; the release workflow had never created
+  the release its upload step attaches to, so the release was made by hand and the jobs
+  rerun, and the workflow now creates it first. The install page's download and checksum
+  steps were run against the real assets.
