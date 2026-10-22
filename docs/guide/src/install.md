@@ -44,8 +44,8 @@ notebook gives everyone the same version. Update it with `nix flake update yajna
 
 Every [release](https://github.com/leoank/yajna/releases/latest) carries binaries for Linux
 (static, x86-64 and ARM64) and macOS (Apple silicon and Intel), each with a SHA-256
-checksum. Download the archive for your machine, check it, unpack it and put `yajna` on
-your `PATH`:
+checksum in `yajna-<tag>-<target>.sha256`. Download the archive for your machine, check
+it, unpack it and put `yajna` on your `PATH`:
 
 | Machine | Archive |
 |---------|---------|
@@ -59,8 +59,8 @@ tag=v0.2.0
 target=aarch64-apple-darwin
 base=https://github.com/leoank/yajna/releases/download/$tag
 curl -LO $base/yajna-$tag-$target.tar.gz
-curl -LO $base/yajna-$tag-$target.tar.gz.sha256
-shasum -a 256 -c yajna-$tag-$target.tar.gz.sha256
+curl -LO $base/yajna-$tag-$target.sha256
+shasum -a 256 -c yajna-$tag-$target.sha256
 tar xzf yajna-$tag-$target.tar.gz
 install yajna ~/.local/bin/
 yajna --version
