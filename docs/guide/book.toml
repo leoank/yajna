@@ -7,8 +7,28 @@ authors = ["Ankur Kumar"]
 language = "en"
 src = "src"
 
+[build]
+# Every page comes from SUMMARY.md; a typo there should fail the build, not
+# silently create an empty page.
+create-missing = false
+
+# The theme is the neusis docs' (theme/), so the two sites look alike.
 [output.html]
 site-url = "/yajna/"
 git-repository-url = "https://github.com/leoank/yajna"
+git-repository-icon = "fab-github"
 default-theme = "light"
 preferred-dark-theme = "navy"
+additional-css = ["theme/yajna.css"]
+additional-js = ["theme/sidebar.js"]
+no-section-label = true
+# Keep `--flag` from turning into an en dash in prose.
+smart-punctuation = false
+
+[output.html.fold]
+# Sections stay folded until you navigate into them (or click the chevron).
+enable = true
+level = 0
+
+[output.html.search]
+limit-results = 40
