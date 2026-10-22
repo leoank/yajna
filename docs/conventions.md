@@ -471,7 +471,8 @@ in frontmatter until a human removes it. Every compute run an agent records carr
 `script` that re-creates it (see "Dry-lab runs").
 
 The agent skill that teaches all of this ships as the Claude Code plugin `yajna`, with
-the tooling repo as its marketplace (`/plugin install yajna --marketplace leoank/yajna`).
+the tooling repo as its marketplace (`/plugin marketplace add leoank/yajna`, then
+`/plugin install yajna@yajna`).
 The plugin adds `/yajna:project <brief>` and its `code-`, `bio-`, `ml-` and `hardware-`
 variants: each reads the notebook, interviews the author until the question, success
 criteria, scope, constraints, risks and first experiments are pinned down, and only then

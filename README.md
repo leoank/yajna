@@ -61,7 +61,8 @@ GitHub releases (`x86_64-linux` musl, `aarch64-linux`, `aarch64-darwin`,
 For Claude Code this repo is a plugin marketplace:
 
 ```
-/plugin install yajna --marketplace leoank/yajna
+/plugin marketplace add leoank/yajna
+/plugin install yajna@yajna
 ```
 
 gives the `yajna` skill and `/yajna:project`, `/yajna:code-project`, `/yajna:bio-project`,
