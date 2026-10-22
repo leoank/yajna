@@ -5,7 +5,7 @@ type: experiment
 schema_version: 1
 title: Does yajna sync work against the real Google Docs API?
 project: PRJ-0001
-status: planned           # planned | active | paused | concluded | abandoned
+status: active            # planned | active | paused | concluded | abandoned
 outcome: null             # null | positive | negative | inconclusive | infra
 influenced_by: []
 created: 2026-10-19
@@ -63,7 +63,15 @@ anchors of earlier comments; that is expected and is why comments are pulled fir
 
 ## Runs
 One line per run after its link, what was tried and what it showed; `yajna validate`
-rejects a bare link here. Deferred: nothing has been run yet.
+rejects a bare link here.
+
+- [[RUN-20261022-c1dwfx]] steps 2-4: two pages published, unchanged re-sync uploads
+  nothing, an edit updates the same doc; structure, table and cross-doc link survive.
+  Checkboxes were dropped by Docs; fixed by rendering ☐/☑.
+- [[RUN-20261022-c3zs1m]] step 5 with one account: an API comment and reply arrive under
+  Review, a tick resolves the comment in the doc, a settled page syncs to nothing.
+  ank then commented from a second account on a selection in the Docs UI: it arrived
+  under Review with that account's name and quote, and a tick resolved it.
 
 ## Conclusion
 Written once, by a human, when status becomes `concluded`.
