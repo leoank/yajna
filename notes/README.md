@@ -41,6 +41,7 @@ open items with the rest.
 - [x] Phase 1b: `yajna sync` publishes marked pages to Google Docs and pulls comments back (ADR-0011)
 - [ ] Phase 1b verified: the PI reads and comments on a published page and the comments arrive in the repo ([[EXP-20261021-as4202]])
 - [ ] Phase 1b later: `mirror` and `import` modes, once publishing is routine
+- [ ] User guide on GitHub Pages: an mdBook with the CLI reference, page types and design docs generated at build time
 - [ ] Phase 2: data and runs (git-annex, `ART` pages, `experiment` and `autoresearch` commands)
 - [ ] Phase 2b: bench planning (run sheets, inventory, schedules)
 - [ ] Phase 3: the server and agents over HTTP and MCP
