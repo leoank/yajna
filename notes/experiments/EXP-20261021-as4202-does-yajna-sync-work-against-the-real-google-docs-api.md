@@ -5,15 +5,15 @@ type: experiment
 schema_version: 1
 title: Does yajna sync work against the real Google Docs API?
 project: PRJ-0001
-status: active            # planned | active | paused | concluded | abandoned
-outcome: null             # null | positive | negative | inconclusive | infra
+status: concluded            # planned | active | paused | concluded | abandoned
+outcome: positive             # null | positive | negative | inconclusive | infra
 influenced_by: []
 created: 2026-10-19
 author: agent:claude
 protocols: []
 materials: []
 tags: [sync]
-review: pending
+review: approved
 ---
 
 ## Question
@@ -74,4 +74,4 @@ rejects a bare link here.
   under Review with that account's name and quote, and a tick resolved it.
 
 ## Conclusion
-Written once, by a human, when status becomes `concluded`.
+`yajna sync` works! It can publish docs to google doc and then also sync back comments
