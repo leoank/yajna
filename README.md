@@ -8,6 +8,9 @@ itself is a separate, private repo of the `lab` shape (ADR-0018); mine is
 [leoank/manthan](https://github.com/leoank/manthan). The earlier contents of this repo
 (a uv workspace with the `sspoc` package) are preserved on the `v1` branch.
 
+**User guide: <https://leoank.github.io/yajna/>** — install, quickstart, concepts, guides
+for each kind of work, and the reference.
+
 ## Layout
 
 | Path | What |
@@ -20,6 +23,7 @@ itself is a separate, private repo of the `lab` shape (ADR-0018); mine is
 | `tools/zotero/` | Export a lab's `references/library.bib` from Zotero and reorganise the library from a plan |
 | `tools/corpus/` | Fetch published protocols into a lab's `corpus/` as fixtures for the protocol work |
 | `docs/` | Architecture, conventions, decision records, the original brief |
+| `docs/guide/` | The user guide published to GitHub Pages: an mdBook built by `nix build .#docs` |
 | `notes/` | This repo's own notebook: the project page (`notes/README.md`), the daily log, tasks |
 | `yajna.toml` | Makes this repo a `project`-shaped yajna repo, namespace `yajna` |
 
@@ -75,7 +79,8 @@ alone into a repo as `.claude/skills/yajna/SKILL.md`.
 ```
 nix develop            # cargo, clippy, rustfmt; `yajna` runs from tools/yajna via cargo run
 cargo test --manifest-path tools/yajna/Cargo.toml
-nix flake check        # the CLI's tests in the sandbox, the plugin's headless tests
+nix flake check        # the CLI's tests in the sandbox, the plugin's headless tests, the guide
+nix build .#docs       # the user guide into result/; CI publishes it on every push to main
 ```
 
 ## Documents
