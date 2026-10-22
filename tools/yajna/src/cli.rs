@@ -8,7 +8,7 @@ use clap::{Parser, Subcommand};
 #[command(
     name = "yajna",
     version,
-    about = "The yajna command: init, new, log, result, tasks, ref, validate, index, show, timeline, tree, runs, site, graduate.",
+    about = "yajna: create, check and query a markdown lab notebook. Run it without a command for an interactive menu.",
     disable_help_subcommand = true
 )]
 pub struct Cli {
@@ -29,7 +29,7 @@ pub enum Cmd {
     },
     /// create a page from its template and allocate an ID
     New {
-        /// project, experiment, run, protocol, material, artifact, analysis, equipment, build, agent; omit for an interactive prompt
+        /// project, experiment, run, protocol, material, artifact, analysis, equipment, build, agent, doc; omit for an interactive prompt
         #[arg(value_name = "TYPE")]
         etype: Option<String>,
         title: Option<String>,
@@ -39,7 +39,7 @@ pub enum Cmd {
         /// EXP-xxxx (runs); implies --project
         #[arg(long)]
         experiment: Option<String>,
-        /// run kind (bench, compute, assembly, calibration) or material kind
+        /// run kind (bench, compute, assembly, calibration), material kind, or doc kind (meeting, proposal, report, admin, logistics, note)
         #[arg(long)]
         kind: Option<String>,
         /// project: also scaffold code/<slug>/ with a flake
@@ -50,7 +50,7 @@ pub enum Cmd {
         /// [docs] in yajna.toml
         #[arg(long)]
         dir: Option<String>,
-        /// author handle (default: $YAJNA_AUTHOR, else yajna.toml); agents pass agent:<name>
+        /// author handle (default: $YAJNA_AUTHOR, else .yajna/author, else yajna.toml); agents pass agent:<name>
         #[arg(long)]
         author: Option<String>,
         /// run: the executable that re-creates it, relative to the repo root; a stub is
@@ -68,7 +68,7 @@ pub enum Cmd {
         /// HH:MM (default now)
         #[arg(long)]
         time: Option<String>,
-        /// author handle (default from yajna.toml)
+        /// author handle (default: $YAJNA_AUTHOR, else .yajna/author, else yajna.toml)
         #[arg(long)]
         author: Option<String>,
     },
@@ -209,7 +209,7 @@ pub enum Cmd {
     },
     /// render the static site from the index; --serve keeps it fresh in a browser
     Site {
-        /// output directory (default: <cache>/<repo>/site)
+        /// output directory (default: <cache>/<hash of the repo path>.site, beside the index)
         #[arg(long)]
         out: Option<PathBuf>,
         /// serve the site over HTTP, re-rendering when a page changes
@@ -274,7 +274,7 @@ pub enum ImportSource {
 
 #[derive(Subcommand, Debug, Clone)]
 pub enum InitShape {
-    /// a lab: lab/ with projects, protocols, materials, equipment, builds, agents, log
+    /// a lab: notes/ with projects, protocols, materials, equipment, builds, agents, log
     Lab {
         /// directory to create the lab in (default: --root or the current directory)
         path: Option<PathBuf>,
@@ -285,7 +285,7 @@ pub enum InitShape {
         #[arg(long)]
         author: Option<String>,
     },
-    /// one project at the root of a code repo: yajna.toml and lab/ next to the code
+    /// one project at the root of a code repo: yajna.toml and notes/ next to the code
     Project {
         /// the project's title, or its PRJ-xxxx in the lab given by --from
         name: String,
