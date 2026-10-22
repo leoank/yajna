@@ -455,6 +455,10 @@ fn render(vault: &Vault, page: &Page, docs: &BTreeMap<String, String>) -> String
     opts.insert(Options::ENABLE_TASKLISTS);
     let mut html_body = String::new();
     html::push_html(&mut html_body, Parser::new_ext(&body, opts));
+    // Docs drops <input> on import, so a task's state becomes a character
+    let html_body = html_body
+        .replace("<input disabled=\"\" type=\"checkbox\" checked=\"\"/>\n", "☑ ")
+        .replace("<input disabled=\"\" type=\"checkbox\"/>\n", "☐ ");
     let id = page.id().unwrap_or("");
     let status = page.field("status").unwrap_or("");
     format!(

@@ -1913,7 +1913,8 @@ fn sync_publishes_and_pulls_comments_back() {
     }
     fs::write(
         &exp,
-        v.read(&exp) + "\nPart of [[PRJ-0001|the project]]; not [[PRO-0001]].\n",
+        v.read(&exp)
+            + "\nPart of [[PRJ-0001|the project]]; not [[PRO-0001]].\n\n- [ ] open\n- [x] done\n",
     )
     .unwrap();
     assert_eq!(v.run(&["validate"]).code, 0);
@@ -1968,6 +1969,11 @@ fn sync_publishes_and_pulls_comments_back() {
     );
     assert!(
         html.contains("not PRO-0001") && html.contains("<b>EXP-20261021-000001</b>"),
+        "{html}"
+    );
+    // Docs drops <input> on import, so task state travels as a character
+    assert!(
+        html.contains("☐ open") && html.contains("☑ done") && !html.contains("<input"),
         "{html}"
     );
     assert_eq!(v.run(&["validate"]).code, 0);
