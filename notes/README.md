@@ -41,6 +41,9 @@ open items with the rest.
 - [ ] Phase 1: upload to the institutional ELN, and its import format, once the ELN is named
 - [x] Phase 1b: `yajna sync` publishes marked pages to Google Docs and pulls comments back (ADR-0011)
 - [x] Phase 1b verified: the PI reads and comments on a published page and the comments arrive in the repo ([[EXP-20261021-as4202]])
+- [x] Phase 1b: synced docs mirror the notebook's folders in Drive and follow moved pages; citations render through pandoc with a page's own bibliography (ADR-0024)
+- [x] `yajna adopt`: an existing markdown file becomes a page of any type, its body kept (ADR-0025)
+- [ ] Phase 1b verified: folders and citations against the real Drive ([[EXP-20261023-cy5j5f]])
 - [ ] Phase 1b later: `mirror` and `import` modes, once publishing is routine
 - [x] User guide on GitHub Pages: an mdBook with the CLI reference, page types and design docs generated at build time
 - [ ] Phase 2: data and runs (git-annex, `ART` pages, `experiment` and `autoresearch` commands)
@@ -95,4 +98,5 @@ What was tried and dropped, and why, so nobody tries it again.
 One line per experiment after its link, what it asks and what came of it; `yajna validate`
 rejects a bare link here. Newest last.
 - [[EXP-20261019-j4xp01]] does `import benchling` read real Benchling exports; planned, deferred until exports from the lab's tenant are at hand
-- [[EXP-20261021-as4202]] does `yajna sync` work against the real Google Docs API; planned, deferred until an OAuth client exists for the personal account
+- [[EXP-20261021-as4202]] does `yajna sync` work against the real Google Docs API; positive: publish, updates in place and the comment round trip hold, after a checkbox fix
+- [[EXP-20261023-cy5j5f]] do folder mirroring and pandoc citations work against the real Drive; planned, deferred until the next real sync
