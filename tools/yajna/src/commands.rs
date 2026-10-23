@@ -234,7 +234,12 @@ pub fn create(
         Some(t) => t.to_string(),
         None if etype == "run" => String::new(),
         None if etype == "agent_session" => "Agent session".to_string(),
-        None => return Err(format!("a title is required for a {etype}")),
+        None => {
+            return Err(format!(
+                "a title is required for {}",
+                crate::vault::a(&etype)
+            ))
+        }
     };
 
     if vault.is_project() {

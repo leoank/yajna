@@ -263,6 +263,24 @@ fn validate_catches_problems() {
 }
 
 #[test]
+fn missing_title_is_an_error_without_a_terminal() {
+    let v = vault();
+    let out = v.run(&["new", "experiment"]);
+    assert_eq!(out.code, 1);
+    assert!(
+        out.stderr.contains("a title is required for an experiment"),
+        "{}",
+        out.stderr
+    );
+    let out = v.run(&["new", "protocol"]);
+    assert!(
+        out.stderr.contains("required for a protocol"),
+        "{}",
+        out.stderr
+    );
+}
+
+#[test]
 fn title_with_colon_and_unfinished_agent_page() {
     let v = vault();
     v.run(&["new", "project", "P"]);

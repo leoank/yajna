@@ -94,6 +94,12 @@ pub fn entity_names() -> Vec<&'static str> {
     ENTITIES.iter().map(|e| e.name).collect()
 }
 
+/// A page type with its article, for messages: "an experiment", "a run".
+pub fn a(etype: &str) -> String {
+    let an = etype.starts_with(['a', 'e', 'i', 'o', 'u']);
+    format!("{} {etype}", if an { "an" } else { "a" })
+}
+
 /// The allowed values of an enum field in a page type's schema, such as a run's `kind`;
 /// empty when the type has no such field.
 pub fn enum_values(schema: &str, field: &str) -> Vec<String> {
@@ -743,6 +749,13 @@ pub fn rel<'a>(path: &'a Path, root: &Path) -> std::borrow::Cow<'a, str> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn article() {
+        assert_eq!(super::a("experiment"), "an experiment");
+        assert_eq!(super::a("agent_session"), "an agent_session");
+        assert_eq!(super::a("run"), "a run");
+    }
+
     use super::*;
 
     #[test]

@@ -103,8 +103,9 @@ pub fn cmd_adopt(vault: &Vault, file: &Path, o: &Options) -> Res<i32> {
         .collect();
     if !clashes.is_empty() {
         return Err(format!(
-            "{shown_src}: its frontmatter sets {}, which yajna writes for a {etype}; remove {} and adopt again",
+            "{shown_src}: its frontmatter sets {}, which yajna writes for {}; remove {} and adopt again",
             clashes.join(", "),
+            crate::vault::a(&etype),
             if clashes.len() == 1 { "it" } else { "them" }
         ));
     }
