@@ -516,10 +516,16 @@ Mechanics:
      `yajna validate` fails on conflict markers in any page and `yajna sync` refuses to
      publish one. The next `yajna sync` publishes the resolved page and records the new
      commit, revision and hash.
-  6. **Guard.** `yajna sync` will not overwrite a mirror doc whose revision moved past
-     `yajna_rev` and was not pulled (a pull records the revision it reached as
-     `yajna_pulled`): it says to pull first, so edits in the doc are never lost silently.
-     `--overwrite` publishes anyway, for a doc whose edits are to be discarded.
+  6. **Guard.** Before overwriting a mirror doc whose revision moved past `yajna_rev`,
+     `yajna sync` works out the doc's edits as a pull would and checks that the page has
+     them: every line the doc changed must have changed in the page as well. A line the
+     page still has as published (an edit never pulled, or pulled and then thrown away)
+     stops the publish; so does a line changed on both sides that no pull has shown, which
+     a pull records by the hash of the export it read (`yajna_pulled`). The check is on
+     content, not on a record of pulls, so discarding a pull's changes never lets a
+     publish lose the doc's edits. It says to pull first; `--overwrite` publishes anyway,
+     for a doc whose edits are to be discarded. A pull is likewise free to run again: it
+     reports edits already in the page rather than nothing to pull.
 
   Comments are pulled before every publish, as in `publish`; replacing the body keeps them
   in the page's *Review* section even when their anchors in the doc are lost. A mirror

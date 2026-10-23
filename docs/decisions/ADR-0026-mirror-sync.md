@@ -32,10 +32,14 @@ without the round-trip losses of turning a Google Doc into the page's markdown.
 - The result is three-way merged with the page now, the published source as ancestor,
   by lines, with edits on neighbouring lines both applied; overlapping edits become
   conflict markers labelled `this page` and `the doc`. The page is written, nothing is
-  committed, and the doc records `yajna_pulled`.
+  committed, and the doc records `yajna_pulled`, a hash of the export the pull read.
 - `yajna validate` fails on conflict markers, `yajna sync` refuses a page with them, and
-  `yajna sync` refuses to overwrite a mirror doc with edits not yet pulled unless
-  `--overwrite` is given.
+  `yajna sync` refuses to overwrite a mirror doc whose edits are not in the page unless
+  `--overwrite` is given. Whether they are is decided on content each time: a line the doc
+  changed that the page still has as published blocks the publish, and a line changed on
+  both sides blocks it until a pull of the doc as it is now has shown it. (0.4.0 recorded
+  the revision a pull reached instead, so a pull whose changes were thrown away let the
+  next publish overwrite the doc, and a second pull found nothing.)
 
 ## Consequences
 

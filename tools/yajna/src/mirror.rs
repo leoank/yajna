@@ -839,11 +839,18 @@ fn hunks<'a>(base: &[&str], other: &[&'a str]) -> Vec<(usize, usize, Vec<&'a str
     out
 }
 
+/// The result of [`merge3`]: the text, how many conflicts are left as markers, and how many
+/// changes came from `theirs` alone, on lines `ours` left as they were in `base`.
+pub struct Merged {
+    pub text: String,
+    pub conflicts: usize,
+    pub theirs_only: usize,
+}
+
 /// A three-way merge by lines, as `git merge-file` does it except that edits on
 /// neighbouring lines both apply: only changes to the same lines of `base` (or two
-/// insertions at one place) that differ conflict, and are left as markers. Returns the
-/// text and the number of conflicts.
-pub fn merge3(ours: &str, base: &str, theirs: &str, labels: [&str; 2]) -> (String, usize) {
+/// insertions at one place) that differ conflict, and are left as markers.
+pub fn merge3(ours: &str, base: &str, theirs: &str, labels: [&str; 2]) -> Merged {
     let (o, b, t): (Vec<&str>, Vec<&str>, Vec<&str>) = (
         ours.lines().collect(),
         base.lines().collect(),
@@ -858,7 +865,7 @@ pub fn merge3(ours: &str, base: &str, theirs: &str, labels: [&str; 2]) -> (Strin
     let overlaps = |s: usize, e: usize, h: &(usize, usize, Vec<&str>, bool)| {
         (h.0 < e && s < h.1) || (h.0 == s && (h.0 == h.1 || s == e))
     };
-    let (mut out, mut conflicts, mut at, mut n) = (Vec::new(), 0, 0, 0);
+    let (mut out, mut conflicts, mut theirs_only, mut at, mut n) = (Vec::new(), 0, 0, 0, 0);
     while n < all.len() {
         let (mut s, mut e) = (all[n].0, all[n].1);
         let mut group = vec![n];
@@ -885,11 +892,12 @@ pub fn merge3(ours: &str, base: &str, theirs: &str, labels: [&str; 2]) -> (Strin
         let both = group.iter().any(|&g| all[g].3) && group.iter().any(|&g| !all[g].3);
         let (mine, other) = (side(true), side(false));
         if !both {
-            out.extend(if group.iter().any(|&g| all[g].3) {
-                mine
+            if group.iter().any(|&g| all[g].3) {
+                out.extend(mine);
             } else {
-                other
-            });
+                theirs_only += 1;
+                out.extend(other);
+            }
         } else if mine == other {
             out.extend(mine);
         } else {
@@ -907,7 +915,11 @@ pub fn merge3(ours: &str, base: &str, theirs: &str, labels: [&str; 2]) -> (Strin
     if !text.is_empty() && (ours.ends_with('\n') || theirs.ends_with('\n')) {
         text.push('\n');
     }
-    (text, conflicts)
+    Merged {
+        text,
+        conflicts,
+        theirs_only,
+    }
 }
 
 #[cfg(test)]
@@ -943,16 +955,34 @@ mod tests {
     #[test]
     fn merge3_applies_neighbouring_edits_and_marks_overlapping_ones() {
         let base = "a\nb\nc\nd\n";
-        let (m, n) = merge3("a\nB\nc\nd\n", base, "a\nb\nC\nd\n", ["mine", "doc"]);
-        assert_eq!((m.as_str(), n), ("a\nB\nC\nd\n", 0));
-        let (m, n) = merge3("a\nB\nc\nd\n", base, "a\nB\nc\nd\ne\n", ["mine", "doc"]);
-        assert_eq!((m.as_str(), n), ("a\nB\nc\nd\ne\n", 0));
-        let (m, n) = merge3("a\nB\nC\nd\n", base, "a\nb\nC\nD\n", ["mine", "doc"]);
-        assert_eq!((m.as_str(), n), ("a\nB\nC\nD\n", 0));
-        let (m, n) = merge3("a\nX\nc\nd\n", base, "a\nY\nc\nd\n", ["mine", "doc"]);
+        let m = |ours: &str, theirs: &str| {
+            let r = merge3(ours, base, theirs, ["mine", "doc"]);
+            (r.text, r.conflicts, r.theirs_only)
+        };
         assert_eq!(
-            (m.as_str(), n),
-            ("a\n<<<<<<< mine\nX\n=======\nY\n>>>>>>> doc\nc\nd\n", 1)
+            m("a\nB\nc\nd\n", "a\nb\nC\nd\n"),
+            ("a\nB\nC\nd\n".into(), 0, 1)
+        );
+        assert_eq!(
+            m("a\nB\nc\nd\n", "a\nB\nc\nd\ne\n"),
+            ("a\nB\nc\nd\ne\n".into(), 0, 1)
+        );
+        assert_eq!(
+            m("a\nB\nC\nd\n", "a\nb\nC\nD\n"),
+            ("a\nB\nC\nD\n".into(), 0, 1)
+        );
+        // the doc's edits already in the page: nothing to bring
+        assert_eq!(
+            m("a\nB\nc\nd\n", "a\nB\nc\nd\n"),
+            ("a\nB\nc\nd\n".into(), 0, 0)
+        );
+        assert_eq!(
+            m("a\nX\nc\nd\n", "a\nY\nc\nd\n"),
+            (
+                "a\n<<<<<<< mine\nX\n=======\nY\n>>>>>>> doc\nc\nd\n".into(),
+                1,
+                0
+            )
         );
     }
 

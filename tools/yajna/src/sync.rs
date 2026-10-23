@@ -1251,20 +1251,38 @@ pub fn cmd_sync(
         let props = &current["appProperties"];
         let same = props["yajna_hash"].as_str() == Some(digest.as_str());
         if mirror {
-            // edits in the doc since the publish are pulled before they are overwritten
-            let last = api.last_revision(&doc)?;
-            let edited = props["yajna_rev"]
-                .as_str()
-                .map(|rev| rev != last)
-                .unwrap_or(false);
-            if edited && props["yajna_pulled"].as_str() != Some(last.as_str()) && !overwrite {
-                println!(
-                    "skip {r}: the doc was edited since it was published; `yajna sync pull {}` brings the edits into the page first (--overwrite discards them)",
-                    page.id().unwrap_or("")
-                );
+            // edits in the doc since the publish must be in the page before they are
+            // overwritten: taken by a pull, or their lines changed in the page since
+            let links = mirror::Links {
+                docs: docs.iter().map(|(p, d)| (d.clone(), p.clone())).collect(),
+                site: vault.cfg.sync.site_url.clone(),
+            };
+            let id = page.id().unwrap_or("");
+            let edits = doc_edits(&api, vault, &page, &doc, props, &links)?;
+            let missing = match &edits {
+                Edits::Unpublished | Edits::None => None,
+                Edits::Unknown(why) => Some(why.clone()),
+                Edits::Found(f) if f.theirs.changes == 0 => None,
+                Edits::Found(f) => {
+                    let m = mirror::merge3(
+                        &without_review(&page.body),
+                        &f.base,
+                        &f.theirs.body,
+                        ["", ""],
+                    );
+                    // lines changed on both sides count as resolved only once a pull
+                    // has shown the doc's version of them
+                    let seen = props["yajna_pulled"].as_str() == Some(f.now.as_str());
+                    (m.theirs_only > 0 || (m.conflicts > 0 && !seen)).then(|| format!(
+                        "the doc has edits that are not in the page; `yajna sync pull {id}` brings them in first (--overwrite discards them)"
+                    ))
+                }
+            };
+            if let (Some(why), false) = (missing, overwrite) {
+                println!("skip {r}: {why}");
                 continue;
             }
-            if same && !edited && props["yajna_rev"].is_string() {
+            if same && matches!(edits, Edits::None) {
                 continue;
             }
         } else if same {
@@ -1355,6 +1373,85 @@ fn text_at(vault: &Vault, commit: &str, page: &Page) -> Res<String> {
     Err(format!("{id} is not in commit {short}"))
 }
 
+/// What a mirror doc holds beyond what yajna published.
+enum Edits {
+    /// never published as a mirror page
+    Unpublished,
+    /// no revision since the publish
+    None,
+    /// edited, but the edits cannot be told apart
+    Unknown(String),
+    Found(Found),
+}
+
+struct Found {
+    /// the page body as published
+    base: String,
+    /// the page body as the doc has it
+    theirs: mirror::Theirs,
+    /// who edited the doc since the publish
+    editors: Vec<String>,
+    /// a hash of the doc's export now, which a pull records as `yajna_pulled`
+    now: String,
+}
+
+/// The edits made in a mirror page's doc since yajna published it: the published
+/// revision's export against the doc's now, carried onto the published source.
+fn doc_edits(
+    api: &Api,
+    vault: &Vault,
+    page: &Page,
+    doc: &str,
+    props: &Value,
+    links: &mirror::Links,
+) -> Res<Edits> {
+    let (Some(rev), Some(commit), Some(export_hash)) = (
+        props["yajna_rev"].as_str(),
+        props["yajna_commit"].as_str(),
+        props["yajna_export"].as_str(),
+    ) else {
+        return Ok(Edits::Unpublished);
+    };
+    let revs = api.revisions(doc)?;
+    if revs.last().and_then(|v| v["id"].as_str()).unwrap_or(rev) == rev {
+        return Ok(Edits::None);
+    }
+    let published = api.revision_export(doc, rev)?;
+    if hash(&published) != export_hash {
+        return Ok(Edits::Unknown(format!("Drive no longer has the revision as it was published (it merged later edits into it), so the edits cannot be told apart; compare the doc by hand, then `yajna sync {} --overwrite`", page.id().unwrap_or(""))));
+    }
+    let now = api.export(doc)?;
+    let base_text = match text_at(vault, commit, page) {
+        Ok(t) => t,
+        Err(e) => return Ok(Edits::Unknown(e)),
+    };
+    let base = without_review(&split_frontmatter(&base_text).1);
+    let cites = !refs::citations(&without_code(&base)).is_empty();
+    let theirs = mirror::theirs(&base, &published, &now, cites, links);
+    let rev_n: u64 = rev.parse().unwrap_or(0);
+    let editors: BTreeSet<String> = revs
+        .iter()
+        .filter(|v| {
+            v["id"]
+                .as_str()
+                .and_then(|i| i.parse::<u64>().ok())
+                .map(|i| i > rev_n)
+                .unwrap_or(true)
+        })
+        .filter_map(|v| {
+            v["lastModifyingUser"]["displayName"]
+                .as_str()
+                .map(str::to_string)
+        })
+        .collect();
+    Ok(Edits::Found(Found {
+        base,
+        theirs,
+        editors: editors.into_iter().collect(),
+        now: hash(&now),
+    }))
+}
+
 /// `yajna sync pull`: edits made in the docs of mirror pages come into the pages as
 /// uncommitted changes, merged with what changed in the repo since the publish.
 pub fn cmd_pull(vault: &Vault, ids: &[String]) -> Res<i32> {
@@ -1390,61 +1487,49 @@ pub fn cmd_pull(vault: &Vault, ids: &[String]) -> Res<i32> {
             continue;
         }
         let current = api.get(&format!("/drive/v3/files/{doc}?fields=appProperties"))?;
-        let props = &current["appProperties"];
-        let (Some(rev), Some(commit), Some(export_hash)) = (
-            props["yajna_rev"].as_str(),
-            props["yajna_commit"].as_str(),
-            props["yajna_export"].as_str(),
-        ) else {
-            println!("skip {r}: not published as a mirror page yet; `yajna sync {id}` does that");
-            continue;
-        };
-        let revs = api.revisions(&doc)?;
-        let last = revs
-            .last()
-            .and_then(|v| v["id"].as_str())
-            .unwrap_or(rev)
-            .to_string();
-        if last == rev || props["yajna_pulled"].as_str() == Some(last.as_str()) {
-            println!("{r}: no edits in the doc to pull");
-            continue;
-        }
-        let published = api.revision_export(&doc, rev)?;
-        if hash(&published) != export_hash {
-            println!("skip {r}: Drive no longer has the revision as it was published (it merged later edits into it), so the edits cannot be told apart; compare the doc by hand, then `yajna sync {id} --overwrite`");
-            continue;
-        }
-        let now = api.export(&doc)?;
-        let base_text = match text_at(vault, commit, page) {
-            Ok(t) => t,
-            Err(e) => {
-                println!("skip {r}: {e}");
+        let found = match doc_edits(&api, vault, page, &doc, &current["appProperties"], &links)? {
+            Edits::Unpublished => {
+                println!(
+                    "skip {r}: not published as a mirror page yet; `yajna sync {id}` does that"
+                );
                 continue;
             }
+            Edits::None => {
+                println!("{r}: no edits in the doc to pull");
+                continue;
+            }
+            Edits::Unknown(why) => {
+                println!("skip {r}: {why}");
+                continue;
+            }
+            Edits::Found(f) => f,
         };
-        let base = without_review(&split_frontmatter(&base_text).1);
-        let base_cites = !refs::citations(&without_code(&base)).is_empty();
-        let theirs = mirror::theirs(&base, &published, &now, base_cites, &links);
+        let theirs = &found.theirs;
         if let Some(t) = &theirs.title {
             println!("{r}: the title was changed in the doc to \"{t}\"; titles live in the frontmatter, so change it there if it should stay");
         }
-        let (merged, n) = if theirs.changes == 0 {
-            (without_review(&page.body), 0)
+        let by = if found.editors.is_empty() {
+            String::new()
         } else {
-            mirror::merge3(
-                &without_review(&page.body),
-                &base,
-                &theirs.body,
-                ["this page", "the doc"],
-            )
+            format!(" by {}", found.editors.join(", "))
         };
+        if theirs.changes == 0 {
+            println!("{r}: the doc changed{by} only in ways the page does not keep (formatting)");
+            continue;
+        }
+        let ours = without_review(&page.body);
+        let m = mirror::merge3(&ours, &found.base, &theirs.body, ["this page", "the doc"]);
+        if m.conflicts == 0 && m.theirs_only == 0 {
+            println!("{r}: the doc's edits{by} are already in the page");
+            continue;
+        }
         // the page around the merged body: its frontmatter and its review section, untouched
         let text = fs::read_to_string(&page.path).map_err(|e| e.to_string())?;
         let fm = &text[..text.len() - page.body.len()];
         let review = find_section(&page.body)
             .map(|(s, e)| &page.body[s..e])
             .unwrap_or("");
-        let mut body = merged;
+        let mut body = m.text;
         if !review.is_empty() {
             if !body.ends_with("\n\n") {
                 body.push('\n');
@@ -1455,35 +1540,12 @@ pub fn cmd_pull(vault: &Vault, ids: &[String]) -> Res<i32> {
         if new_text != text {
             fs::write(&page.path, &new_text).map_err(|e| e.to_string())?;
         }
+        // the doc as pulled: its version of lines changed on both sides has been seen
         api.patch_json(
             &format!("/drive/v3/files/{doc}?fields=id"),
-            &json!({"appProperties": {"yajna_pulled": last}}),
+            &json!({"appProperties": {"yajna_pulled": found.now}}),
         )?;
-        let rev_n: u64 = rev.parse().unwrap_or(0);
-        let editors: BTreeSet<String> = revs
-            .iter()
-            .filter(|v| {
-                v["id"]
-                    .as_str()
-                    .and_then(|i| i.parse::<u64>().ok())
-                    .map(|i| i > rev_n)
-                    .unwrap_or(true)
-            })
-            .filter_map(|v| {
-                v["lastModifyingUser"]["displayName"]
-                    .as_str()
-                    .map(str::to_string)
-            })
-            .collect();
-        let by = if editors.is_empty() {
-            String::new()
-        } else {
-            format!(" by {}", editors.into_iter().collect::<Vec<_>>().join(", "))
-        };
-        if theirs.changes == 0 {
-            println!("{r}: the doc changed{by} only in ways the page does not keep (formatting)");
-            continue;
-        }
+        let n = m.conflicts;
         pulled += 1;
         conflicts += n;
         println!(

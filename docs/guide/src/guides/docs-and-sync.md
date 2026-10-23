@@ -188,6 +188,10 @@ $ yajna sync                    # the doc now shows the merged page
   reported; change it in the frontmatter), fonts and colours, and anything Google's
   Markdown export cannot show. An edit inside a rendered citation or code span comes back
   as the doc's text, and the pull says how many there were, so check those lines.
+- **Changed your mind?** Throwing a pull's changes away (`git checkout -- <file>`) is
+  safe: the doc keeps its edits, `yajna sync` refuses to publish over them, and
+  `yajna sync pull` brings them again. Run a pull as often as you like; when the doc's
+  edits are already in the page it says so.
 - **Discarding edits.** `yajna sync --overwrite` publishes over a doc's edits without
   pulling them.
 

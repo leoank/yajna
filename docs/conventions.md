@@ -391,7 +391,8 @@ yajna sync [ID ...]                             # publish, and pull comments bac
   published only when committed; `yajna sync pull` merges the doc's edits into the page
   as an uncommitted change (conflicts as `<<<<<<< this page` / `>>>>>>> the doc`
   markers), and after review and a commit `yajna sync` publishes the result. `yajna sync`
-  will not overwrite a doc with edits not yet pulled unless given `--overwrite`.
+  will not overwrite a doc whose edits are not in the page (checked on content, so a
+  pull thrown away still blocks it) unless given `--overwrite`.
   `import` (the doc is the truth) is not built.
 - Credentials are a refresh token in `~/.config/yajna/gdoc.json` (or wherever
   `YAJNA_GDOC_CREDENTIALS` points, such as a secret from neusis), never in a repo. The

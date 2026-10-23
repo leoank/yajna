@@ -2267,7 +2267,7 @@ fn mirror_pages_pull_doc_edits_as_a_merge_and_publish_only_when_committed() {
     let out = sync(&[]);
     assert!(
         out.stdout
-            .contains("the doc was edited since it was published"),
+            .contains("the doc has edits that are not in the page"),
         "{}",
         out.stdout
     );
@@ -2293,6 +2293,31 @@ fn mirror_pages_pull_doc_edits_as_a_merge_and_publish_only_when_committed() {
         git(&v.root, &["status", "--porcelain"]).contains(" M notes/docs/"),
         "pull commits nothing"
     );
+
+    // edits thrown away after a pull are still the doc's: sync refuses, a pull brings them again
+    git(&v.root, &["checkout", "--", "."]);
+    let out = sync(&[]);
+    assert!(
+        out.stdout
+            .contains("the doc has edits that are not in the page"),
+        "{}",
+        out.stdout
+    );
+    let out = sync(&["pull"]);
+    assert!(
+        out.stdout
+            .contains("2 edited line(s) from the doc by Sam Lee"),
+        "{}",
+        out.stdout
+    );
+    assert_eq!(v.read(&page), pulled);
+    let out = sync(&["pull"]);
+    assert!(
+        out.stdout
+            .contains("the doc's edits by Sam Lee are already in the page"),
+        "{}",
+        out.stdout
+    );
     assert_eq!(drive.lock().unwrap().uploads, uploads);
 
     // overlapping edits on both sides are left as markers; validate and sync refuse them
@@ -2310,6 +2335,12 @@ fn mirror_pages_pull_doc_edits_as_a_merge_and_publish_only_when_committed() {
     )
     .unwrap();
     commit("growth rate");
+    let out = sync(&[]);
+    assert!(
+        out.stdout.contains("the doc has edits that are not in the page"),
+        "a line changed on both sides is not resolved before a pull shows it: {}",
+        out.stdout
+    );
     let out = sync(&["pull"]);
     assert!(
         out.stdout.contains("1 conflict(s) left as markers"),
