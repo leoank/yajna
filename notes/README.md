@@ -52,7 +52,7 @@ open items with the rest.
 - [x] Phase 1c designed: `yajna serve` and a live files viewer with tabs and split views, `docs/files-viewer.md` (ADR-0027, ADR-0028, ADR-0029)
 - [x] Phase 1c step 1: `tools/` as a Cargo workspace; `yajna-serve` (axum) serves the site; `yajna serve`, `site --serve` its alias
 - [x] Phase 1c step 2: `[files]` roots in `yajna.toml`; the read-only file API with ranges, path and Host checks ([[EXP-20261023-kjtach]])
-- [ ] Phase 1c step 3: the UI (dockview, CodeMirror, markdown, images), the Nix-built committed bundle, files links from the site ([[EXP-20261023-kjv5wy]])
+- [x] Phase 1c step 3: the UI (dockview, CodeMirror, markdown, images), the Nix-built committed bundle, files links from the site ([[EXP-20261023-kjv5wy]])
 - [ ] Phase 1c step 4: live: watch or poll, SSE, follow mode ([[EXP-20261023-kjtrwp]])
 - [ ] Phase 1c step 5: the paged viewer for files above the cap
 - [ ] Phase 1c verified: ank follows an agent's run on a remote machine from the laptop ([[EXP-20261023-kjvkas]])
@@ -85,6 +85,9 @@ open items with the rest.
 - `yajna serve` has no authentication and relies on binding to loopback. Is there a
   machine where that is not private enough (a shared login node), so the token has to
   come before the verification run?
+- The files viewer was checked by hand in a browser (Playwright); a browser test in
+  `nix flake check` needs browsers that nixpkgs ships for Linux only. Worth it, or is the
+  Rust test of the routes and the bundle check enough?
 - Which viewers come after text, markdown and images: CSV/TSV tables, PDF, notebooks,
   TIFF stacks? The verification run's notes decide the order.
 
@@ -143,5 +146,5 @@ rejects a bare link here. Newest last.
 - [[EXP-20261023-ftnatx]] does `mirror` sync bring a person's edits in a real doc back into the page; the scripted cycle passed, the hand edit is ank's to do
 - [[EXP-20261023-kjtach]] can `yajna serve` list a million-entry directory and read ranges of a 10 GB file fast enough; on the laptop, after a fix it found, 0.3 s at 100 000 entries and 4 s at a million (the disk's own floor), ranges 0.2 ms; rogue and the cluster to run
 - [[EXP-20261023-kjtrwp]] does filesystem watching see what runs write, per filesystem and host; planned, before step 4
-- [[EXP-20261023-kjv5wy]] how large a file the CodeMirror viewer handles, the bundle size and the binary growth; planned, with step 3
+- [[EXP-20261023-kjv5wy]] how large a file the CodeMirror viewer handles, the bundle size and the binary growth; planned; first numbers from step 3: 230 KB gzipped on first load, the binary 11.5 to 13.6 MB, large files still to test
 - [[EXP-20261023-kjvkas]] can ank follow an agent's run on a remote machine from the laptop without a shell; planned, the Phase 1c verification
