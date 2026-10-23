@@ -3246,6 +3246,263 @@ fn serve_answers_http_rerenders_and_checks_the_host() {
     let _ = child.wait();
 }
 
+/// A raw HTTP/1.1 GET with extra header lines: (status line, headers, body bytes).
+fn http_req(addr: &str, path: &str, extra: &[&str]) -> (String, String, Vec<u8>) {
+    use std::io::{Read, Write};
+    let mut s = std::net::TcpStream::connect(addr).unwrap();
+    let mut req = format!("GET {path} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n");
+    for h in extra {
+        req.push_str(h);
+        req.push_str("\r\n");
+    }
+    req.push_str("\r\n");
+    s.write_all(req.as_bytes()).unwrap();
+    let mut buf = Vec::new();
+    s.read_to_end(&mut buf).unwrap();
+    let split = buf.windows(4).position(|w| w == b"\r\n\r\n").unwrap();
+    let head = String::from_utf8_lossy(&buf[..split]).to_string();
+    let (status, headers) = head.split_once("\r\n").unwrap_or((&head, ""));
+    (
+        status.to_string(),
+        headers.to_lowercase(),
+        buf[split + 4..].to_vec(),
+    )
+}
+
+fn api_json(addr: &str, path: &str) -> (String, serde_json::Value) {
+    let (status, _, body) = http_req(addr, path, &[]);
+    (status, serde_json::from_slice(&body).unwrap())
+}
+
+#[test]
+fn serve_files_api_lists_reads_and_refuses() {
+    let v = indexed_lab();
+    let scratch = tempfile::tempdir().unwrap();
+    let s = scratch.path();
+    // code/: a script, a binary, an image, a big directory, excluded things, a link out
+    let code = v.root.join("code");
+    fs::create_dir_all(code.join("big")).unwrap();
+    for i in 0..1203 {
+        fs::write(code.join(format!("big/f{i:04}.txt")), "").unwrap();
+    }
+    fs::write(code.join("run.py"), "print('hi')\n").unwrap();
+    fs::write(code.join("data.bin"), b"\x00\x01\x02").unwrap();
+    fs::write(code.join("plot.png"), b"\x89PNG\r\n\x1a\n").unwrap();
+    for d in [".git", "node_modules", "out"] {
+        fs::create_dir_all(code.join(d)).unwrap();
+        fs::write(code.join(d).join("x"), "x").unwrap();
+    }
+    fs::write(code.join("out/model.ckpt"), "w").unwrap();
+    std::os::unix::fs::symlink(s, code.join("scratch-link")).unwrap();
+    // the scratch root outside the repo, with a loop back to itself
+    let log: String = (0..100).map(|i| format!("line {i:03}\n")).collect();
+    fs::write(s.join("train.log"), &log).unwrap();
+    std::os::unix::fs::symlink(s, s.join("again")).unwrap();
+    let cfg = v.root.join("yajna.toml");
+    let base = v.read(&cfg);
+    fs::write(
+        &cfg,
+        format!(
+            "{base}\n[files]\nexclude = [\"node_modules\"]\n\n[[files.roots]]\nname = \"code\"\npath = \"code\"\nexclude = [\"*.ckpt\"]\n\n[[files.roots]]\nname = \"scratch\"\npath = \"{}\"\nwatch = \"poll\"\n\n[[files.roots]]\nname = \"gone\"\npath = \"$YAJNA_TEST_SURELY_UNSET/runs\"\n",
+            s.display()
+        ),
+    )
+    .unwrap();
+    assert_eq!(v.run(&["validate"]).code, 0);
+
+    let (mut child, addr) = spawn_server(&v, &["serve"]);
+    let (status, roots) = api_json(&addr, "/api/files/roots");
+    assert!(status.ends_with("200 OK"), "{status}");
+    let names: Vec<(&str, bool, &str)> = roots
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| {
+            (
+                r["name"].as_str().unwrap(),
+                r["exists"].as_bool().unwrap(),
+                r["watch"].as_str().unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        names,
+        [
+            ("code", true, "auto"),
+            ("scratch", true, "poll"),
+            ("gone", false, "auto")
+        ]
+    );
+
+    // directories first, excluded names absent, links resolved
+    let (_, l) = api_json(&addr, "/api/files/list?path=code");
+    let entries: Vec<(&str, &str)> = l["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| (e["name"].as_str().unwrap(), e["kind"].as_str().unwrap()))
+        .collect();
+    assert_eq!(
+        entries,
+        [
+            ("big", "dir"),
+            ("out", "dir"),
+            ("scratch-link", "dir"),
+            ("data.bin", "file"),
+            ("plot.png", "file"),
+            ("run.py", "file"),
+        ]
+    );
+    let link = &l["entries"][2];
+    assert_eq!(link["link"].as_str().unwrap(), s.to_str().unwrap());
+    assert_eq!(l["entries"][5]["size"], 12);
+    let (_, out) = api_json(&addr, "/api/files/list?path=code/out");
+    assert_eq!(out["total"], 1, "*.ckpt excluded in this root: {out}");
+
+    // pages of 500
+    let (_, p0) = api_json(&addr, "/api/files/list?path=code/big");
+    assert_eq!(
+        (p0["total"].as_u64(), p0["next"].as_u64()),
+        (Some(1203), Some(500))
+    );
+    assert_eq!(p0["entries"].as_array().unwrap().len(), 500);
+    assert_eq!(p0["entries"][0]["name"], "f0000.txt");
+    let (_, p2) = api_json(&addr, "/api/files/list?path=code/big&cursor=1000");
+    assert_eq!(p2["entries"].as_array().unwrap().len(), 203);
+    assert!(p2.get("next").is_none());
+
+    // through the link out of the repo, and a loop is shown, not entered
+    let (_, via) = api_json(&addr, "/api/files/list?path=code/scratch-link");
+    let kinds: Vec<(&str, &str)> = via["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| (e["name"].as_str().unwrap(), e["kind"].as_str().unwrap()))
+        .collect();
+    assert_eq!(kinds, [("again", "loop"), ("train.log", "file")]);
+    assert!(http_req(&addr, "/api/files/list?path=scratch/again", &[])
+        .0
+        .contains("404"));
+
+    // stat: text, binary, image
+    let (_, st) = api_json(&addr, "/api/files/stat?path=code/run.py");
+    assert_eq!(
+        (st["kind"].as_str(), st["text"].as_bool()),
+        (Some("file"), Some(true))
+    );
+    assert_eq!(st["mime"], "text/plain; charset=utf-8");
+    let (_, st) = api_json(&addr, "/api/files/stat?path=code/data.bin");
+    assert_eq!(
+        (st["text"].as_bool(), st["mime"].as_str()),
+        (Some(false), Some("application/octet-stream"))
+    );
+    let (_, st) = api_json(&addr, "/api/files/stat?path=code/plot.png");
+    assert_eq!(st["mime"], "image/png");
+    let (_, st) = api_json(&addr, "/api/files/stat?path=code/scratch-link");
+    assert_eq!(
+        (st["kind"].as_str(), st["link"].as_str()),
+        (Some("dir"), s.to_str())
+    );
+
+    // raw: whole, a range, the tail, past the end, unchanged
+    let (status, headers, body) = http_req(&addr, "/api/files/raw?path=scratch/train.log", &[]);
+    assert!(status.ends_with("200 OK"), "{status}");
+    assert_eq!(body, log.as_bytes());
+    assert!(headers.contains("accept-ranges: bytes"), "{headers}");
+    assert!(
+        headers.contains("content-security-policy: sandbox"),
+        "{headers}"
+    );
+    assert!(
+        headers.contains("x-content-type-options: nosniff"),
+        "{headers}"
+    );
+    let (status, headers, body) = http_req(
+        &addr,
+        "/api/files/raw?path=scratch/train.log",
+        &["Range: bytes=9-17"],
+    );
+    assert!(status.contains("206"), "{status}");
+    assert!(
+        headers.contains("content-range: bytes 9-17/900"),
+        "{headers}"
+    );
+    assert_eq!(body, b"line 001\n");
+    let (_, _, body) = http_req(
+        &addr,
+        "/api/files/raw?path=scratch/train.log",
+        &["Range: bytes=-9"],
+    );
+    assert_eq!(body, b"line 099\n");
+    let (status, headers, _) = http_req(
+        &addr,
+        "/api/files/raw?path=scratch/train.log",
+        &["Range: bytes=900-"],
+    );
+    assert!(
+        status.contains("416") && headers.contains("content-range: bytes */900"),
+        "{status}"
+    );
+    let etag = headers
+        .lines()
+        .find_map(|l| l.strip_prefix("etag: "))
+        .unwrap()
+        .to_string();
+    let (status, _, body) = http_req(
+        &addr,
+        "/api/files/raw?path=scratch/train.log",
+        &[&format!("If-None-Match: {etag}")],
+    );
+    assert!(status.contains("304") && body.is_empty(), "{status}");
+
+    // refusals
+    for (path, code) in [
+        ("/api/files/raw?path=code/../yajna.toml", "400"),
+        ("/api/files/list?path=code//big", "400"),
+        ("/api/files/raw?path=code/.git/x", "404"),
+        ("/api/files/raw?path=code/node_modules/x", "404"),
+        ("/api/files/raw?path=code/out/model.ckpt", "404"),
+        ("/api/files/raw?path=nope/x", "404"),
+        ("/api/files/list?path=gone", "404"),
+        ("/api/files/raw?path=code/big", "400"),
+        ("/api/files/list?path=code/run.py", "400"),
+    ] {
+        let (status, _, body) = http_req(&addr, path, &[]);
+        assert!(
+            status.contains(code),
+            "{path}: {status} {}",
+            String::from_utf8_lossy(&body)
+        );
+    }
+    let (_, gone) = api_json(&addr, "/api/files/list?path=gone");
+    assert!(
+        gone["error"]
+            .as_str()
+            .unwrap()
+            .contains("not on this machine"),
+        "{gone}"
+    );
+    assert!(http_get(&addr, "evil.example", "/api/files/roots").starts_with("HTTP/1.1 403"));
+    child.kill().unwrap();
+    let _ = child.wait();
+
+    // a broken [files] table fails validate and stops serve from starting
+    fs::write(
+        &cfg,
+        format!("{base}\n[[files.roots]]\nname = \"a b\"\npath = \"x\"\n\n[[files.roots]]\nname = \"x\"\npath = \"x\"\nwatch = \"sometimes\"\n\n[[files.roots]]\nname = \"y\"\npath = \"y\"\nexclude = [\"[\"]\n"),
+    )
+    .unwrap();
+    let out = v.run(&["validate"]);
+    assert_eq!(out.code, 1, "{}", out.stdout);
+    let all = format!("{}{}", out.stdout, out.stderr);
+    for want in ["root name \"a b\"", "watch \"sometimes\"", "exclude \"[\""] {
+        assert!(all.contains(want), "{want}: {all}");
+    }
+    let out = v.run(&["serve", "--port", "0"]);
+    assert_eq!(out.code, 1);
+    assert!(out.stderr.contains("watch \"sometimes\""), "{}", out.stderr);
+}
+
 /// `EXP-20261021-0k3m9x`: a date ID with the 6-character time-sortable suffix.
 fn regex_like_date_id(id: &str) -> bool {
     let parts: Vec<&str> = id.split('-').collect();

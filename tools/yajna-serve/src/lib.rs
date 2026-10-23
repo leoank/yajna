@@ -1,9 +1,11 @@
 //! The server behind `yajna serve` (ADR-0027): the rendered site, brought up to date
-//! before a page is served, on a loopback address only. The live files viewer and its API
-//! join it in later steps (`docs/files-viewer.md`).
+//! before a page is served, and the read-only file API of the files viewer (ADR-0028), on
+//! a loopback address only (`docs/files-viewer.md`).
 //!
-//! The crate knows HTTP and files, not the notebook: the CLI hands it the site directory
-//! and a callback that re-renders the site when a page changed.
+//! The crate knows HTTP and files, not the notebook: the CLI hands it the site directory,
+//! a callback that re-renders the site when a page changed, and the roots.
+
+pub mod files;
 
 use std::net::{Ipv4Addr, SocketAddr};
 use std::path::PathBuf;
@@ -30,13 +32,17 @@ pub struct Config {
     /// `Host` names accepted besides the loopback ones, for a tunnel such as
     /// `tailscale serve`
     pub hosts: Vec<String>,
+    /// what the files viewer shows
+    pub roots: Vec<files::Root>,
 }
 
 #[derive(Clone)]
-struct App {
+pub(crate) struct App {
     site: Arc<PathBuf>,
     refresh: Refresh,
     hosts: Arc<Vec<String>>,
+    roots: Arc<Vec<files::Root>>,
+    cache: Arc<files::Cache>,
 }
 
 /// Serve until the process is killed. `ready` gets the bound address once the server
@@ -55,6 +61,8 @@ pub fn run(cfg: Config, ready: impl FnOnce(SocketAddr)) -> Result<(), String> {
             site: Arc::new(cfg.site),
             refresh: cfg.refresh,
             hosts: Arc::new(cfg.hosts),
+            roots: Arc::new(cfg.roots),
+            cache: Arc::default(),
         };
         axum::serve(listener, router(app))
             .await
@@ -69,6 +77,10 @@ fn router(app: App) -> Router {
             get(|state: State<App>| page(state, Path("index.html".to_string()))),
         )
         .route("/{name}", get(page))
+        .route("/api/files/roots", get(files::roots_handler))
+        .route("/api/files/list", get(files::list_handler))
+        .route("/api/files/stat", get(files::stat_handler))
+        .route("/api/files/raw", get(files::raw_handler))
         .layer(middleware::from_fn_with_state(app.clone(), check_host))
         .with_state(app)
 }

@@ -1,11 +1,85 @@
 //! `yajna serve` (ADR-0027): the static site, re-rendered when a page changed, served by
 //! the `yajna-serve` crate on 127.0.0.1.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
+use yajna_serve::files::{Root, Watch};
+
 use crate::site::{render, site_dir, vault_mtime};
-use crate::vault::{Res, Vault};
+use crate::vault::{Res, Vault, CONFIG_NAME};
+
+/// `~` at the start and `$VAR` or `${VAR}` anywhere, from the environment. An unset
+/// variable stays as written, so the root shows as missing rather than pointing elsewhere.
+fn expand(path: &str) -> String {
+    let path = match (path.strip_prefix('~'), std::env::var("HOME")) {
+        (Some(rest), Ok(home)) if rest.is_empty() || rest.starts_with('/') => {
+            format!("{home}{rest}")
+        }
+        _ => path.to_string(),
+    };
+    let re = regex::Regex::new(r"\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*))")
+        .expect("valid");
+    re.replace_all(&path, |c: &regex::Captures| {
+        let name = c.get(1).or_else(|| c.get(2)).map_or("", |m| m.as_str());
+        std::env::var(name).unwrap_or_else(|_| c[0].to_string())
+    })
+    .into_owned()
+}
+
+/// The roots the files viewer shows: `[[files.roots]]`, or by default the vault and `code/`
+/// (in a `project` repo, the repository itself with the vault left out).
+pub(crate) fn roots(vault: &Vault) -> Res<Vec<Root>> {
+    let files = &vault.cfg.files;
+    let mut problems = Vec::new();
+    let mut out: Vec<Root> = Vec::new();
+    let mut add = |name: &str, path: PathBuf, extra: &[String], watch: Option<&str>| {
+        let watch = match watch.map(str::parse::<Watch>).transpose() {
+            Ok(w) => w.unwrap_or(Watch::Auto),
+            Err(e) => return problems.push(format!("[files] root {name}: {e}")),
+        };
+        if out.iter().any(|r| r.name == name) {
+            return problems.push(format!("[files] two roots named {name}"));
+        }
+        let exclude: Vec<String> = files.exclude.iter().chain(extra).cloned().collect();
+        match Root::new(name, path, &exclude, watch) {
+            Ok(r) => out.push(r),
+            Err(e) => problems.push(format!("[files] {e}")),
+        }
+    };
+    if files.roots.is_empty() {
+        let vault_dir = vault.cfg.vault.as_deref().unwrap_or("notes");
+        add("notes", vault.notes.clone(), &[], None);
+        if vault.is_project() {
+            let name = vault.namespace().unwrap_or("repo");
+            add(name, vault.root.clone(), &[format!("/{vault_dir}")], None);
+        } else {
+            add("code", vault.root.join("code"), &[], None);
+        }
+    }
+    for r in &files.roots {
+        add(
+            &r.name,
+            vault.root.join(expand(&r.path)),
+            &r.exclude,
+            r.watch.as_deref(),
+        );
+    }
+    if problems.is_empty() {
+        Ok(out)
+    } else {
+        Err(problems.join("\n"))
+    }
+}
+
+/// What `yajna validate` reports about `[files]`; paths are not checked, they differ per
+/// machine.
+pub fn files_problems(vault: &Vault) -> Vec<String> {
+    match roots(vault) {
+        Ok(_) => Vec::new(),
+        Err(e) => e.lines().map(|l| format!("{CONFIG_NAME}: {l}")).collect(),
+    }
+}
 
 pub fn cmd_serve(
     vault: &Vault,
@@ -17,8 +91,13 @@ pub fn cmd_serve(
     let out = out
         .map(Path::to_path_buf)
         .unwrap_or_else(|| site_dir(vault));
+    let roots = roots(vault)?;
     let n = render(vault, &out)?;
     println!("{}: {n} page(s)", out.display());
+    for r in &roots {
+        let missing = if r.path.is_dir() { "" } else { " (missing)" };
+        println!("files: {} -> {}{missing}", r.name, r.path.display());
+    }
     // the callback outlives this borrow of the vault, so it opens its own
     let owned = Vault::open(vault.root.clone())?;
     let rendered = Mutex::new(vault_mtime(&owned));
@@ -36,6 +115,7 @@ pub fn cmd_serve(
         refresh: Arc::new(refresh),
         port,
         hosts: hosts.to_vec(),
+        roots,
     };
     yajna_serve::run(cfg, |addr| {
         let url = format!("http://{addr}/");

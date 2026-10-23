@@ -21,6 +21,13 @@ dirs = ["thesis"]
 [sync]                                  # Google Docs
 folder = "1AbCdEfGhIjKlMnOpQrStUvWxYz"  # the root folder in Drive (default: one yajna makes)
 site_url = "https://you.github.io/notebook"
+
+[files]                                 # what `yajna serve` shows of the disk
+exclude = ["node_modules"]              # in every root, on top of .git
+
+[[files.roots]]
+name = "scratch"
+path = "/scratch/$USER/runs"            # in or out of the repo; ~ and $VARS expanded
 ```
 
 ## Top level
@@ -64,6 +71,26 @@ the Neovim plugin can follow it, only when `path` is given and exists on disk.
 | `site_url` | The base URL of a published [static site](../guides/site.md). Links in a Google Doc to pages that are not synced point there; without it they are plain text. |
 
 See [Docs and Google Docs](../guides/docs-and-sync.md).
+
+## `[files]`
+
+The directories the files viewer of `yajna serve` shows, live, from the disk of the machine
+it runs on (ADR-0028). Without the table it shows the vault, as `notes`, and `code/`, as
+`code`; in a `project` repo the second is the repository itself, named after the
+namespace, with the vault left out.
+
+| Key | Meaning |
+|-----|---------|
+| `exclude` | Names or globs hidden in every root, on top of `.git`, which always is. A pattern without `/` matches a file or directory name anywhere (`*.ckpt`); one with `/` matches the path below the root (`data/raw`), and a leading `/` anchors it (`/notes`). Nothing reads `.gitignore`. |
+| `[[files.roots]]` | One table per root, replacing the default ones. |
+| `name` | The first part of every path in the viewer (`scratch/run-17/train.log`): letters, digits, `.`, `_` and `-`. |
+| `path` | Relative to the repository or absolute; `~` and `$VARS` are expanded, and a root whose variable is unset or whose directory is missing shows as missing rather than as an error, so one `yajna.toml` serves machines with different mounts. |
+| `exclude` | More patterns for this root only. |
+| `watch` | `auto` (the default), `poll` or `off`: how changes reach the viewer. |
+
+Symlinks are followed, out of a root too; a link back to a directory above it is shown as
+a loop and not entered. `yajna validate` checks names, patterns and `watch`; paths are not
+checked, because they differ per machine.
 
 ## Other files yajna reads and writes
 

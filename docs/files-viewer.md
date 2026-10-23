@@ -101,7 +101,8 @@ watch = "poll"                          # auto (default) | poll | off
 - Root names are the first segment of every path the viewer uses (`scratch/run-17/log.txt`),
   so a URL or a saved layout survives the root moving on disk.
 - `exclude` matches a path's file name or, with a `/`, its path below the root (globset
-  syntax). `.git` is always excluded. Nothing reads `.gitignore`: the viewer shows what is
+  syntax; a leading `/` anchors it at the root, as `/notes` does for the default
+  repository root). `.git` is always excluded. Nothing reads `.gitignore`: the viewer shows what is
   on disk, which is the point of looking at a run's output.
 - A root that does not exist is shown greyed with the reason (scratch not mounted), not an
   error that stops the server.
@@ -135,8 +136,8 @@ binary.
 | `GET /`, `GET /<page>.html` | the static site, as today |
 | `GET /files/`, `GET /files/assets/*` | the embedded UI |
 | `GET /api/files/roots` | `[{name, path, exists, watch}]` |
-| `GET /api/files/list?path=<root>/<dir>&cursor=<n>` | one page (500) of a directory: `{entries: [{name, kind, size, mtime, target?}], next?}`, directories first, then by name |
-| `GET /api/files/stat?path=` | `{kind, size, mtime, mime, text: bool, target?}` |
+| `GET /api/files/list?path=<root>/<dir>&cursor=<n>` | one page (500) of a directory: `{path, total, entries: [{name, kind, size?, mtime?, link?}], next?}`, directories first, then by name; `mtime` in milliseconds |
+| `GET /api/files/stat?path=` | `{path, kind, size?, mtime?, mime, text: bool, link?}` |
 | `GET /api/files/raw?path=` | the bytes, with `Range`, `ETag` (size and mtime) and `If-None-Match` |
 | `GET /api/files/render?path=` | rendered HTML for a markdown file |
 | `GET /api/events?watch=<path>&watch=…` | SSE: `changed {path, size, mtime}`, `created`, `removed`, `listing {path}` |
@@ -164,10 +165,13 @@ there is no subscription protocol.
 
 ### 5.4 Listing
 
-A directory is read whole (`readdir` plus `stat` per entry), sorted, cached by (path,
-mtime) and handed out in pages of 500, so a directory of 100 000 checkpoints opens with
-its first page and the tree loads more on scroll. Entry kinds: `dir`, `file`, `symlink`
-(with `target`, resolved kind), `broken`, `loop`, `other` (sockets, fifos). Whether a
+A directory is read whole (`readdir` plus `stat` per entry), sorted, and its names and
+kinds cached by (path, mtime); sizes and times are read again for the 500 entries of each
+page, because a file being written changes them without touching its directory. Pages of
+500 are handed out by offset, so a directory of 100 000 checkpoints opens with
+its first page and the tree loads more on scroll. Entry kinds: `dir`, `file`, `broken`
+(a symlink to nothing), `loop` (a symlink to a directory above it), `other` (sockets,
+fifos, devices); a symlink has the kind of what it points to and its target as `link`. Whether a
 file is text is decided on `stat` and `raw`, not in listings: the first 8 KB are read,
 and it is text when they hold no NUL byte and decode as UTF-8 (a cut multi-byte sequence
 at the end allowed). Experiment `EXP-20261023-kjtach` measures where this stops being

@@ -314,6 +314,33 @@ pub struct Config {
     pub sync: SyncConfig,
     #[serde(default)]
     pub docs: DocsConfig,
+    #[serde(default)]
+    pub files: FilesConfig,
+}
+
+/// `[files]` in yajna.toml: what the files viewer of `yajna serve` shows (ADR-0028).
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FilesConfig {
+    /// names or globs excluded in every root, on top of `.git`
+    #[serde(default)]
+    pub exclude: Vec<String>,
+    /// none: the vault and `code/` (the repository itself in a `project` repo)
+    #[serde(default)]
+    pub roots: Vec<RootConfig>,
+}
+
+/// One `[[files.roots]]` entry.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RootConfig {
+    pub name: String,
+    /// relative to the repo, or absolute; `~` and `$VARS` are expanded
+    pub path: String,
+    #[serde(default)]
+    pub exclude: Vec<String>,
+    /// auto (the default), poll or off
+    pub watch: Option<String>,
 }
 
 /// `[docs]` in yajna.toml: directories outside the vault (a thesis folder, say) whose doc
