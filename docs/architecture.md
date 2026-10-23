@@ -459,7 +459,15 @@ Mechanics:
 - Rendering: markdown to Google Doc via the Drive API, uploading HTML or docx with conversion,
   or the native Markdown import Google Docs now supports. Wikilinks render as links to the
   sibling doc when that page is also synced, otherwise to the static site. Frontmatter is
-  not rendered; a small header block shows the ID, status, and last-updated date.
+  not rendered; a small header block shows the ID, status, and last-updated date. Built as
+  an HTML upload; a page that cites papers goes through `pandoc --citeproc` first, against
+  the notebook's bibliography and the page's own `bibliography` (ADR-0024).
+- Layout: docs mirror the notebook's folders under one root folder in Drive, the vault's
+  paths without `notes/` and `[docs]` directories at their repo paths. yajna creates the
+  folders, finds them again by `appProperties`, and moves a doc when its page moves
+  (ADR-0024).
+- Existing documents join through `yajna adopt`, which puts a page's frontmatter on a file
+  and keeps its body, so a proposal drafted beside the thesis can be synced (ADR-0025).
 - Comments: the Drive API exposes comments and replies with their anchor text. The sync job
   writes them into the page under a `## Review` section (or as log entries tagged with the
   commenter) and marks them resolved in the doc when the corresponding checkbox is ticked in

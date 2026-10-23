@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
   "name": "yajna",
-  "version": "0.7.1",
+  "version": "0.7.2",
   "description": "Work in a yajna lab notebook: the conventions as a skill, and /yajna:project, /yajna:code-project, /yajna:bio-project, /yajna:ml-project, /yajna:hardware-project to bootstrap a project through an interview.",
   "author": {
     "name": "Ankur Kumar"

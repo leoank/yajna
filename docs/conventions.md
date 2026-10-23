@@ -284,7 +284,10 @@ key is the identity (ADR-0016). Cite from any page with pandoc syntax:
 Builds on the cloning chip of [@shih2015cloning] and the valve design in @gong2016valves.
 ```
 
-`yajna validate` fails on a key that is not in the `.bib`. `yajna ref shih2015cloning`
+A page may add its own bibliography, as pandoc takes it: `bibliography: proposal.bib` (or
+a list), relative to the page. Its keys count for that page on top of the notebook's.
+
+`yajna validate` fails on a key in neither. `yajna ref shih2015cloning`
 shows the entry and every page that cites it; `--note` creates the reading note
 `notes/references/shih2015cloning.md`, where the digested meaning of the paper for this work
 goes. File the paper in Zotero under `Projects/PRJ-0001 <slug>` for each project it serves
@@ -371,8 +374,15 @@ yajna sync [ID ...]                             # publish, and pull comments bac
   when the rendered page changed.
 - The doc shows the page's ID, status and title, then the body. `[[links]]` to other
   synced pages point at their docs, to the site when `[sync] site_url` is set in
-  `yajna.toml`, and are plain text otherwise. `[sync] folder` is the Drive folder new docs
-  are created in; share it with the readers once.
+  `yajna.toml`, and are plain text otherwise.
+- Docs mirror the notebook's folders under one root folder (ADR-0024): a page in
+  `notes/projects/PRJ-0001-x/experiments/` lands in `projects/PRJ-0001-x/experiments/`, a
+  page in a `[docs]` directory such as `thesis/meetings/` keeps that path. The root is a
+  folder yajna creates in My Drive named after the namespace, or `[sync] folder` when
+  set; share it once. Move a page and the next sync moves its doc, keeping its URL.
+- A page that cites papers is rendered by pandoc with author-year citations and a
+  *References* section, from the notebook's bibliography and the page's own. pandoc must
+  be on PATH for those pages; without it they are skipped with the reason.
 - Comments and replies come back into the page under `## Review` as checkboxes, before
   any re-upload. Tick one to resolve the comment in the doc at the next sync. Items stay
   even if the comment is deleted in the doc; the section itself is never published.
@@ -402,6 +412,21 @@ yajna new doc "Thesis proposal" --kind proposal --dir thesis
   `yajna.toml`, so validate, sync, tasks, the site and export see it. Only files with a
   yajna `id` and `type` there are pages; a thesis chapter beside them is left alone.
 - Link experiments and runs with `[[ID]]`; in the published doc they become links.
+
+A document that already exists becomes a page with `yajna adopt` (ADR-0025), which keeps
+its body and history:
+
+```
+yajna adopt thesis/proposals/g2a-proposal.md --kind proposal --dry-run
+yajna adopt thesis/proposals/g2a-proposal.md --kind proposal
+yajna adopt old/pcr.md --type protocol --kind bench        # any type, as for `yajna new`
+```
+
+The type's frontmatter goes on top and the file is renamed to start with its ID. A doc
+stays in its directory; other types move to where they live. The file's own frontmatter
+keys stay (`title` becomes the page's, `author` is kept as `authors`), except keys yajna
+writes itself, which are refused. A `.bib` with the same name beside it becomes its
+`bibliography`.
 
 ## Importing from Benchling
 

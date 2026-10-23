@@ -98,6 +98,10 @@ Meeting notes, proposals, reports and admin pages are `doc` pages:
 `yajna new doc "<title>" --kind meeting|proposal|report|admin|logistics|note --dir <dir>`.
 Ask the author where it should live if they have not said (a thesis folder is common);
 they sync to Google Docs by default. Put a meeting's actions as checkboxes under *Actions*.
+A document that already exists (a proposal drafted beside the thesis, notes from
+elsewhere) becomes a page with `yajna adopt <file> --type <type> --kind <kind>` rather
+than being retyped; run it with `--dry-run` first and tell the author it renames the file.
+A page can cite from its own `.bib` with `bibliography: <file>.bib` in its frontmatter.
 
 ## Reproducible runs
 
