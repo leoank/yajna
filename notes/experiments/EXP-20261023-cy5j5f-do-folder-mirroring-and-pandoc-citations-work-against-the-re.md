@@ -57,6 +57,9 @@ rejects a bare link here. Metric runs also land in results.tsv.
 - [[RUN-20261023-d7vw53]] four pages from a scratch lab, a second clone, a move after a
   comment: one root and seven folders found again, the doc moved with its URL and comment,
   citations and reference list readable; every check passed on the first run.
+- [[RUN-20261023-dk2evd]] the g2a proposal's reference list in a real doc: Docs drops
+  CSS classes and negative indents, so entries now carry spacing and size inline and
+  Zotero's italics become case-protected LaTeX; reads cleanly, no hanging indent.
 
 ## Conclusion
 Written once, by a human, when status becomes `concluded`.
