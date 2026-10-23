@@ -184,11 +184,17 @@ pub fn run(vault: &Vault, cmd: &Cmd, prompter: &mut dyn Prompter) -> Res<i32> {
             desc,
         } => crate::query::cmd_runs(vault, experiment, by.as_deref(), *desc),
         Cmd::Site {
+            out, serve: false, ..
+        } => crate::site::cmd_site(vault, out.as_deref()),
+        Cmd::Site {
+            out, port, open, ..
+        } => crate::serve::cmd_serve(vault, out.as_deref(), *port, *open, &[]),
+        Cmd::Serve {
             out,
-            serve,
             port,
             open,
-        } => crate::site::cmd_site(vault, out.as_deref(), *serve, *port, *open),
+            hosts,
+        } => crate::serve::cmd_serve(vault, out.as_deref(), *port, *open, hosts),
         Cmd::Skill { print } => cmd_skill(vault, *print),
         Cmd::Graduate {
             project,

@@ -132,7 +132,7 @@ $ yajna timeline EXP-20261022-cwr123
 ## 8. Look at it in a browser
 
 ```console
-$ yajna site --serve --open
+$ yajna serve --open
 ```
 
 serves the whole notebook at `http://127.0.0.1:8765/` and re-renders as you edit: one page

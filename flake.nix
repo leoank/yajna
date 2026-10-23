@@ -14,8 +14,9 @@
           pname = "yajna";
           version = "0.4.1";
           src = self;
-          sourceRoot = "source/tools/yajna";
-          cargoLock.lockFile = ./tools/yajna/Cargo.lock;
+          # the workspace: the CLI and the yajna-serve library it links (ADR-0027)
+          sourceRoot = "source/tools";
+          cargoLock.lockFile = ./tools/Cargo.lock;
           # the graduate test drives `git subtree`; the sync test renders citations with pandoc
           nativeCheckInputs = [ pkgs.git pkgs.pandoc ];
         };
@@ -51,7 +52,7 @@
         });
 
       checks = forAll (pkgs: {
-        # buildRustPackage runs `cargo test`: the CLI's unit and integration tests.
+        # buildRustPackage runs `cargo test` over the workspace: the CLI's and the server's tests.
         yajna = self.packages.${pkgs.system}.yajna;
         # this repo is a project-shaped yajna repo: its own notebook must validate
         notes = pkgs.runCommand "yajna-notes" {

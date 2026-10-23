@@ -32,9 +32,9 @@ time (the Phase 3 server with its HTTP API and MCP).
   directory and callbacks for rendering the site and markdown. The result is still one
   `yajna` binary.
 - **Loopback only.** The server binds `127.0.0.1` and is reached from elsewhere through
-  `ssh -L` or `tailscale serve`; yajna has no authentication. `--bind` to a non-loopback
-  address is refused until a token option exists. Requests whose `Host` is not a loopback
-  name or a configured tunnel name are rejected, against DNS rebinding.
+  `ssh -L` or `tailscale serve`; yajna has no authentication, and there is no `--bind`
+  for another address until a token exists. Requests whose `Host` is not a loopback name
+  or a name given with `--host` (the tunnel's) are rejected, against DNS rebinding.
 - **JavaScript in `files/` only.** ADR-0019's "no JavaScript" holds for every rendered
   page; the files section is an application and is the one exception.
 

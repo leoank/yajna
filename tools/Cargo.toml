@@ -1,0 +1,9 @@
+# The Rust workspace: the CLI and the server it links (ADR-0017, ADR-0027).
+[workspace]
+members = ["yajna", "yajna-serve"]
+resolver = "2"
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1

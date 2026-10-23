@@ -77,7 +77,7 @@ The Nix flake builds the same code; a release is only a tagged commit.
 git clone https://github.com/leoank/yajna
 cd yajna
 nix develop            # or any Rust toolchain
-cargo build --release --manifest-path tools/yajna/Cargo.toml
+cargo build --release --manifest-path tools/Cargo.toml   # the binary is tools/target/release/yajna
 ```
 
 ## Check it works

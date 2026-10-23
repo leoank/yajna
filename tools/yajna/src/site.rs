@@ -3,8 +3,6 @@
 
 use std::collections::BTreeMap;
 use std::fs;
-use std::io::{BufRead, BufReader, Write};
-use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
@@ -525,21 +523,18 @@ pub fn render(vault: &Vault, out: &Path) -> Res<usize> {
     Ok(n)
 }
 
-pub fn cmd_site(vault: &Vault, out: Option<&Path>, serve: bool, port: u16, open: bool) -> Res<i32> {
+pub fn cmd_site(vault: &Vault, out: Option<&Path>) -> Res<i32> {
     let out = out
         .map(Path::to_path_buf)
         .unwrap_or_else(|| site_dir(vault));
     let n = render(vault, &out)?;
     println!("{}: {n} page(s)", out.display());
-    if serve {
-        serve_dir(vault, &out, port, open)?;
-    }
     Ok(0)
 }
 
 /// The newest change under the vault, the bibliography and the config: what a render is
 /// current with.
-fn vault_mtime(vault: &Vault) -> SystemTime {
+pub(crate) fn vault_mtime(vault: &Vault) -> SystemTime {
     let mut t = SystemTime::UNIX_EPOCH;
     crate::index::newest(&vault.notes, &mut t);
     for p in [
@@ -551,73 +546,4 @@ fn vault_mtime(vault: &Vault) -> SystemTime {
         }
     }
     t
-}
-
-/// A one-connection-at-a-time HTTP server over `out`, re-rendering before a request when
-/// a page changed since the last render. Runs until the process is killed.
-fn serve_dir(vault: &Vault, out: &Path, port: u16, open: bool) -> Res<()> {
-    let listener = TcpListener::bind(("127.0.0.1", port)).map_err(|e| format!("bind: {e}"))?;
-    let addr = listener.local_addr().map_err(|e| e.to_string())?;
-    let url = format!("http://{addr}/");
-    println!("serving {url} (Ctrl-C stops)");
-    if open {
-        let opener = if cfg!(target_os = "macos") {
-            "open"
-        } else {
-            "xdg-open"
-        };
-        let _ = std::process::Command::new(opener).arg(&url).spawn();
-    }
-    let mut rendered = vault_mtime(vault);
-    for stream in listener.incoming() {
-        let Ok(stream) = stream else { continue };
-        if vault_mtime(vault) > rendered {
-            match render(vault, out) {
-                Ok(_) => rendered = vault_mtime(vault),
-                Err(e) => eprintln!("render: {e}"),
-            }
-        }
-        let _ = respond(stream, out);
-    }
-    Ok(())
-}
-
-fn respond(mut stream: TcpStream, out: &Path) -> std::io::Result<()> {
-    let mut reader = BufReader::new(stream.try_clone()?);
-    let mut line = String::new();
-    reader.read_line(&mut line)?;
-    let path = line.split_whitespace().nth(1).unwrap_or("/");
-    let path = path
-        .split('?')
-        .next()
-        .unwrap_or("/")
-        .trim_start_matches('/');
-    let name = if path.is_empty() { "index.html" } else { path };
-    // only files directly under the site directory, no traversal
-    let ok = !name.contains('/') && !name.contains("..");
-    let (status, ctype, body) = match (ok, fs::read(out.join(name))) {
-        (true, Ok(bytes)) => ("200 OK", content_type(name), bytes),
-        _ => (
-            "404 Not Found",
-            "text/plain; charset=utf-8",
-            format!("no such page: /{name}").into_bytes(),
-        ),
-    };
-    write!(
-        stream,
-        "HTTP/1.1 {status}\r\nContent-Type: {ctype}\r\nContent-Length: {}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n",
-        body.len()
-    )?;
-    stream.write_all(&body)?;
-    stream.flush()
-}
-
-fn content_type(name: &str) -> &'static str {
-    match name.rsplit('.').next() {
-        Some("html") => "text/html; charset=utf-8",
-        Some("svg") => "image/svg+xml",
-        Some("css") => "text/css; charset=utf-8",
-        Some("png") => "image/png",
-        _ => "application/octet-stream",
-    }
 }

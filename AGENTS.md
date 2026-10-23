@@ -11,8 +11,11 @@ reasoning; check the ADRs before changing anything they cover.
 Everything runs through the flake. Enter with `nix develop` at the root; `yajna` on PATH
 then runs the checked-out source through `cargo run`, so edits take effect immediately.
 
-- `tools/yajna/` is the CLI, a Rust crate that embeds `schema/` and `templates/`
-  (ADR-0017). `cargo test` and `cargo clippy --all-targets` in the dev shell must pass,
+- `tools/` is a Cargo workspace (`tools/Cargo.toml`, one `Cargo.lock`) with two crates.
+  `tools/yajna/` is the CLI, which embeds `schema/` and `templates/` (ADR-0017);
+  `tools/yajna-serve/` is the library behind `yajna serve`, axum on tokio, which knows HTTP
+  and files but not the notebook (ADR-0027, `docs/files-viewer.md`). `cargo test
+  --workspace` and `cargo clippy --workspace --all-targets` in `tools/` must pass,
   and `nix build .#yajna` runs the same tests in the sandbox. The integration tests in
   `tools/yajna/tests/cli.rs` drive the binary against scratch vaults; add one for every
   behaviour change.

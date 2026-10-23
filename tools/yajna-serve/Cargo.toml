@@ -1,0 +1,11 @@
+[package]
+name = "yajna-serve"
+version = "0.1.0"
+edition = "2021"
+description = "The server behind `yajna serve`: the rendered site, and later the live files viewer (ADR-0027)"
+license = "MIT"
+publish = false
+
+[dependencies]
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
+tokio = { version = "1", features = ["rt-multi-thread", "net", "fs"] }

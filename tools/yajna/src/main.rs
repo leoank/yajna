@@ -9,6 +9,7 @@ mod mirror;
 mod parallel;
 mod query;
 mod refs;
+mod serve;
 mod site;
 mod sync;
 mod tui;

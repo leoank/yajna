@@ -2337,7 +2337,8 @@ fn mirror_pages_pull_doc_edits_as_a_merge_and_publish_only_when_committed() {
     commit("growth rate");
     let out = sync(&[]);
     assert!(
-        out.stdout.contains("the doc has edits that are not in the page"),
+        out.stdout
+            .contains("the doc has edits that are not in the page"),
         "a line changed on both sides is not resolved before a pull shows it: {}",
         out.stdout
     );
@@ -3140,16 +3141,15 @@ fn adopt_makes_pages_of_existing_files() {
     assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
 }
 
-#[test]
-fn site_serve_answers_http_and_rerenders() {
-    use std::io::{BufRead, BufReader, Read, Write};
-    let v = indexed_lab();
-    let out_dir = v.root.join("site");
+/// Start `yajna <args> --port 0 --out <root>/site` and return the child and its address.
+fn spawn_server(v: &Vault, args: &[&str]) -> (std::process::Child, String) {
+    use std::io::{BufRead, BufReader};
     let mut child = Command::new(env!("CARGO_BIN_EXE_yajna"))
         .arg("--root")
         .arg(&v.root)
-        .args(["site", "--serve", "--port", "0", "--out"])
-        .arg(&out_dir)
+        .args(args)
+        .args(["--port", "0", "--out"])
+        .arg(v.root.join("site"))
         .env("YAJNA_CACHE", v.root.join(".cache"))
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -3167,13 +3167,28 @@ fn site_serve_answers_http_and_rerenders() {
                 .to_string();
         }
     };
-    let get = |path: &str| -> String {
-        let mut s = std::net::TcpStream::connect(&url).unwrap();
-        write!(s, "GET {path} HTTP/1.1\r\nHost: x\r\n\r\n").unwrap();
-        let mut body = String::new();
-        s.read_to_string(&mut body).unwrap();
-        body
-    };
+    (child, url)
+}
+
+/// A raw HTTP/1.1 GET with the given Host header; the whole response as text.
+fn http_get(addr: &str, host: &str, path: &str) -> String {
+    use std::io::{Read, Write};
+    let mut s = std::net::TcpStream::connect(addr).unwrap();
+    write!(
+        s,
+        "GET {path} HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\n\r\n"
+    )
+    .unwrap();
+    let mut body = String::new();
+    s.read_to_string(&mut body).unwrap();
+    body
+}
+
+#[test]
+fn serve_answers_http_rerenders_and_checks_the_host() {
+    let v = indexed_lab();
+    let (mut child, addr) = spawn_server(&v, &["serve", "--host", "box.tail1234.ts.net"]);
+    let get = |path: &str| http_get(&addr, "localhost:8765", path);
     let home = get("/");
     assert!(home.starts_with("HTTP/1.1 200 OK"), "{home}");
     assert!(
@@ -3186,6 +3201,15 @@ fn site_serve_answers_http_and_rerenders() {
         get("/../yajna.toml").starts_with("HTTP/1.1 404"),
         "no traversal"
     );
+    assert!(
+        get("/..%2Fyajna.toml").starts_with("HTTP/1.1 404"),
+        "no encoded traversal"
+    );
+    // DNS rebinding: a page elsewhere reaching the port by another name is refused
+    let foreign = http_get(&addr, "evil.example", "/");
+    assert!(foreign.starts_with("HTTP/1.1 403"), "{foreign}");
+    assert!(!foreign.contains("Archaeal"));
+    assert!(http_get(&addr, "box.tail1234.ts.net", "/").starts_with("HTTP/1.1 200"));
     // a change in the vault shows up on the next request
     std::thread::sleep(std::time::Duration::from_millis(20));
     assert_eq!(v.run(&["new", "equipment", "Spinning disk"]).code, 0);
@@ -3193,6 +3217,13 @@ fn site_serve_answers_http_and_rerenders() {
         get("/EQP-0001.html").contains("Spinning disk"),
         "re-rendered after a change"
     );
+    child.kill().unwrap();
+    let _ = child.wait();
+
+    // `site --serve` is the same server
+    let (mut child, addr) = spawn_server(&v, &["site", "--serve"]);
+    assert!(http_get(&addr, "127.0.0.1", "/EQP-0001.html").contains("Spinning disk"));
+    assert!(http_get(&addr, "evil.example", "/").starts_with("HTTP/1.1 403"));
     child.kill().unwrap();
     let _ = child.wait();
 }

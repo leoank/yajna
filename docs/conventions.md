@@ -324,8 +324,9 @@ yajna runs EXP-20261021-0k3m9x --by loss [--desc]   # runs with their results.ts
 yajna site [--out dir]       # one HTML page per entity, the log, tasks, and on each project
                              #   page the experiment tree: themes as rows, outcome as colour,
                              #   creation order as the solid line, influenced_by dotted
-yajna site --serve [--open]  # the same at http://127.0.0.1:8765/, re-rendered whenever a
-                             #   page changes (--port picks another port)
+yajna serve [--open]         # the same at http://127.0.0.1:8765/, re-rendered whenever a
+                             #   page changes (--port picks another port; `site --serve`
+                             #   is the same command)
 yajna index                  # force a rebuild and print the table sizes
 ```
 

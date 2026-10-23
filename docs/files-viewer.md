@@ -30,7 +30,7 @@ a narrower meaning (ADR-0020).
 | Static or live | The existing pages stay a static export (`yajna site`); `files/` exists only when served, and reads the disk on each request | 0027 |
 | Command | `yajna serve` serves the rendered site, re-rendered when pages change, plus `files/` and its API, on one port; `yajna site --serve` becomes its alias | 0027 |
 | Server stack | axum on tokio, in a new library crate `tools/yajna-serve`, with `tools/` made a Cargo workspace; the CLI links it, one binary | 0027 |
-| Reaching it | Binds `127.0.0.1`; reached through `ssh -L` or `tailscale serve`; no auth in yajna; non-loopback `--bind` refused without a token (not built) | 0027 |
+| Reaching it | Binds `127.0.0.1`; reached through `ssh -L` or `tailscale serve` (`--host <name>` accepts the tunnel's name); no auth in yajna; no `--bind` until there is a token | 0027 |
 | JavaScript | Allowed in `files/` only; every other page stays plain HTML without scripts (amends ADR-0019) | 0027 |
 | What it shows | Named roots from `yajna.toml`, inside or outside the repo; by default the vault and `code/` | 0028 |
 | Filtering | Everything on disk except `.git` and the configured `exclude` patterns; no `.gitignore` | 0028 |

@@ -4,13 +4,14 @@
 markdown, and something you can show a colleague.
 
 ```sh
-yajna site --serve --open
+yajna serve --open
 ```
 
 serves it at `http://127.0.0.1:8765/`, opens the browser, and re-renders whenever a page
-changes. `--port` picks another port (`0` for any free one).
+changes. `--port` picks another port (`0` for any free one). `yajna site --serve` is the
+same command.
 
-Without `--serve` it writes the files and stops:
+`yajna site` alone writes the files and stops:
 
 ```console
 $ yajna site --out site/
@@ -20,6 +21,25 @@ site/: 6 page(s)
 The default output directory is beside the index in the cache,
 `~/.cache/yajna/<hash>.site`. Like the index, the site is derived from the pages and is
 not committed.
+
+## From another machine
+
+`yajna serve` listens on `127.0.0.1` only and has no login, so nothing on the network can
+read the notebook. To look at a notebook on a server from your laptop, tunnel to it:
+
+```sh
+ssh -L 8765:localhost:8765 server    # then, on the server: yajna serve
+```
+
+and open `http://localhost:8765/` on the laptop. `tailscale serve 8765` on the server works
+too; it forwards requests addressed to the server's tailnet name, so tell yajna that name:
+
+```sh
+yajna serve --host server.tail1234.ts.net
+```
+
+Requests addressed to any other name are refused, so that a web page you visit cannot
+read the notebook through your browser.
 
 ## What is on it
 

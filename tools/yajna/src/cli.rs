@@ -261,12 +261,12 @@ pub enum Cmd {
         #[arg(long)]
         print: bool,
     },
-    /// render the static site from the index; --serve keeps it fresh in a browser
+    /// render the static site from the index; --serve is `yajna serve`
     Site {
         /// output directory (default: <cache>/<hash of the repo path>.site, beside the index)
         #[arg(long)]
         out: Option<PathBuf>,
-        /// serve the site over HTTP, re-rendering when a page changes
+        /// serve the site over HTTP, re-rendering when a page changes (as `yajna serve`)
         #[arg(long)]
         serve: bool,
         /// port for --serve (0 picks a free one)
@@ -275,6 +275,22 @@ pub enum Cmd {
         /// with --serve: open the browser
         #[arg(long)]
         open: bool,
+    },
+    /// serve the site on 127.0.0.1, re-rendered whenever a page changes (ADR-0027)
+    Serve {
+        /// where the rendered site goes (default: <cache>/<hash of the repo path>.site)
+        #[arg(long)]
+        out: Option<PathBuf>,
+        /// port (0 picks a free one)
+        #[arg(long, default_value_t = 8765)]
+        port: u16,
+        /// open the browser
+        #[arg(long)]
+        open: bool,
+        /// also answer requests addressed to this host name, e.g. the name `tailscale serve`
+        /// forwards for; repeatable
+        #[arg(long = "host", value_name = "NAME")]
+        hosts: Vec<String>,
     },
     /// move a code-bearing project into its own repo, notebook included (ADR-0018)
     Graduate {

@@ -45,7 +45,7 @@ yajna validate         # schema, IDs, links, citations
 yajna timeline MAT-0210                          # everything recorded about a material
 yajna tree PRJ-0001                              # experiments by theme, outcome, runs, influence
 yajna runs EXP-20261021-0k3m9x --by loss                 # an experiment's runs ordered by a metric
-yajna site --serve --open                        # the static site in a browser, refreshed as pages change
+yajna serve --open                               # the site in a browser, refreshed as pages change
 yajna import benchling exports/ --project PRJ-0004 # GenBank files and entries, one-off
 yajna new doc "Committee meeting" --kind meeting  # meeting notes, proposals, admin; asks where
 yajna sync                                       # publish marked pages to Google Docs, pull comments back
@@ -78,7 +78,7 @@ alone into a repo as `.claude/skills/yajna/SKILL.md`.
 
 ```
 nix develop            # cargo, clippy, rustfmt; `yajna` runs from tools/yajna via cargo run
-cargo test --manifest-path tools/yajna/Cargo.toml
+cargo test --workspace --manifest-path tools/Cargo.toml
 nix flake check        # the CLI's tests in the sandbox, the plugin's headless tests, the guide
 nix build .#docs       # the user guide into result/; CI publishes it on every push to main
 ```
