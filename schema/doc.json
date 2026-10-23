@@ -50,7 +50,7 @@
         "string",
         "null"
       ],
-      "description": "the day a meeting happened or a document is due"
+      "description": "the day of the latest meeting in a meeting doc, or the day a document is due"
     },
     "project": {
       "type": [

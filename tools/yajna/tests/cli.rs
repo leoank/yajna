@@ -2499,14 +2499,22 @@ fn docs_go_where_asked_and_sync() {
     assert!(
         page.contains("kind: meeting\n")
             && page.contains("sync: {provider: gdoc, mode: publish}")
-            && page.contains("## Actions"),
+            && page.contains("### Actions")
+            && page.contains("### Transcript"),
         "{page}"
     );
+    let date = page
+        .split("\ndate: ")
+        .nth(1)
+        .unwrap()
+        .split(' ')
+        .next()
+        .unwrap();
     assert!(
-        page.contains("project: PRJ-0001\n") && page.contains("\ndate: 20"),
+        page.contains("project: PRJ-0001\n") && page.contains(&format!("\n## {date}\n")),
         "{page}"
     );
-    fs::write(v.path(&out), page.replace("## Actions\nEach action as a checkbox with who and by when; `yajna tasks` lists the open ones.\n- [ ] \n", "## Actions\n- [ ] send the slides to the committee\n")).unwrap();
+    fs::write(v.path(&out), page.replace("### Actions\nEach action as a checkbox with who and by when; `yajna tasks` lists the open ones.\n- [ ] \n", "### Actions\n- [ ] send the slides to the committee\n")).unwrap();
 
     // a second doc in the registered folder; the default location; the folder question
     let out = v.run(&[

@@ -16,11 +16,15 @@ yajna new doc "Thesis proposal" --kind proposal --dir thesis
 
 | Kind | Template |
 |------|----------|
-| `meeting` | *Agenda*, *Notes*, *Decisions*, *Actions*; `date` and `attendees` in the frontmatter |
+| `meeting` | One section per meeting, headed by its date, with *Agenda*, *Notes*, *Decisions*, *Actions* and *Transcript*; `date` (the latest meeting) and `attendees` in the frontmatter |
 | `proposal`, `report`, `admin`, `logistics`, `note` | *Purpose*, *Body*, *Next steps* (`note` is the default kind) |
 
-A meeting's *Actions* are checkboxes, so `yajna tasks` lists the open ones. `status` is
-`draft`, `final` or `archived`.
+A meeting doc holds a series: the meetings with one supervisor, or of one committee. Each
+meeting is a `## 2026-10-22` section, newest first; for the next one, add a section with
+the same headings at the top and move `date` to its day. *Transcript* takes the
+recording's transcript or the summary a meeting tool generates, pasted as it came. The
+*Actions* of every meeting are checkboxes, so `yajna tasks` lists the open ones. `status`
+is `draft`, `final` or `archived`.
 
 **Where they go.** `yajna new doc` asks for a directory, completing `notes/docs` (the
 default), directories already registered for docs, and the repository's top-level

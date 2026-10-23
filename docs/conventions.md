@@ -405,8 +405,9 @@ yajna new doc "Thesis proposal" --kind proposal --dir thesis
 ```
 
 - Kinds: `meeting`, `proposal`, `report`, `admin`, `logistics`, `note` (the default).
-  A meeting has agenda, notes, decisions and actions; actions are checkboxes, so
-  `yajna tasks` lists the open ones.
+  A meeting doc holds a series of meetings, one `## <date>` section each, newest first,
+  with agenda, notes, decisions, actions and transcript; `date` is the latest meeting.
+  Actions are checkboxes, so `yajna tasks` lists the open ones.
 - `yajna new doc` asks for the directory, completing `notes/docs`, the registered docs
   directories and the repo's top-level directories; `--dir` answers it. The first doc in
   a directory outside `notes/` registers its top-level directory under `[docs] dirs` in

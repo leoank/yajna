@@ -97,7 +97,9 @@ Other agents may be working in other worktrees of the same notebook at the same 
 Meeting notes, proposals, reports and admin pages are `doc` pages:
 `yajna new doc "<title>" --kind meeting|proposal|report|admin|logistics|note --dir <dir>`.
 Ask the author where it should live if they have not said (a thesis folder is common);
-they sync to Google Docs by default. Put a meeting's actions as checkboxes under *Actions*.
+they sync to Google Docs by default. A meeting doc is a series: add each new meeting as a
+`## <date>` section at the top (agenda, notes, decisions, actions as checkboxes,
+transcript), set `date` to it, and keep earlier meetings below.
 A document that already exists (a proposal drafted beside the thesis, notes from
 elsewhere) becomes a page with `yajna adopt <file> --type <type> --kind <kind>` rather
 than being retyped; run it with `--dry-run` first and tell the author it renames the file.
