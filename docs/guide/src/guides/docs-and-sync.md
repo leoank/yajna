@@ -137,8 +137,8 @@ the comment in the doc. Items stay in the page even if the comment is deleted in
 The *Review* section itself is never published. `--no-comments` publishes without pulling.
 
 Only `publish` exists so far: the page is the truth and the doc is a copy. A `mirror` mode
-(edits in the doc come back as commits) and an `import` mode (the doc is the truth) are
-planned, not built.
+(edits in the doc come back as a git diff to review and merge by hand, then sync back) and
+an `import` mode (the doc is the truth) are planned, not built.
 
 ## Setting up Google access
 

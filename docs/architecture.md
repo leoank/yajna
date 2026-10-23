@@ -448,7 +448,7 @@ other needs care; so sync is a per-page mode, not a global switch.
 | Mode | Direction | What happens | Use for |
 |------|-----------|--------------|---------|
 | **`publish` (default for shared pages)** | markdown to doc; comments back | Page is rendered and the doc updated in place. Comments and replies are pulled into the repo. | Project status pages, experiment conclusions, protocols, thesis chapters |
-| `mirror` | both ways, last writer wins | As `publish`, plus edits made in the doc are exported, normalized, diffed, and committed under the editor's email. | A few pages the PI edits directly |
+| `mirror` | both ways, merged by hand | As `publish`, plus edits made in the doc are pulled into the page as an uncommitted change, three-way merged with what changed in the repo; conflicts are left as markers to resolve, and the next sync publishes the result. | A few pages the PI edits directly |
 | `import` | doc to markdown only | The doc is the truth; the markdown copy is derived and read-only in the repo. | Documents the PI owns, such as a grant or paper draft |
 
 Mechanics:
@@ -473,11 +473,49 @@ Mechanics:
   commenter) and marks them resolved in the doc when the corresponding checkbox is ticked in
   the repo. This is the main payoff: feedback from people who never open the repo lands where
   agents and the human can both see it.
-- Two-way (`mirror`): export the doc as Markdown or docx, run it through pandoc for a
-  canonical form, keep the frontmatter block from the repo untouched and replace only the
-  body, diff, and commit as `author: gdoc:<email>`. Pull comments before every overwrite,
-  because replacing a doc's body orphans existing comment anchors. Conflicts resolve as last
-  writer wins per page; git history makes any loss recoverable.
+- Two-way (`mirror`): edits made in the doc come back as a git diff for the human to
+  review, never as a commit and never by overwriting the page. The cycle is pull,
+  resolve, publish, and it keeps no state of its own: the repo's history and the doc's
+  `appProperties` hold everything it needs.
+  1. **Publish records where it came from.** A mirror page is published only when it is
+     committed (`yajna sync` refuses one with uncommitted changes), and the doc's
+     `appProperties` record the commit (`yajna_commit`) beside the content hash they
+     already carry, and the doc's revision after the upload (`yajna_rev`).
+  2. **Pull converts the doc back.** `yajna sync pull [ID...]` takes each mirror doc whose
+     revision moved past `yajna_rev`, exports it as Markdown (Drive's `text/markdown`
+     export) and undoes the rendering deterministically: the header lines, the title and
+     the *References* section go; links to synced docs and the site become `[[ID]]` again;
+     ☐/☑ become checkboxes; rendered citations become `@keys`, matched against the text
+     pandoc gives each key when the page is rendered locally. A citation edited in the doc
+     no longer matches and is reported rather than guessed.
+  3. **Both sides are normalised.** The converted doc and the page source each go through
+     pandoc (`-t markdown --wrap=none`), so wrapping, emphasis markers, list markers and
+     escapes do not count as edits. Compared block by block (headings, paragraphs, list
+     items, table rows, which the renderer keeps in order), the differences are the edits
+     people made; each edited block is written back in the source's own wrapping, and
+     untouched blocks keep their source text exactly.
+  4. **Three-way merge.** The page as published, `git show <yajna_commit>:<path>`, is the
+     ancestor; the page as it is now in the repo is one side and the doc's version is the
+     other (`git merge-file`). Work done in the repo since the publish is kept, not shown
+     as something the doc removed. Clean changes are applied to the file; overlapping ones
+     are left as conflict markers. Nothing is committed: `git diff` shows exactly what
+     came from the doc, and the pull prints who edited it (Drive's revision authors) for
+     the commit message. Frontmatter is never touched. A page that moved since its publish
+     is found at its old path through `git log --follow`.
+  5. **Resolve and publish.** The human edits the page, removes the markers and commits.
+     `yajna validate` fails on conflict markers in a page and `yajna sync` refuses to
+     publish one. The next `yajna sync` publishes the resolved page and records the new
+     commit and revision.
+  6. **Guard.** `yajna sync` will not overwrite a mirror doc whose revision moved past
+     `yajna_rev`: it says to pull first, so edits in the doc are never lost silently.
+     `--overwrite` publishes anyway, for a doc whose edits are to be discarded.
+
+  The conversion back is checked on its own first: an unedited doc must convert back to
+  exactly its page's normalised source, so that every difference a pull reports is an
+  edit. Comments are pulled before every publish, as in `publish`; replacing the body
+  keeps them in the page's *Review* section even when their anchors in the doc are lost.
+  Suggestions made in suggesting mode are not edits until accepted in the doc, so a pull
+  ignores them.
 - Where it runs: `yajna sync` from the laptop in Phase 1, then on the server after each push
   and on a schedule once the server exists. Credentials are a service account or OAuth token
   kept in `neusis` secrets.
@@ -763,7 +801,8 @@ Server responsibilities, deliberately small:
 - Receive pushes and API writes, commit, rebuild index, regenerate site.
 - Serve the site, the JSON API, and the MCP endpoint.
 - Run `yajna sync` after each push and on a schedule: publish shared pages to Google Docs,
-  pull comments, import `mirror` and `import` pages as commits.
+  pull comments, pull `mirror` edits onto a branch for the human to resolve, and import
+  `import` pages as commits.
 - Hold a git-annex remote for data, or proxy to LMB storage or NFS.
 - Auth with per-client tokens. The notebook contains unpublished results, so the server is
   private by default, reachable over the Tailscale network the `neusis` tailscale module
