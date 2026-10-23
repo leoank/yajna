@@ -29,7 +29,8 @@ open items with the rest.
 - [ ] Phase 0 verified: two weeks of real bench and ML days captured without the tooling in the way
 - [x] Phase 0b: the Rust CLI at parity, `init lab|project`, namespaced links, `graduate` (ADR-0017, ADR-0018)
 - [x] Phase 0b: `packages.yajna` installed through neusis
-- [ ] Phase 0b: a tagged release, and a machine without Nix running `init project`, `new` and `validate` from its binary
+- [x] Phase 0b: a tagged release, v0.2.0, with binaries for Linux and macOS
+- [ ] Phase 0b: a machine without Nix running `init project`, `new` and `validate` from the release binary
 - [ ] Phase 0b: rc2s2 graduates by the documented procedure and both repos validate
 - [x] Phase 0c: the Neovim plugin
 - [x] Phase 1: the index, `show`, `timeline`, `tree` and `runs`, the static site with `--serve`, CI (ADR-0019)
@@ -39,7 +40,7 @@ open items with the rest.
 - [ ] Verify `import benchling` against real exports from the lab's tenant ([[EXP-20261019-j4xp01]])
 - [ ] Phase 1: upload to the institutional ELN, and its import format, once the ELN is named
 - [x] Phase 1b: `yajna sync` publishes marked pages to Google Docs and pulls comments back (ADR-0011)
-- [ ] Phase 1b verified: the PI reads and comments on a published page and the comments arrive in the repo ([[EXP-20261021-as4202]])
+- [x] Phase 1b verified: the PI reads and comments on a published page and the comments arrive in the repo ([[EXP-20261021-as4202]])
 - [ ] Phase 1b later: `mirror` and `import` modes, once publishing is routine
 - [x] User guide on GitHub Pages: an mdBook with the CLI reference, page types and design docs generated at build time
 - [ ] Phase 2: data and runs (git-annex, `ART` pages, `experiment` and `autoresearch` commands)
