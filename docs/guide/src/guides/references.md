@@ -12,7 +12,18 @@ Anywhere in a page or a log line:
 Builds on the cloning chip of [@shih2015cloning] and the valve design in @gong2016valves.
 ```
 
-`yajna validate` fails on a key that is not in the bibliography.
+A page can bring its own bibliography as well, the way pandoc takes it, with a path (or a
+list of paths) relative to the page:
+
+```yaml
+bibliography: g2a-proposal.bib
+```
+
+Its keys count for that page on top of the notebook's. `yajna validate` fails on a key
+that is in neither, and on a `bibliography` file that does not exist.
+
+When a page that cites papers is [synced to Google Docs](docs-and-sync.md), pandoc renders
+the citations as author-year text and adds a *References* section.
 
 ## Looking a paper up
 

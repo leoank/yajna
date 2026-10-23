@@ -110,6 +110,10 @@ pages by ID or title. With `$EDITOR` set, it offers to open the new page.
 
 `yajna` alone opens a menu: new page, log line, tasks, validate.
 
+A markdown file that already exists becomes a page with `yajna adopt <file> --type <type>`:
+the type's frontmatter goes on top, the body stays, and the file is renamed to start with
+its new ID. See [Existing documents](../guides/docs-and-sync.md#existing-documents).
+
 ## Checking
 
 `yajna validate` reads every page and fails when:

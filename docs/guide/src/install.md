@@ -97,5 +97,7 @@ says it cannot find `yajna.toml`; the [Quickstart](quickstart.md) makes one.
 - **[Claude Code plugin](guides/claude-code.md)** for agents that work in the notebook.
 - **[Neovim plugin](guides/neovim.md)** to follow `[[links]]` from the editor.
 - **Zotero** with Better BibTeX if you cite papers ([References](guides/references.md)).
+- **[pandoc](https://pandoc.org)** to [sync](guides/docs-and-sync.md) pages that cite
+  papers: it renders their citations and reference list. Nothing else needs it.
 - **[qmd](https://github.com/tobi/qmd)** for full-text and semantic search over the
   notebook.

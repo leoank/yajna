@@ -19,7 +19,7 @@ yajna = { url = "github:leoank/yajna", path = "../yajna/main" }
 dirs = ["thesis"]
 
 [sync]                                  # Google Docs
-folder = "1AbCdEfGhIjKlMnOpQrStUvWxYz"  # Drive folder new docs are created in
+folder = "1AbCdEfGhIjKlMnOpQrStUvWxYz"  # the root folder in Drive (default: one yajna makes)
 site_url = "https://you.github.io/notebook"
 ```
 
@@ -60,7 +60,7 @@ the Neovim plugin can follow it, only when `path` is given and exists on disk.
 
 | Key | Meaning |
 |-----|---------|
-| `folder` | The ID of the Google Drive folder that new docs are created in. Without it they go to the root of My Drive. |
+| `folder` | The ID of the Google Drive folder that is the root of the synced docs, which mirror the notebook's folders below it. Without it, yajna creates a folder named after the `namespace` in My Drive on the first sync and finds it again from then on. |
 | `site_url` | The base URL of a published [static site](../guides/site.md). Links in a Google Doc to pages that are not synced point there; without it they are plain text. |
 
 See [Docs and Google Docs](../guides/docs-and-sync.md).

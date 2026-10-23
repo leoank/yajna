@@ -38,6 +38,35 @@ so that validate, tasks, the site, sync and export see it. Only files there with
 
 Doc pages are set to sync from the start.
 
+## Existing documents
+
+A document you already have, such as a proposal drafted in the thesis folder, becomes a
+page with `yajna adopt` instead of being retyped:
+
+```console
+$ yajna adopt thesis/proposals/g2a-proposal.md --kind proposal --dry-run
+thesis/proposals/g2a-proposal.md: would become a doc (proposal) titled "g2a proposal"; it stays in thesis/proposals/, renamed to start with its ID, with bibliography g2a-proposal.bib
+$ yajna adopt thesis/proposals/g2a-proposal.md --kind proposal --title "G2A proposal"
+thesis/proposals/DOC-20261023-d2k9qa-g2a-proposal.md
+```
+
+- The doc's frontmatter goes on top and the body stays exactly as it was. The file is
+  renamed to start with its new ID; git sees a rename, so its history follows. Anything
+  that pointed at the old file name (a thesis build script, say) needs updating by hand.
+- A `.bib` with the same name beside the file becomes the page's `bibliography`, so its
+  citations keep working.
+- If the file has frontmatter of its own (a pandoc document), its keys stay: `title`
+  becomes the page title, `author` is kept as `authors`, and the rest (`lang`,
+  `bibliography`, `geometry`, ...) are untouched. Keys yajna writes itself (`status`,
+  `kind`, `date`) are refused, naming them, before anything is changed.
+- The title comes from `--title`, else the file's own, else its first heading, else its
+  name.
+
+`adopt` works for every page type, not only docs: `--type protocol`, `--type experiment
+--project PRJ-0001`, `--type material --kind plasmid` and so on, with the same flags as
+`yajna new`. A doc stays where it is; other types move to where that type lives
+(`notes/protocols/`, the project's `experiments/`, ...).
+
 ## Publishing a page to Google Docs
 
 Any page can be published by marking it in its frontmatter:
@@ -58,6 +87,24 @@ yajna sync DOC-20261022-d4m1q8   # just this one
   frontmatter as `doc_id`. From then on the same doc is updated in place: its URL and
   sharing never change.
 - A page is re-uploaded only when its rendered content changed.
+- Docs are organised in Drive the way the pages are in the repository, under one root
+  folder (see [Sharing](#sharing)). A page under `notes/` keeps its path without `notes/`;
+  a page in a docs directory keeps its path from the repository root:
+
+  | Page | Doc in Drive |
+  |------|--------------|
+  | `notes/projects/PRJ-0001-yeast/README.md` | `projects/PRJ-0001-yeast/` |
+  | `notes/projects/PRJ-0001-yeast/experiments/EXP-….md` | `projects/PRJ-0001-yeast/experiments/` |
+  | `notes/docs/DOC-….md` | `docs/` |
+  | `thesis/meetings/DOC-….md` | `thesis/meetings/` |
+
+  Move a page (`git mv`) and the next sync moves its doc; the URL, comments and sharing
+  stay. `--dry-run` shows the folder each page goes to.
+- A page that cites papers (`@key`, `[@key, p. 3]`) is rendered by
+  [pandoc](https://pandoc.org) with author-year citations and a *References* section at
+  the end. Keys resolve in the notebook's bibliography and the page's own
+  `bibliography`. pandoc has to be on your `PATH` for those pages; without it they are
+  skipped with the reason and everything else syncs.
 - The doc starts with the page's ID, status and title, then the body. Checkboxes appear
   as ☐ and ☑. `[[links]]` to other synced pages point at their docs; to other pages they
   point at the site when `[sync] site_url` is set, and are plain text otherwise.
@@ -124,9 +171,13 @@ secret and point `YAJNA_GDOC_CREDENTIALS` at it.
 
 ## Sharing
 
-Share the docs, or a folder of them, with your readers from Google Drive as you would any
-doc; sharing survives every update. To have new docs created inside a folder, put its ID
-(the last part of the folder's URL) in `yajna.toml`:
+On the first sync yajna creates a folder in My Drive named after the notebook (its
+`namespace`, such as `manthan`), and builds the folders below it as pages need them. Share
+that one folder with your readers; everything in it inherits the sharing, and stays
+shared through every update and move.
+
+To use a folder of your own as the root instead, put its ID (the last part of the folder's
+URL) in `yajna.toml`:
 
 ```toml
 [sync]
@@ -134,6 +185,11 @@ folder = "1AbCdEfGhIjKlMnOpQrStUvWxYz"
 site_url = "https://you.github.io/notebook"   # optional: where unsynced links point
 ```
 
-Because of the `drive.file` scope, yajna may not be allowed to add docs to a folder it did
-not create. If `yajna sync` fails on a folder made by hand, leave `folder` unset and move
-the docs once from Drive; they stay where you put them.
+Because of the `drive.file` scope, yajna may not be allowed to add to a folder it did not
+create; if `yajna sync` fails on one, leave `folder` unset and let yajna make the root.
+
+yajna finds its folders again by tags it puts on them, not by name or by IDs stored in the
+repository, so every clone and worktree of the notebook syncs into the same folders.
+Rename them in Drive if you like; do not move docs between them by hand, because the next
+sync puts each doc back where its page is. yajna never deletes anything in Drive: a folder
+left empty by a move stays until you remove it.
