@@ -344,7 +344,7 @@ fn rewrite_ids(
 }
 
 /// (raw frontmatter text without the fences, rest), or (None, whole text).
-fn split_raw(text: &str) -> (Option<&str>, &str) {
+pub(crate) fn split_raw(text: &str) -> (Option<&str>, &str) {
     if let Some(rest) = text.strip_prefix("---\n") {
         if let Some(end) = rest.find("\n---\n") {
             return (Some(&rest[..end]), &rest[end + 5..]);

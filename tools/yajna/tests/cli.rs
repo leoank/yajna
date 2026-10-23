@@ -2717,6 +2717,107 @@ fn citations_resolve_in_the_page_bibliography_and_render_through_pandoc() {
 }
 
 #[test]
+fn adopt_makes_pages_of_existing_files() {
+    let v = vault();
+    assert_eq!(v.run(&["new", "project", "Thesis"]).code, 0);
+    let bib = "@article{shih2015cloning,\n title={A versatile microfluidic device},\n author={Shih, Steve},\n year={2015}\n}\n";
+    let adopt = |file: &Path, extra: &[&str]| {
+        let f = file.to_str().unwrap().to_string();
+        let mut a = vec!["adopt", f.as_str()];
+        a.extend_from_slice(extra);
+        v.run(&a)
+    };
+
+    // a plain markdown file with a .bib beside it: a proposal doc, kept where it is
+    fs::create_dir_all(v.root.join("thesis/proposals")).unwrap();
+    let src = v.root.join("thesis/proposals/g2a-proposal.md");
+    fs::write(&src, "## Question\nWhy? [@shih2015cloning]\n").unwrap();
+    fs::write(v.root.join("thesis/proposals/g2a-proposal.bib"), bib).unwrap();
+    let out = adopt(&src, &["--kind", "proposal", "--dry-run"]);
+    assert!(
+        out.stdout
+            .contains("would become a doc (proposal) titled \"g2a proposal\"")
+            && out.stdout.contains("with bibliography g2a-proposal.bib"),
+        "{}",
+        out.stdout
+    );
+    assert!(src.is_file(), "a dry run changes nothing");
+    let out = adopt(&src, &["--kind", "proposal", "--title", "G2A proposal"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert_eq!(
+        out.stdout.trim(),
+        "thesis/proposals/DOC-20261021-000001-g2a-proposal.md"
+    );
+    assert!(!src.exists());
+    let page = v.read(&v.path(&out));
+    assert!(
+        page.contains("title: G2A proposal\n")
+            && page.contains("kind: proposal")
+            && page.contains("sync: {provider: gdoc, mode: publish}")
+            && page.contains(
+                "bibliography: g2a-proposal.bib\n---\n\n## Question\nWhy? [@shih2015cloning]\n"
+            )
+            && !page.contains("## Purpose"),
+        "{page}"
+    );
+    assert!(v
+        .read(&v.root.join("yajna.toml"))
+        .contains("dirs = [\"thesis\"]"));
+    assert_eq!(adopt(&v.path(&out), &[]).code, 1, "already a page");
+
+    // a pandoc file: its own keys stay, title is the page's, author becomes authors
+    let src = v.root.join("thesis/chapter2.md");
+    fs::write(
+        &src,
+        "---\ntitle: \"Chapter 2: methods\"\nauthor: Ank Kumar\nlang: en-GB\n---\n# Chapter 2: methods\n\nText.\n",
+    )
+    .unwrap();
+    let out = adopt(&src, &["--kind", "report"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let page = v.read(&v.path(&out));
+    assert!(
+        page.contains("title: \"Chapter 2: methods\"")
+            && page.contains("\nauthors: Ank Kumar\n")
+            && page.contains("\nlang: en-GB\n")
+            && page.ends_with("---\n\nText.\n"),
+        "{page}"
+    );
+
+    // other types move to where they live; their flags work as for `new`
+    fs::create_dir_all(v.root.join("old")).unwrap();
+    let src = v.root.join("old/pcr.md");
+    fs::write(&src, "# PCR\n\n## Steps\n1. Mix. {duration: 5m}\n").unwrap();
+    let out = adopt(&src, &["--type", "protocol", "--kind", "compute"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert_eq!(out.stdout.trim(), "notes/protocols/PRO-0001-pcr.md");
+    assert!(v.read(&v.path(&out)).contains("\nkind: compute "));
+    let src = v.root.join("old/spike.md");
+    fs::write(&src, "Tried a thing.\n").unwrap();
+    assert_eq!(
+        adopt(&src, &["--type", "experiment"]).code,
+        1,
+        "needs --project"
+    );
+    let out = adopt(&src, &["--type", "experiment", "--project", "PRJ-0001"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(out
+        .stdout
+        .contains("notes/projects/PRJ-0001-thesis/experiments/EXP-"));
+
+    // frontmatter yajna writes itself is refused before anything is made
+    let src = v.root.join("old/done.md");
+    fs::write(&src, "---\nstatus: done\n---\nx\n").unwrap();
+    let out = adopt(&src, &[]);
+    assert_eq!(out.code, 1);
+    assert!(out.stderr.contains("sets status"), "{}", out.stderr);
+    assert!(src.is_file());
+    assert_eq!(adopt(Path::new("/etc/hosts"), &[]).code, 1);
+
+    let out = v.run(&["validate"]);
+    assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
+}
+
+#[test]
 fn site_serve_answers_http_and_rerenders() {
     use std::io::{BufRead, BufReader, Read, Write};
     let v = indexed_lab();

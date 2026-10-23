@@ -64,6 +64,35 @@ pub enum Cmd {
         #[arg(long)]
         script: Option<String>,
     },
+    /// make an existing markdown file a page: the type's frontmatter on top, its body kept,
+    /// the file renamed to start with its new ID (a doc stays in its directory, other types
+    /// move to where they live)
+    Adopt {
+        /// the markdown file, inside this repo
+        file: PathBuf,
+        /// page type: doc, experiment, analysis, artifact, run, protocol, material,
+        /// equipment, build or project
+        #[arg(long = "type", value_name = "TYPE", default_value = "doc")]
+        etype: String,
+        /// the title (default: the file's own title, else its first heading, else its name)
+        #[arg(long)]
+        title: Option<String>,
+        /// the kind, as for `yajna new`
+        #[arg(long)]
+        kind: Option<String>,
+        /// PRJ-xxxx the page belongs to, as for `yajna new`
+        #[arg(long)]
+        project: Option<String>,
+        /// EXP-xxxx, for a run
+        #[arg(long)]
+        experiment: Option<String>,
+        /// author handle (default: $YAJNA_AUTHOR, else .yajna/author, else yajna.toml)
+        #[arg(long)]
+        author: Option<String>,
+        /// say what would happen and stop
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// append a timestamped line to today's log
     Log {
         /// the entry; read from stdin when empty

@@ -61,6 +61,28 @@ pub fn run(vault: &Vault, cmd: &Cmd, prompter: &mut dyn Prompter) -> Res<i32> {
             println!("{}", rel(&path, &vault.root));
             Ok(0)
         }
+        Cmd::Adopt {
+            file,
+            etype,
+            title,
+            kind,
+            project,
+            experiment,
+            author,
+            dry_run,
+        } => crate::adopt::cmd_adopt(
+            vault,
+            file,
+            &crate::adopt::Options {
+                etype,
+                title: title.as_deref(),
+                kind: kind.as_deref(),
+                project: project.as_deref(),
+                experiment: experiment.as_deref(),
+                author: author.as_deref(),
+                dry_run: *dry_run,
+            },
+        ),
         Cmd::Log {
             text,
             date,

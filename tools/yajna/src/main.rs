@@ -1,3 +1,4 @@
+mod adopt;
 mod cli;
 mod commands;
 mod export;
