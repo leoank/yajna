@@ -2646,7 +2646,8 @@ fn citations_resolve_in_the_page_bibliography_and_render_through_pandoc() {
     ]);
     assert_eq!(out.code, 0, "{}", out.stderr);
     let page = v.path(&out);
-    let bib = "@article{shih2015cloning,\n title={A versatile microfluidic device},\n author={Shih, Steve and Moraes, Christopher},\n year={2015},\n journal={ACS Synth Biol}\n}\n";
+    // Zotero writes italics in titles as HTML
+    let bib = "@article{shih2015cloning,\n title={A versatile microfluidic device for <i>Escherichia coli</i>},\n author={Shih, Steve and Moraes, Christopher},\n year={2015},\n journal={ACS Synth Biol}\n}\n";
     fs::write(v.root.join("thesis/refs.bib"), bib).unwrap();
     let text = v
         .read(&page)
@@ -2700,7 +2701,11 @@ fn citations_resolve_in_the_page_bibliography_and_render_through_pandoc() {
     assert!(
         html.contains("Shih and Moraes 2015")
             && html.contains(">References</h2>")
-            && html.contains("A Versatile Microfluidic Device")
+            && html.contains("A Versatile Microfluidic Device for <em><span>Escherichia</span> <span class=\"nocase\">coli</span></em>")
+            && html.contains("<p style=\"margin-top:0;margin-bottom:8pt;line-height:1.3;font-size:10pt\">Shih, Steve")
+            && !html.contains("csl-entry")
+            && !html.contains("id=\"refs\"")
+            && !html.contains("&lt;i&gt;")
             && html.contains("☐ ask the committee")
             && !html.contains("@shih2015cloning"),
         "{html}"

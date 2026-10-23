@@ -105,6 +105,11 @@ yajna sync DOC-20261022-d4m1q8   # just this one
   the end. Keys resolve in the notebook's bibliography and the page's own
   `bibliography`. pandoc has to be on your `PATH` for those pages; without it they are
   skipped with the reason and everything else syncs.
+
+  Each reference is its own paragraph in slightly smaller type, with space between
+  entries and DOIs as links. Italics and protected capitals that Zotero writes into
+  titles (a species name, a gene) come through as they are in the library. Google Docs
+  cannot keep a hanging indent from an upload, so the entries are not indented.
 - The doc starts with the page's ID, status and title, then the body. Checkboxes appear
   as ☐ and ☑. `[[links]]` to other synced pages point at their docs; to other pages they
   point at the site when `[sync] site_url` is set, and are plain text otherwise.

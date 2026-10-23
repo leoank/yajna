@@ -382,7 +382,8 @@ yajna sync [ID ...]                             # publish, and pull comments bac
   set; share it once. Move a page and the next sync moves its doc, keeping its URL.
 - A page that cites papers is rendered by pandoc with author-year citations and a
   *References* section, from the notebook's bibliography and the page's own. pandoc must
-  be on PATH for those pages; without it they are skipped with the reason.
+  be on PATH for those pages; without it they are skipped with the reason. Italics and
+  case protection that Zotero writes into titles as HTML are kept.
 - Comments and replies come back into the page under `## Review` as checkboxes, before
   any re-upload. Tick one to resolve the comment in the doc at the next sync. Items stay
   even if the comment is deleted in the doc; the section itself is never published.

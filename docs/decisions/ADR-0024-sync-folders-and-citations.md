@@ -47,4 +47,8 @@ notebook's bibliography.
   under `drive.file`; leaving `folder` unset avoids that.
 - Citation style is pandoc's default (Chicago author-date). Choosing a CSL style is a later
   option, not built.
+- Google Docs drops CSS classes and negative indents on import, so the reference list's
+  layout is inline (each entry a paragraph, 10pt, space after) and has no hanging indent.
+  Zotero's HTML marks in titles (`<i>`, `<sup>`, `<span class="nocase">`) are rewritten
+  as case-protected LaTeX for pandoc, so species names stay italic and lower case.
 - A pandoc upgrade can change a citing page's rendering and so re-upload it once.

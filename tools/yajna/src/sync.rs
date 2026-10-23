@@ -586,9 +586,89 @@ fn pandoc_html(body: &str, bibs: &[PathBuf]) -> Res<String> {
         "--wrap=none",
         "--citeproc",
     ]);
-    for b in bibs.iter().filter(|b| b.is_file()) {
-        cmd.arg(format!("--bibliography={}", b.display()));
+    // a .bib with Zotero's HTML marks goes to pandoc as a copy with LaTeX ones
+    let mut copies = Vec::new();
+    for (n, b) in bibs.iter().filter(|b| b.is_file()).enumerate() {
+        let text = fs::read_to_string(b).map_err(|e| format!("{}: {e}", b.display()))?;
+        let latex = latex_marks(&text);
+        if latex == text {
+            cmd.arg(format!("--bibliography={}", b.display()));
+        } else {
+            let copy = std::env::temp_dir().join(format!("yajna-{}-{n}.bib", std::process::id()));
+            fs::write(&copy, latex).map_err(|e| e.to_string())?;
+            cmd.arg(format!("--bibliography={}", copy.display()));
+            copies.push(copy);
+        }
     }
+    let out = run_pandoc(cmd, body);
+    for c in copies {
+        let _ = fs::remove_file(c);
+    }
+    let html = out?
+        .replace("<input type=\"checkbox\" checked=\"\" />", "☑ ")
+        .replace("<input type=\"checkbox\" />", "☐ ");
+    // Docs drops CSS classes on import, so the reference list's layout goes inline: each
+    // entry a paragraph of its own with space after it. Docs also drops a negative
+    // text-indent, so a hanging indent cannot be had; pandoc's wrapper div goes, because
+    // Docs turns it into an empty paragraph.
+    let html = CSL_ENTRY_RE.replace_all(
+        &html,
+        format!("<p style=\"{REFERENCE_STYLE}\">$entry</p>").as_str(),
+    );
+    Ok(REFS_DIV_RE.replace_all(&html, "$entries").into_owned())
+}
+
+const REFERENCE_STYLE: &str = "margin-top:0;margin-bottom:8pt;line-height:1.3;font-size:10pt";
+static CSL_ENTRY_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"(?s)<div id="ref-[^"]*" class="csl-entry"[^>]*>\s*(?P<entry>.*?)\s*</div>"#)
+        .unwrap()
+});
+static REFS_DIV_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"(?s)<div id="refs"[^>]*>\s*(?P<entries>.*?)\s*</div>"#).unwrap()
+});
+
+/// Zotero writes rich text in titles as HTML: `<i>`, `<b>`, `<sup>`, `<sub>`, and
+/// `<span class="nocase">` for words title case must leave alone. pandoc reads BibTeX
+/// fields as LaTeX, where those tags would print literally, so they become LaTeX commands.
+/// Every word inside is braced and the group ends in `{}`, which is what keeps citeproc's
+/// title case off species and gene names.
+fn latex_marks(bib: &str) -> String {
+    static MARKS: LazyLock<Vec<(Regex, &str)>> = LazyLock::new(|| {
+        [
+            ("i", "\\emph"),
+            ("b", "\\textbf"),
+            ("sup", "\\textsuperscript"),
+            ("sub", "\\textsubscript"),
+        ]
+        .into_iter()
+        .map(|(tag, cmd)| {
+            (
+                Regex::new(&format!("(?s)<{tag}>(.*?)</{tag}>")).unwrap(),
+                cmd,
+            )
+        })
+        .chain([(
+            Regex::new(r#"(?s)<span class="nocase">(.*?)</span>"#).unwrap(),
+            "",
+        )])
+        .collect()
+    });
+    let protect = |s: &str| {
+        let words: Vec<String> = s.split(' ').map(|w| format!("{{{w}}}")).collect();
+        format!("{}{{}}", words.join(" "))
+    };
+    let mut out = bib.to_string();
+    for (re, cmd) in MARKS.iter() {
+        out = re
+            .replace_all(&out, |c: &regex::Captures| {
+                format!("{cmd}{{{}}}", protect(&c[1]))
+            })
+            .into_owned();
+    }
+    out
+}
+
+fn run_pandoc(mut cmd: Command, body: &str) -> Res<String> {
     let mut child = cmd
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -619,9 +699,7 @@ fn pandoc_html(body: &str, bibs: &[PathBuf]) -> Res<String> {
             String::from_utf8_lossy(&out.stderr).trim()
         ));
     }
-    Ok(String::from_utf8_lossy(&out.stdout)
-        .replace("<input type=\"checkbox\" checked=\"\" />", "☑ ")
-        .replace("<input type=\"checkbox\" />", "☐ "))
+    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
 /// The HTML a doc is made from: a header with ID, title and status, then the body with
@@ -1030,6 +1108,19 @@ pub fn cmd_sync(vault: &Vault, ids: &[String], dry_run: bool, no_comments: bool)
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn zotero_html_marks_become_case_protected_latex() {
+        assert_eq!(
+            latex_marks("title={Stalks in <i>Caulobacter crescentus</i> and Ca<sup>2+</sup>},"),
+            "title={Stalks in \\emph{{Caulobacter} {crescentus}{}} and Ca\\textsuperscript{{2+}{}}},"
+        );
+        assert_eq!(
+            latex_marks(r#"title={A <span class="nocase">pH</span> sensor},"#),
+            "title={A {{pH}{}} sensor},"
+        );
+        assert_eq!(latex_marks("title={Plain},"), "title={Plain},");
+    }
 
     #[test]
     fn base64url() {
