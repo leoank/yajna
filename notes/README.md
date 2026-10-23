@@ -44,9 +44,9 @@ open items with the rest.
 - [x] Phase 1b: synced docs mirror the notebook's folders in Drive and follow moved pages; citations render through pandoc with a page's own bibliography (ADR-0024)
 - [x] `yajna adopt`: an existing markdown file becomes a page of any type, its body kept (ADR-0025)
 - [ ] Phase 1b verified: folders and citations against the real Drive ([[EXP-20261023-cy5j5f]])
-- [ ] Phase 1b: `mirror` round trip checked: an unedited doc exported and converted back (header, title and *References* stripped, links, checkboxes and citations undone, both sides normalised by pandoc) equals its page's source
-- [ ] Phase 1b: `mirror` mode: `yajna sync pull` brings edits made in a doc back as an uncommitted change to its page, three-way merged against the published commit recorded on the doc, conflicts left as markers to resolve by hand; the next sync publishes the result (architecture §5.8)
-- [ ] Phase 1b verified: a doc edited by someone else is pulled, merged with work done in the repo meanwhile, and published back without losing either
+- [x] Phase 1b: `mirror` mode: `yajna sync pull` brings edits made in a doc back as an uncommitted change to its page, three-way merged against the published commit recorded on the doc, conflicts left as markers to resolve by hand; the next sync publishes the result (ADR-0026)
+- [x] Phase 1b: the `mirror` cycle against the real Drive, scripted: exports deterministic, guard, pull and republish ([[RUN-20261023-ftnr64]])
+- [ ] Phase 1b verified: a doc edited by a person is pulled, merged with work done in the repo meanwhile, and published back without losing either ([[EXP-20261023-ftnatx]])
 - [ ] Phase 1b later: `import` mode, the doc as the truth
 - [x] User guide on GitHub Pages: an mdBook with the CLI reference, page types and design docs generated at build time
 - [ ] Phase 2: data and runs (git-annex, `ART` pages, `experiment` and `autoresearch` commands)
@@ -65,10 +65,13 @@ open items with the rest.
 - Experiments keep counter IDs (ADR-0021). Do branch collisions stay rare enough that they
   never need volume IDs?
 
-- Is Drive's `text/markdown` export deterministic enough that an unedited doc converts
-  back to exactly its page, tables and nested lists included? `mirror` rests on it.
+- Does Docs keep yajna's upload as a revision of its own when the owner edits right after
+  a publish, or merge them? A merged revision makes `yajna sync pull` refuse
+  ([[EXP-20261023-ftnatx]]).
 - `mirror` publishes only committed pages, so the published version is in git for the
   merge. Is committing before every sync of a mirror page a burden in practice?
+- Does Drive's Markdown export include suggestions made in suggesting mode? If so, a pull
+  would bring unaccepted suggestions in as edits.
 
 - Which ELN does the lab use, and does it take an upload through an API, an import
   format, or only files? That decides the last renderer of `yajna export`.
@@ -101,6 +104,10 @@ What was tried and dropped, and why, so nobody tries it again.
   (ADR-0021).
 - Links quoted inside code spans are text; validation that ignored code spans failed on
   documentation that only described the syntax.
+- Google Docs' Markdown export cannot give a page's source back (code, list and heading
+  markup are lost), so `mirror` was redesigned around comparing two exports, published
+  and current, which are deterministic; check what an external format really returns
+  before designing a round trip on it ([[RUN-20261023-ftnr64]], ADR-0026).
 
 ## Experiments
 One line per experiment after its link, what it asks and what came of it; `yajna validate`
@@ -108,3 +115,4 @@ rejects a bare link here. Newest last.
 - [[EXP-20261019-j4xp01]] does `import benchling` read real Benchling exports; planned, deferred until exports from the lab's tenant are at hand
 - [[EXP-20261021-as4202]] does `yajna sync` work against the real Google Docs API; positive: publish, updates in place and the comment round trip hold, after a checkbox fix
 - [[EXP-20261023-cy5j5f]] do folder mirroring and pandoc citations work against the real Drive; every check passed in one run, conclusion pending
+- [[EXP-20261023-ftnatx]] does `mirror` sync bring a person's edits in a real doc back into the page; the scripted cycle passed, the hand edit is ank's to do
