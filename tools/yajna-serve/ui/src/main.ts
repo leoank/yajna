@@ -33,16 +33,19 @@ async function main() {
   bench = new Workbench(document.querySelector('#editor')!, `yajna-files:${info.notebook}`, showStatus, (path) => {
     if (path && parseHash(location.hash)?.path !== path) history.replaceState(null, '', `#${encodeURI(path)}`);
   });
+  // the file a link asked for: read before the saved layout is restored, because
+  // restoring activates the last tab, and that rewrites the URL
+  const requested = location.hash;
   bench.restore();
 
-  const fromHash = () => {
-    const h = parseHash(location.hash);
+  const fromHash = (hash = location.hash) => {
+    const h = parseHash(hash);
     if (!h) return;
     bench.open(h.path, { pin: true, from: h.from, to: h.to });
     void tree.reveal(h.path);
   };
-  window.addEventListener('hashchange', fromHash);
-  fromHash();
+  window.addEventListener('hashchange', () => fromHash());
+  fromHash(requested);
 
   // the sidebar's width, dragged on its edge
   const sidebar = document.querySelector('#sidebar') as HTMLElement;
