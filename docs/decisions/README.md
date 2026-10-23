@@ -32,3 +32,4 @@ one rather than an edit.
 | [0023](ADR-0023-docs.md) | Docs: meeting notes, proposals and admin pages, synced, created where asked | accepted |
 | [0024](ADR-0024-sync-folders-and-citations.md) | Synced docs mirror the notebook's folders in Drive; citations render through pandoc, with a page's own bibliography | accepted |
 | [0025](ADR-0025-adopt.md) | `yajna adopt` makes an existing markdown file a page of any type, its body kept | accepted |
+| [0026](ADR-0026-mirror-sync.md) | `mirror` sync: edits made in the doc come back through `yajna sync pull` as an uncommitted three-way merge to resolve by hand | accepted |

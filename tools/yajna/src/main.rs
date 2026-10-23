@@ -5,6 +5,7 @@ mod export;
 mod import;
 mod index;
 mod init;
+mod mirror;
 mod parallel;
 mod query;
 mod refs;

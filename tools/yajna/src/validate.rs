@@ -181,6 +181,12 @@ pub fn validate(vault: &Vault) -> Res<(Vec<String>, usize)> {
         for msg in schema_errors(validator, &Value::Object(meta.clone()), "frontmatter") {
             problems.add(&page.path, msg);
         }
+        if crate::sync::has_markers(&page.body) {
+            problems.add(
+                &page.path,
+                "conflict markers (<<<<<<< ... >>>>>>>) are still in the page; resolve them",
+            );
+        }
 
         if ptype == "log" {
             let date = meta.get("date").map(value_str).unwrap_or_default();

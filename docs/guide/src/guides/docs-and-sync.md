@@ -117,7 +117,8 @@ yajna sync DOC-20261022-d4m1q8   # just this one
 - The doc starts with the page's ID, status and title, then the body. Checkboxes appear
   as ☐ and ☑. `[[links]]` to other synced pages point at their docs; to other pages they
   point at the site when `[sync] site_url` is set, and are plain text otherwise.
-- Edits made in the Google Doc are overwritten at the next publish. Comment, do not edit.
+- Edits made in the Google Doc are overwritten at the next publish. Comment, do not edit,
+  or make the page a [mirror page](#edits-come-back-mirror-pages).
 
 ## Comments come back
 
@@ -136,9 +137,62 @@ Answer the comment by changing the page, then tick the box. The next `yajna sync
 the comment in the doc. Items stay in the page even if the comment is deleted in the doc.
 The *Review* section itself is never published. `--no-comments` publishes without pulling.
 
-Only `publish` exists so far: the page is the truth and the doc is a copy. A `mirror` mode
-(edits in the doc come back as a git diff to review and merge by hand, then sync back) and
-an `import` mode (the doc is the truth) are planned, not built.
+## Edits come back: mirror pages
+
+In `publish` mode the page is the truth and the doc a copy: edits made in the doc are lost
+at the next sync. For a page that others edit directly, such as a plan your supervisor
+corrects in place, use `mirror`:
+
+```yaml
+sync: {provider: gdoc, mode: mirror}
+```
+
+The cycle is pull, resolve, publish:
+
+```console
+$ yajna sync
+skip notes/docs/DOC-….md: the doc was edited since it was published; `yajna sync pull DOC-…` brings the edits into the page first (--overwrite discards them)
+$ yajna sync pull
+pulled notes/docs/DOC-….md: 2 edited line(s) from the doc by Sam Lee, 1 conflict(s) left as markers
+next: review with git diff, resolve the conflict markers, commit, then yajna sync publishes the result
+$ git diff                      # exactly what came from the doc
+$ $EDITOR notes/docs/DOC-….md   # resolve the markers
+$ git commit -am "docs: Sam's corrections to the plan"
+$ yajna sync                    # the doc now shows the merged page
+```
+
+- **Only committed text is published.** A mirror page has to be committed before
+  `yajna sync` publishes it, so the version in the doc is always in git. It is what the
+  pull merges against.
+- **What comes back.** `yajna sync pull` compares the doc as it is now with the doc as
+  yajna published it, so only what people changed counts, not the way Google writes
+  Markdown. Each change lands on the line of the page it came from, word by word: an edit
+  next to a code span, a citation or a `[[link]]` leaves them as they were. Lines added
+  in the doc are added to the page, with links to synced pages turned back into
+  `[[ID]]` and ☐/☑ into checkboxes; lines removed are removed.
+- **Merged with your work.** If you changed the page in the repo since the publish, both
+  sets of changes are kept. Edits to the same line on both sides become conflict markers:
+
+  ```text
+  <<<<<<< this page
+  and measure the growth rate.
+  =======
+  and measure the lag phase.
+  >>>>>>> the doc
+  ```
+
+  `yajna validate` fails and `yajna sync` refuses the page until they are gone.
+- **Nothing is committed for you.** The pull changes the file and names who edited the
+  doc, so you can say so in the commit message.
+- **What does not come back.** Frontmatter and the title (a title changed in the doc is
+  reported; change it in the frontmatter), fonts and colours, and anything Google's
+  Markdown export cannot show. An edit inside a rendered citation or code span comes back
+  as the doc's text, and the pull says how many there were, so check those lines.
+- **Discarding edits.** `yajna sync --overwrite` publishes over a doc's edits without
+  pulling them.
+
+Comments work as in `publish`. An `import` mode, where the doc is the truth, is planned,
+not built.
 
 ## Setting up Google access
 

@@ -175,8 +175,9 @@ pub enum Cmd {
         #[command(subcommand)]
         source: ImportSource,
     },
-    /// publish pages marked `sync: {provider: gdoc, mode: publish}` to Google Docs and pull
-    /// their comments back under `## Review` (ADR-0011)
+    /// publish pages marked `sync: {provider: gdoc, mode: publish|mirror}` to Google Docs and
+    /// pull their comments back under `## Review` (ADR-0011); `sync pull` brings edits made
+    /// in mirror docs back
     #[command(args_conflicts_with_subcommands = true)]
     Sync {
         #[command(subcommand)]
@@ -189,6 +190,9 @@ pub enum Cmd {
         /// publish without pulling comments
         #[arg(long)]
         no_comments: bool,
+        /// publish mirror pages even when their doc has edits not pulled yet, discarding them
+        #[arg(long)]
+        overwrite: bool,
     },
     /// give counter-ID experiments and analyses date IDs, and older date IDs the time-sortable
     /// suffix; every reference follows and each page keeps its old ID (ADR-0022)
@@ -296,6 +300,12 @@ pub enum SyncAction {
         /// the OAuth client JSON (type Desktop app) from the Google Cloud console
         #[arg(long)]
         client: PathBuf,
+    },
+    /// bring edits made in the docs of `mode: mirror` pages into the pages as uncommitted
+    /// changes, three-way merged with the repo; conflicts are left as markers to resolve
+    Pull {
+        /// only these IDs
+        ids: Vec<String>,
     },
 }
 

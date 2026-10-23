@@ -1892,6 +1892,39 @@ struct Drive {
     folders: std::collections::BTreeMap<String, serde_json::Value>, // id -> its metadata
     parents: std::collections::BTreeMap<String, Vec<String>>,       // doc or folder -> parents
     moves: usize,
+    props: std::collections::BTreeMap<String, serde_json::Value>, // doc -> appProperties
+    revisions: std::collections::BTreeMap<String, Vec<(String, String)>>, // doc -> (export, who)
+}
+
+/// Drive's Markdown export of an uploaded doc, as far as the tests need it: the header in
+/// bold, headings bold, paragraphs on one line, list items as `> *`, links kept.
+fn export_of(html: &str) -> String {
+    let tag = regex::Regex::new(r"<[^>]+>").unwrap();
+    let link = regex::Regex::new(r#"<a href="([^"]*)">([^<]*)</a>"#).unwrap();
+    let block = regex::Regex::new(r"(?s)<(p|h1|h2|h3|li)>(.*?)</(?:p|h1|h2|h3|li)>").unwrap();
+    let mut out: Vec<String> = Vec::new();
+    for c in block.captures_iter(html) {
+        let text = link.replace_all(&c[2], "[$2]($1)");
+        let text = tag
+            .replace_all(&text, "")
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .replace("&quot;", "\"")
+            .replace("&amp;", "&");
+        out.push(match &c[1] {
+            "h1" => format!("# **{text}**"),
+            "h2" => format!("## **{text}**"),
+            "h3" => format!("### **{text}**"),
+            "li" => format!("> * {text}"),
+            _ if out.is_empty() => format!(
+                "**{}**",
+                text.replacen(' ', "** ", 1).trim_end_matches("**")
+            ),
+            _ => text,
+        });
+    }
+    out.join("\n\n")
 }
 
 impl Drive {
@@ -1936,6 +1969,7 @@ fn fake_drive() -> (String, std::sync::Arc<std::sync::Mutex<Drive>>) {
     let base = format!("http://{}", listener.local_addr().unwrap());
     let state = std::sync::Arc::new(std::sync::Mutex::new(Drive::default()));
     let st = state.clone();
+    let base_url = base.clone();
     std::thread::spawn(move || {
         for stream in listener.incoming() {
             let mut stream = stream.unwrap();
@@ -1992,6 +2026,11 @@ fn fake_drive() -> (String, std::sync::Arc<std::sync::Mutex<Drive>>) {
                 ("POST", ["upload", "drive", "v3", "files"]) => {
                     let id = format!("doc{}", d.docs.len() + 1);
                     d.docs.insert(id.clone(), (html_of(&body), hash_of(&body)));
+                    let export = export_of(&html_of(&body));
+                    d.revisions
+                        .entry(id.clone())
+                        .or_default()
+                        .push((export, "Ank".into()));
                     let parents = ids_of(&meta_of(&body)["parents"]);
                     d.parents.insert(id.clone(), parents);
                     d.uploads += 1;
@@ -2029,6 +2068,21 @@ fn fake_drive() -> (String, std::sync::Arc<std::sync::Mutex<Drive>>) {
                         .collect();
                     serde_json::json!({"files": files})
                 }
+                ("PATCH", ["drive", "v3", "files", id]) if !target.contains("addParents") => {
+                    let meta: serde_json::Value = serde_json::from_str(&body).unwrap();
+                    let props = d
+                        .props
+                        .entry(id.to_string())
+                        .or_insert(serde_json::json!({}));
+                    for (k, v) in meta["appProperties"].as_object().into_iter().flatten() {
+                        if v.is_null() {
+                            props.as_object_mut().unwrap().remove(k);
+                        } else {
+                            props[k] = v.clone();
+                        }
+                    }
+                    serde_json::json!({"id": id})
+                }
                 ("PATCH", ["drive", "v3", "files", id]) => {
                     let add = query_param(&target, "addParents").unwrap_or_default();
                     let remove = query_param(&target, "removeParents").unwrap_or_default();
@@ -2041,13 +2095,52 @@ fn fake_drive() -> (String, std::sync::Arc<std::sync::Mutex<Drive>>) {
                 ("PATCH", ["upload", "drive", "v3", "files", id]) => {
                     d.docs
                         .insert(id.to_string(), (html_of(&body), hash_of(&body)));
+                    let export = export_of(&html_of(&body));
+                    d.revisions
+                        .entry(id.to_string())
+                        .or_default()
+                        .push((export, "Ank".into()));
+                    let props = d
+                        .props
+                        .entry(id.to_string())
+                        .or_insert(serde_json::json!({}));
+                    for (k, v) in meta_of(&body)["appProperties"]
+                        .as_object()
+                        .into_iter()
+                        .flatten()
+                    {
+                        props[k] = v.clone();
+                    }
                     d.uploads += 1;
                     serde_json::json!({"id": id})
                 }
                 ("GET", ["drive", "v3", "files", id]) => {
                     let h = d.docs.get(*id).map(|x| x.1.clone()).unwrap_or_default();
                     let parents = d.parents.get(*id).cloned().unwrap_or_default();
-                    serde_json::json!({"id": id, "trashed": false, "appProperties": {"yajna_hash": h}, "parents": parents})
+                    let mut props = d.props.get(*id).cloned().unwrap_or(serde_json::json!({}));
+                    props["yajna_hash"] = h.into();
+                    serde_json::json!({"id": id, "trashed": false, "appProperties": props, "parents": parents})
+                }
+                ("GET", ["drive", "v3", "files", id, "revisions"]) => {
+                    let revs: Vec<serde_json::Value> = d
+                        .revisions
+                        .get(*id)
+                        .into_iter()
+                        .flatten()
+                        .enumerate()
+                        .map(|(n, (_, who))| serde_json::json!({"id": (n + 1).to_string(), "lastModifyingUser": {"displayName": who}}))
+                        .collect();
+                    serde_json::json!({"revisions": revs})
+                }
+                ("GET", ["drive", "v3", "files", id, "revisions", rev]) => {
+                    serde_json::json!({"exportLinks": {"text/markdown": format!("{base_url}/export/{id}/{rev}")}})
+                }
+                ("GET", ["drive", "v3", "files", id, "export"]) => {
+                    serde_json::Value::String(d.revisions[*id].last().unwrap().0.clone())
+                }
+                ("GET", ["export", id, rev]) => {
+                    let n: usize = rev.parse().unwrap();
+                    serde_json::Value::String(d.revisions[*id][n - 1].0.clone())
                 }
                 ("GET", ["drive", "v3", "files", id, "comments"]) => {
                     serde_json::json!({"comments": d.comments.get(*id).cloned().unwrap_or_default()})
@@ -2065,11 +2158,197 @@ fn fake_drive() -> (String, std::sync::Arc<std::sync::Mutex<Drive>>) {
                 }
                 _ => serde_json::json!({"error": format!("{method} {path}")}),
             };
-            let text = reply.to_string();
+            // an export is text, everything else JSON
+            let text = match reply {
+                serde_json::Value::String(s) => s,
+                other => other.to_string(),
+            };
             write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{text}", text.len()).unwrap();
         }
     });
     (base, state)
+}
+
+#[test]
+fn mirror_pages_pull_doc_edits_as_a_merge_and_publish_only_when_committed() {
+    let v = vault();
+    git(&v.root, &["init", "-q", "-b", "main"]);
+    git(&v.root, &["add", "-A"]);
+    git(&v.root, &["commit", "-q", "-m", "lab"]);
+    let out = v.run(&[
+        "new",
+        "doc",
+        "Plan",
+        "--kind",
+        "note",
+        "--dir",
+        "notes/docs",
+    ]);
+    let page = v.path(&out);
+    let text = v.read(&page).replace(
+        "sync: {provider: gdoc, mode: publish}",
+        "sync: {provider: gdoc, mode: mirror}",
+    );
+    let fm = &text[..text.find("\n---\n").unwrap() + 5];
+    let body = "\n## Purpose\nWe grow the strain at 30C for two days, with `yajna` keeping the\nnotes, and measure the doubling time.\n\n## Next steps\n- [ ] order media\n- [ ] book the reader\n";
+    fs::write(&page, format!("{fm}{body}")).unwrap();
+    let (base, drive) = fake_drive();
+    let env = [("YAJNA_GDOC_API", base.as_str()), ("YAJNA_GDOC_TOKEN", "t")];
+    let sync = |args: &[&str]| {
+        let mut a = vec!["sync"];
+        a.extend_from_slice(args);
+        v.run_with(&a, None, &env)
+    };
+    let commit = |msg: &str| {
+        git(&v.root, &["add", "-A"]);
+        git(&v.root, &["commit", "-q", "-m", msg]);
+    };
+
+    // a mirror page publishes only what is committed
+    let out = sync(&[]);
+    assert!(out.stdout.contains("it is not committed"), "{}", out.stdout);
+    assert_eq!(
+        drive.lock().unwrap().uploads,
+        0,
+        "no doc for a page that cannot publish"
+    );
+    commit("plan");
+    let out = sync(&[]);
+    assert!(
+        out.stdout.contains("1 published"),
+        "{}{}",
+        out.stdout,
+        out.stderr
+    );
+    let doc = v
+        .read(&page)
+        .split("doc_id: ")
+        .nth(1)
+        .unwrap()
+        .split('}')
+        .next()
+        .unwrap()
+        .to_string();
+    let props = drive.lock().unwrap().props[&doc].clone();
+    let head = git(&v.root, &["rev-parse", "HEAD"]);
+    assert_eq!(props["yajna_commit"], head.trim(), "{props}");
+    assert_eq!(props["yajna_rev"], "2", "{props}");
+    assert!(drive.lock().unwrap().docs[&doc]
+        .0
+        .contains("edits and comments here come back"));
+    commit("doc id");
+    assert!(sync(&["pull"]).stdout.contains("no edits in the doc"));
+
+    // someone edits the doc; the repo changes another line meanwhile
+    let edit = |d: &mut Drive, from: &str, to: &str, who: &str| {
+        let revs = d.revisions.get_mut(&doc).unwrap();
+        let now = revs.last().unwrap().0.clone();
+        assert!(now.contains(from), "{now}");
+        revs.push((now.replace(from, to), who.to_string()));
+    };
+    edit(
+        &mut drive.lock().unwrap(),
+        "at 30C for two days",
+        "at 37C for two days",
+        "Sam Lee",
+    );
+    edit(
+        &mut drive.lock().unwrap(),
+        "☐ book the reader",
+        "☑ book the reader",
+        "Sam Lee",
+    );
+    fs::write(
+        &page,
+        v.read(&page).replace("order media", "order YPD media"),
+    )
+    .unwrap();
+    commit("ypd");
+    let out = sync(&[]);
+    assert!(
+        out.stdout
+            .contains("the doc was edited since it was published"),
+        "{}",
+        out.stdout
+    );
+    let uploads = drive.lock().unwrap().uploads;
+
+    let out = sync(&["pull"]);
+    assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
+    assert!(
+        out.stdout.contains("pulled notes/docs/")
+            && out
+                .stdout
+                .contains("2 edited line(s) from the doc by Sam Lee"),
+        "{}",
+        out.stdout
+    );
+    let pulled = v.read(&page);
+    assert!(
+        pulled.contains("We grow the strain at 37C for two days, with `yajna` keeping the\nnotes,")
+            && pulled.contains("- [ ] order YPD media\n- [x] book the reader\n"),
+        "{pulled}"
+    );
+    assert!(
+        git(&v.root, &["status", "--porcelain"]).contains(" M notes/docs/"),
+        "pull commits nothing"
+    );
+    assert_eq!(drive.lock().unwrap().uploads, uploads);
+
+    // overlapping edits on both sides are left as markers; validate and sync refuse them
+    commit("pulled");
+    edit(
+        &mut drive.lock().unwrap(),
+        "measure the doubling time",
+        "measure the lag phase",
+        "Sam Lee",
+    );
+    fs::write(
+        &page,
+        v.read(&page)
+            .replace("measure the doubling time", "measure the growth rate"),
+    )
+    .unwrap();
+    commit("growth rate");
+    let out = sync(&["pull"]);
+    assert!(
+        out.stdout.contains("1 conflict(s) left as markers"),
+        "{}",
+        out.stdout
+    );
+    let conflicted = v.read(&page);
+    assert!(
+        conflicted.contains("<<<<<<< this page") && conflicted.contains(">>>>>>> the doc"),
+        "{conflicted}"
+    );
+    assert_eq!(v.run(&["validate"]).code, 1);
+    assert!(sync(&[]).stdout.contains("conflict markers"));
+
+    // resolved and committed, the next sync publishes over the pulled edits
+    let resolved = regex::Regex::new(r"(?s)<<<<<<< this page\n.*?>>>>>>> the doc\n")
+        .unwrap()
+        .replace(
+            &conflicted,
+            "notes, and measure the growth rate and the lag phase.\n",
+        )
+        .into_owned();
+    fs::write(&page, resolved).unwrap();
+    assert_eq!(
+        v.run(&["validate"]).code,
+        0,
+        "{}",
+        v.run(&["validate"]).stdout
+    );
+    commit("resolved");
+    let out = sync(&[]);
+    assert!(out.stdout.contains("1 published"), "{}", out.stdout);
+    let d = drive.lock().unwrap();
+    assert!(d.docs[&doc].0.contains("growth rate and the lag phase"));
+    assert_eq!(
+        d.props[&doc]["yajna_rev"],
+        d.revisions[&doc].len().to_string()
+    );
+    assert!(d.props[&doc].get("yajna_pulled").is_none());
 }
 
 #[test]
@@ -2232,10 +2511,10 @@ fn sync_publishes_and_pulls_comments_back() {
     );
 
     // other modes are skipped, other providers too
-    fs::write(&exp, v.read(&exp).replace("mode: publish", "mode: mirror")).unwrap();
+    fs::write(&exp, v.read(&exp).replace("mode: publish", "mode: import")).unwrap();
     let out = sync(&[]);
     assert!(
-        out.stdout.contains("mode mirror is not built yet"),
+        out.stdout.contains("mode import is not built yet"),
         "{}",
         out.stdout
     );

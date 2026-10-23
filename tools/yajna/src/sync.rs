@@ -1,8 +1,15 @@
 //! `yajna sync` (architecture 5.8, ADR-0011): pages marked
 //! `sync: {provider: gdoc, mode: publish}` become Google Docs that are updated in place, and
 //! the comments people leave there come back into the page under `## Review`. Ticking a
-//! review item resolves its comment in the doc. Only `publish` is built; `mirror` and
-//! `import` wait until publishing is routine.
+//! review item resolves its comment in the doc. `import` waits until publishing is routine.
+//!
+//! `mirror` pages publish the same way and their edits come back (architecture 5.8): a
+//! mirror page is published only when it is committed, and the doc records that commit,
+//! its revision after the upload and a hash of that revision's export in `appProperties`.
+//! `yajna sync pull` carries what people changed in the doc onto the page as published
+//! (`mirror.rs`) and three-way merges it with the page as it is now, leaving conflicts as
+//! markers and nothing committed. `yajna sync` refuses to overwrite a doc with edits not
+//! yet pulled.
 //!
 //! Docs mirror the notebook's folders under one root folder in Drive (ADR-0024): a page's
 //! directory relative to the vault, or to the repo for a `[docs]` directory. Pages that
@@ -28,9 +35,13 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
 use crate::init::edit_frontmatter;
+use crate::mirror;
+use crate::parallel::git;
 use crate::refs;
 use crate::site::esc;
-use crate::vault::{map_outside_code, rel, without_code, Page, Res, Vault, LINK_RE, NS_ID_RE};
+use crate::vault::{
+    map_outside_code, rel, split_frontmatter, without_code, Page, Res, Vault, LINK_RE, NS_ID_RE,
+};
 
 const SCOPE: &str = "https://www.googleapis.com/auth/drive.file";
 const DOC_MIME: &str = "application/vnd.google-apps.document";
@@ -176,6 +187,77 @@ impl Api {
                 _ => return Ok(out),
             }
         }
+    }
+
+    /// A text response: a path under the API, or a full URL (Drive's export links).
+    fn get_text(&self, url: &str) -> Res<String> {
+        let full = if url.starts_with("http") {
+            url.to_string()
+        } else {
+            format!("{}{url}", self.base)
+        };
+        let what = format!("GET {}", url.split('?').next().unwrap_or(url));
+        let mut resp = self
+            .agent
+            .get(&full)
+            .header("Authorization", &self.auth())
+            .call()
+            .map_err(|e| format!("{what}: {e}"))?;
+        let status = resp.status().as_u16();
+        let text = resp
+            .body_mut()
+            .read_to_string()
+            .map_err(|e| format!("{what}: {e}"))?;
+        if status >= 400 {
+            return Err(format!("{what}: HTTP {status}: {}", text.trim()));
+        }
+        Ok(text)
+    }
+
+    /// The doc as Markdown, as Drive exports it.
+    fn export(&self, doc_id: &str) -> Res<String> {
+        self.get_text(&format!(
+            "/drive/v3/files/{doc_id}/export?mimeType=text%2Fmarkdown"
+        ))
+    }
+
+    /// One revision of the doc as Markdown, through the revision's export link.
+    fn revision_export(&self, doc_id: &str, rev: &str) -> Res<String> {
+        let v = self.get(&format!(
+            "/drive/v3/files/{doc_id}/revisions/{rev}?fields=exportLinks"
+        ))?;
+        let url = v["exportLinks"]["text/markdown"]
+            .as_str()
+            .ok_or_else(|| format!("revision {rev} of {doc_id} has no Markdown export"))?;
+        self.get_text(url)
+    }
+
+    /// The doc's revisions, oldest first, with who made each.
+    fn revisions(&self, doc_id: &str) -> Res<Vec<Value>> {
+        let mut out = Vec::new();
+        let mut page = String::new();
+        loop {
+            let mut path = format!(
+                "/drive/v3/files/{doc_id}/revisions?pageSize=1000&fields={}",
+                urlencode("revisions(id,lastModifyingUser(displayName)),nextPageToken")
+            );
+            if !page.is_empty() {
+                path.push_str(&format!("&pageToken={}", urlencode(&page)));
+            }
+            let v = self.get(&path)?;
+            out.extend(v["revisions"].as_array().cloned().unwrap_or_default());
+            match v["nextPageToken"].as_str() {
+                Some(t) if !t.is_empty() => page = t.to_string(),
+                _ => return Ok(out),
+            }
+        }
+    }
+
+    fn last_revision(&self, doc_id: &str) -> Res<String> {
+        self.revisions(doc_id)?
+            .last()
+            .and_then(|r| r["id"].as_str().map(str::to_string))
+            .ok_or_else(|| format!("{doc_id} has no revisions"))
     }
 }
 
@@ -754,7 +836,11 @@ fn render(vault: &Vault, page: &Page, docs: &BTreeMap<String, String>) -> Res<St
         "<html><head><meta charset=\"utf-8\"></head><body>\n<p><b>{}</b>{}{}</p>\n<h1>{}</h1>\n{html_body}</body></html>\n",
         esc(id),
         if status.is_empty() { String::new() } else { format!(" · {}", esc(status)) },
-        " · published from the notebook; comments here come back to it",
+        if sync_field(page).map(|s| s.mode == "mirror").unwrap_or(false) {
+            " · mirrored from the notebook; edits and comments here come back to it"
+        } else {
+            " · published from the notebook; comments here come back to it"
+        },
         esc(page.field("title").unwrap_or(id))
     ))
 }
@@ -922,7 +1008,49 @@ fn merge_review(text: &str, comments: &[Value]) -> (String, Vec<String>, usize) 
 
 // --- the command --------------------------------------------------------------------------
 
-pub fn cmd_sync(vault: &Vault, ids: &[String], dry_run: bool, no_comments: bool) -> Res<i32> {
+/// Whether a page still has the conflict markers a pull left.
+pub fn has_markers(body: &str) -> bool {
+    without_code(body)
+        .lines()
+        .any(|l| l.starts_with("<<<<<<< ") || l.starts_with(">>>>>>> "))
+}
+
+/// The commit a mirror page is published at: HEAD, when what the doc shows of the page
+/// (title, status, body without the review section) is committed there.
+fn committed(vault: &Vault, page: &Page) -> Res<String> {
+    let r = rel(&page.path, &vault.root).to_string();
+    let head = git(&vault.root, &["rev-parse", "HEAD"]).map_err(|_| {
+        "mirror pages publish only committed text, and this is not a git repository with commits"
+            .to_string()
+    })?;
+    let text = git(&vault.root, &["show", &format!("HEAD:./{r}")])
+        .map_err(|_| "it is not committed; mirror pages publish only committed text".to_string())?;
+    let (meta, body) = split_frontmatter(&text);
+    let field = |k: &str| {
+        meta.as_ref()
+            .and_then(|m| m.get(k))
+            .and_then(|v| v.as_str())
+            .map(str::to_string)
+    };
+    if without_review(&body).trim_end() != without_review(&page.body).trim_end()
+        || field("title").as_deref() != page.field("title")
+        || field("status").as_deref() != page.field("status")
+    {
+        return Err(
+            "it has changes that are not committed; mirror pages publish only committed text"
+                .into(),
+        );
+    }
+    Ok(head)
+}
+
+pub fn cmd_sync(
+    vault: &Vault,
+    ids: &[String],
+    dry_run: bool,
+    no_comments: bool,
+    overwrite: bool,
+) -> Res<i32> {
     let pages: Vec<Page> = vault
         .pages()?
         .into_iter()
@@ -946,8 +1074,21 @@ pub fn cmd_sync(vault: &Vault, ids: &[String], dry_run: bool, no_comments: bool)
         let r = rel(&p.path, &vault.root).to_string();
         if s.provider != "gdoc" {
             println!("skip {r}: provider {} is not supported", s.provider);
-        } else if s.mode != "publish" {
-            println!("skip {r}: mode {} is not built yet (only publish)", s.mode);
+        } else if s.mode != "publish" && s.mode != "mirror" {
+            println!(
+                "skip {r}: mode {} is not built yet (publish and mirror are)",
+                s.mode
+            );
+        } else if has_markers(&p.body) {
+            println!(
+                "skip {r}: it has conflict markers from `yajna sync pull`; resolve them and commit"
+            );
+        } else if let Err(e) = if s.mode == "mirror" {
+            committed(vault, &p)
+        } else {
+            Ok(String::new())
+        } {
+            println!("skip {r}: {e}");
         } else {
             work.push((p, s));
         }
@@ -970,6 +1111,11 @@ pub fn cmd_sync(vault: &Vault, ids: &[String], dry_run: bool, no_comments: bool)
                 ", citations through pandoc"
             } else {
                 ""
+            };
+            let what = if s.mode == "mirror" {
+                format!("{what} (mirror)")
+            } else {
+                what
             };
             println!(
                 "{}: {what} in {}{pandoc}",
@@ -1045,6 +1191,24 @@ pub fn cmd_sync(vault: &Vault, ids: &[String], dry_run: bool, no_comments: bool)
             pulled += fresh;
         }
         let page = vault.read(&page.path)?;
+        let mirror = s.mode == "mirror";
+        if has_markers(&page.body) {
+            println!(
+                "skip {r}: it has conflict markers from `yajna sync pull`; resolve them and commit"
+            );
+            continue;
+        }
+        let commit = if mirror {
+            match committed(vault, &page) {
+                Ok(c) => Some(c),
+                Err(e) => {
+                    println!("skip {r}: {e}");
+                    continue;
+                }
+            }
+        } else {
+            None
+        };
         let html = match render(vault, &page, &docs) {
             Ok(h) => h,
             Err(e) => {
@@ -1084,14 +1248,50 @@ pub fn cmd_sync(vault: &Vault, ids: &[String], dry_run: bool, no_comments: bool)
             moved += 1;
             println!("moved {r} -> {}", shown(&path));
         }
-        if current["appProperties"]["yajna_hash"].as_str() == Some(digest.as_str()) {
+        let props = &current["appProperties"];
+        let same = props["yajna_hash"].as_str() == Some(digest.as_str());
+        if mirror {
+            // edits in the doc since the publish are pulled before they are overwritten
+            let last = api.last_revision(&doc)?;
+            let edited = props["yajna_rev"]
+                .as_str()
+                .map(|rev| rev != last)
+                .unwrap_or(false);
+            if edited && props["yajna_pulled"].as_str() != Some(last.as_str()) && !overwrite {
+                println!(
+                    "skip {r}: the doc was edited since it was published; `yajna sync pull {}` brings the edits into the page first (--overwrite discards them)",
+                    page.id().unwrap_or("")
+                );
+                continue;
+            }
+            if same && !edited && props["yajna_rev"].is_string() {
+                continue;
+            }
+        } else if same {
             continue;
+        }
+        let mut app = json!({"yajna_id": page.id().unwrap_or(""), "yajna_hash": digest});
+        if let Some(c) = &commit {
+            app["yajna_commit"] = c.clone().into();
         }
         let meta = json!({
             "name": format!("{} {}", page.id().unwrap_or(""), page.field("title").unwrap_or("")).trim(),
-            "appProperties": {"yajna_id": page.id().unwrap_or(""), "yajna_hash": digest},
+            "appProperties": app,
         });
         api.upload(Some(&doc), &meta, &html)?;
+        if mirror {
+            // what was published, for the next pull to tell edits from the export's own ways
+            let rev = api.last_revision(&doc)?;
+            let export = api.export(&doc)?;
+            api.patch_json(
+                &format!("/drive/v3/files/{doc}?fields=id"),
+                &json!({"appProperties": {
+                    "yajna_rev": rev,
+                    "yajna_export": hash(&export),
+                    "yajna_pulled": null,
+                }}),
+            )?;
+        }
         published += 1;
         println!("published {r} -> {}", doc_url(&doc));
     }
@@ -1101,6 +1301,218 @@ pub fn cmd_sync(vault: &Vault, ids: &[String], dry_run: bool, no_comments: bool)
     );
     if published + pulled + resolved > 0 {
         println!("next: yajna validate, review the Review sections, and commit the pages");
+    }
+    Ok(0)
+}
+
+/// A file at a commit, exactly as it is there (`git` trims its output).
+fn show(vault: &Vault, commit: &str, path: &str) -> Res<String> {
+    let out = Command::new("git")
+        .arg("-C")
+        .arg(&vault.root)
+        .args(["show", &format!("{commit}:./{path}")])
+        .output()
+        .map_err(|e| format!("git: {e}"))?;
+    if !out.status.success() {
+        return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
+/// A mirror page's text at the commit it was published at: at its path now, or, if it has
+/// moved since, the file in that commit whose name starts with its ID.
+fn text_at(vault: &Vault, commit: &str, page: &Page) -> Res<String> {
+    let short = &commit[..commit.len().min(7)];
+    if git(
+        &vault.root,
+        &["cat-file", "-e", &format!("{commit}^{{commit}}")],
+    )
+    .is_err()
+    {
+        return Err(format!(
+            "it was published at commit {short}, which is not in this clone; fetch it first"
+        ));
+    }
+    let r = rel(&page.path, &vault.root).to_string();
+    if let Ok(t) = show(vault, commit, &r) {
+        return Ok(t);
+    }
+    let id = page.id().unwrap_or("");
+    let tree = git(&vault.root, &["ls-tree", "-r", "--name-only", commit])?;
+    for path in tree.lines() {
+        let named = path.split('/').any(|c| c.starts_with(id));
+        if named && path.ends_with(".md") {
+            let t = show(vault, commit, path)?;
+            if split_frontmatter(&t)
+                .0
+                .and_then(|m| m.get("id").and_then(|v| v.as_str()).map(|s| s == id))
+                .unwrap_or(false)
+            {
+                return Ok(t);
+            }
+        }
+    }
+    Err(format!("{id} is not in commit {short}"))
+}
+
+/// `yajna sync pull`: edits made in the docs of mirror pages come into the pages as
+/// uncommitted changes, merged with what changed in the repo since the publish.
+pub fn cmd_pull(vault: &Vault, ids: &[String]) -> Res<i32> {
+    let all = vault.pages()?;
+    let pages: Vec<&Page> = all
+        .iter()
+        .filter(|p| {
+            sync_field(p)
+                .map(|s| s.mode == "mirror" && s.doc_id.is_some())
+                .unwrap_or(false)
+        })
+        .filter(|p| ids.is_empty() || p.id().map(|i| ids.iter().any(|x| x == i)).unwrap_or(false))
+        .collect();
+    if pages.is_empty() {
+        println!("no page has `sync: {{provider: gdoc, mode: mirror}}` and a doc yet; `yajna sync` publishes them first");
+        return Ok(0);
+    }
+    let api = Api::new()?;
+    let links = mirror::Links {
+        docs: all
+            .iter()
+            .filter_map(|p| Some((sync_field(p)?.doc_id?, p.id()?.to_string())))
+            .collect(),
+        site: vault.cfg.sync.site_url.clone(),
+    };
+    let (mut pulled, mut conflicts) = (0, 0);
+    for page in pages {
+        let r = rel(&page.path, &vault.root).to_string();
+        let id = page.id().unwrap_or("");
+        let doc = sync_field(page).unwrap().doc_id.unwrap();
+        if has_markers(&page.body) {
+            println!("skip {r}: resolve the conflict markers from the last pull first");
+            continue;
+        }
+        let current = api.get(&format!("/drive/v3/files/{doc}?fields=appProperties"))?;
+        let props = &current["appProperties"];
+        let (Some(rev), Some(commit), Some(export_hash)) = (
+            props["yajna_rev"].as_str(),
+            props["yajna_commit"].as_str(),
+            props["yajna_export"].as_str(),
+        ) else {
+            println!("skip {r}: not published as a mirror page yet; `yajna sync {id}` does that");
+            continue;
+        };
+        let revs = api.revisions(&doc)?;
+        let last = revs
+            .last()
+            .and_then(|v| v["id"].as_str())
+            .unwrap_or(rev)
+            .to_string();
+        if last == rev || props["yajna_pulled"].as_str() == Some(last.as_str()) {
+            println!("{r}: no edits in the doc to pull");
+            continue;
+        }
+        let published = api.revision_export(&doc, rev)?;
+        if hash(&published) != export_hash {
+            println!("skip {r}: Drive no longer has the revision as it was published (it merged later edits into it), so the edits cannot be told apart; compare the doc by hand, then `yajna sync {id} --overwrite`");
+            continue;
+        }
+        let now = api.export(&doc)?;
+        let base_text = match text_at(vault, commit, page) {
+            Ok(t) => t,
+            Err(e) => {
+                println!("skip {r}: {e}");
+                continue;
+            }
+        };
+        let base = without_review(&split_frontmatter(&base_text).1);
+        let base_cites = !refs::citations(&without_code(&base)).is_empty();
+        let theirs = mirror::theirs(&base, &published, &now, base_cites, &links);
+        if let Some(t) = &theirs.title {
+            println!("{r}: the title was changed in the doc to \"{t}\"; titles live in the frontmatter, so change it there if it should stay");
+        }
+        let (merged, n) = if theirs.changes == 0 {
+            (without_review(&page.body), 0)
+        } else {
+            mirror::merge3(
+                &without_review(&page.body),
+                &base,
+                &theirs.body,
+                ["this page", "the doc"],
+            )
+        };
+        // the page around the merged body: its frontmatter and its review section, untouched
+        let text = fs::read_to_string(&page.path).map_err(|e| e.to_string())?;
+        let fm = &text[..text.len() - page.body.len()];
+        let review = find_section(&page.body)
+            .map(|(s, e)| &page.body[s..e])
+            .unwrap_or("");
+        let mut body = merged;
+        if !review.is_empty() {
+            if !body.ends_with("\n\n") {
+                body.push('\n');
+            }
+            body.push_str(review);
+        }
+        let new_text = format!("{fm}{body}");
+        if new_text != text {
+            fs::write(&page.path, &new_text).map_err(|e| e.to_string())?;
+        }
+        api.patch_json(
+            &format!("/drive/v3/files/{doc}?fields=id"),
+            &json!({"appProperties": {"yajna_pulled": last}}),
+        )?;
+        let rev_n: u64 = rev.parse().unwrap_or(0);
+        let editors: BTreeSet<String> = revs
+            .iter()
+            .filter(|v| {
+                v["id"]
+                    .as_str()
+                    .and_then(|i| i.parse::<u64>().ok())
+                    .map(|i| i > rev_n)
+                    .unwrap_or(true)
+            })
+            .filter_map(|v| {
+                v["lastModifyingUser"]["displayName"]
+                    .as_str()
+                    .map(str::to_string)
+            })
+            .collect();
+        let by = if editors.is_empty() {
+            String::new()
+        } else {
+            format!(" by {}", editors.into_iter().collect::<Vec<_>>().join(", "))
+        };
+        if theirs.changes == 0 {
+            println!("{r}: the doc changed{by} only in ways the page does not keep (formatting)");
+            continue;
+        }
+        pulled += 1;
+        conflicts += n;
+        println!(
+            "pulled {r}: {} edited line(s) from the doc{by}{}{}",
+            theirs.changes,
+            if n > 0 {
+                format!(", {n} conflict(s) left as markers")
+            } else {
+                String::new()
+            },
+            if theirs.approximate > 0 {
+                format!(
+                    "; {} touched citations or code the doc does not keep, taken as the doc has them",
+                    theirs.approximate
+                )
+            } else {
+                String::new()
+            }
+        );
+    }
+    if pulled > 0 {
+        println!(
+            "next: review with git diff{}, commit, then yajna sync publishes the result",
+            if conflicts > 0 {
+                ", resolve the conflict markers"
+            } else {
+                ""
+            }
+        );
     }
     Ok(0)
 }

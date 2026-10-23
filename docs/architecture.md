@@ -448,7 +448,7 @@ other needs care; so sync is a per-page mode, not a global switch.
 | Mode | Direction | What happens | Use for |
 |------|-----------|--------------|---------|
 | **`publish` (default for shared pages)** | markdown to doc; comments back | Page is rendered and the doc updated in place. Comments and replies are pulled into the repo. | Project status pages, experiment conclusions, protocols, thesis chapters |
-| `mirror` | both ways, merged by hand | As `publish`, plus edits made in the doc are pulled into the page as an uncommitted change, three-way merged with what changed in the repo; conflicts are left as markers to resolve, and the next sync publishes the result. | A few pages the PI edits directly |
+| `mirror` | both ways, merged by hand | As `publish`, plus `yajna sync pull` brings edits made in the doc into the page as an uncommitted change, three-way merged with what changed in the repo; conflicts are left as markers to resolve, and the next sync publishes the result. | A few pages the PI edits directly |
 | `import` | doc to markdown only | The doc is the truth; the markdown copy is derived and read-only in the repo. | Documents the PI owns, such as a grant or paper draft |
 
 Mechanics:
@@ -473,49 +473,57 @@ Mechanics:
   commenter) and marks them resolved in the doc when the corresponding checkbox is ticked in
   the repo. This is the main payoff: feedback from people who never open the repo lands where
   agents and the human can both see it.
-- Two-way (`mirror`): edits made in the doc come back as a git diff for the human to
-  review, never as a commit and never by overwriting the page. The cycle is pull,
+- Two-way (`mirror`, ADR-0026): edits made in the doc come back as a git diff for the
+  human to review, never as a commit and never by overwriting the page. The cycle is pull,
   resolve, publish, and it keeps no state of its own: the repo's history and the doc's
-  `appProperties` hold everything it needs.
-  1. **Publish records where it came from.** A mirror page is published only when it is
-     committed (`yajna sync` refuses one with uncommitted changes), and the doc's
-     `appProperties` record the commit (`yajna_commit`) beside the content hash they
-     already carry, and the doc's revision after the upload (`yajna_rev`).
-  2. **Pull converts the doc back.** `yajna sync pull [ID...]` takes each mirror doc whose
-     revision moved past `yajna_rev`, exports it as Markdown (Drive's `text/markdown`
-     export) and undoes the rendering deterministically: the header lines, the title and
-     the *References* section go; links to synced docs and the site become `[[ID]]` again;
-     ☐/☑ become checkboxes; rendered citations become `@keys`, matched against the text
-     pandoc gives each key when the page is rendered locally. A citation edited in the doc
-     no longer matches and is reported rather than guessed.
-  3. **Both sides are normalised.** The converted doc and the page source each go through
-     pandoc (`-t markdown --wrap=none`), so wrapping, emphasis markers, list markers and
-     escapes do not count as edits. Compared block by block (headings, paragraphs, list
-     items, table rows, which the renderer keeps in order), the differences are the edits
-     people made; each edited block is written back in the source's own wrapping, and
-     untouched blocks keep their source text exactly.
-  4. **Three-way merge.** The page as published, `git show <yajna_commit>:<path>`, is the
-     ancestor; the page as it is now in the repo is one side and the doc's version is the
-     other (`git merge-file`). Work done in the repo since the publish is kept, not shown
-     as something the doc removed. Clean changes are applied to the file; overlapping ones
-     are left as conflict markers. Nothing is committed: `git diff` shows exactly what
-     came from the doc, and the pull prints who edited it (Drive's revision authors) for
-     the commit message. Frontmatter is never touched. A page that moved since its publish
-     is found at its old path through `git log --follow`.
+  revisions and `appProperties` hold everything it needs.
+  1. **Publish records what it published.** A mirror page is published only when it is
+     committed (`yajna sync` refuses one with uncommitted changes, before creating a
+     doc). After the upload the doc's `appProperties` record the commit (`yajna_commit`),
+     the doc's revision (`yajna_rev`) and a hash of that revision's Markdown export
+     (`yajna_export`).
+  2. **Edits are found export against export.** Drive's Markdown export is lossy (code
+     comes back as plain text, lists as `> *` lines, headings in bold, rendered citations
+     as text) but deterministic: the same doc exports the same bytes, and an old revision
+     exports through its own export link exactly as it did when it was current. So
+     `yajna sync pull [ID...]` exports the published revision and the doc now and compares
+     the two, line by line, after the header, title and *References* section are cut. The
+     export's quirks are on both sides and cancel; what differs is what people changed. If
+     the published revision no longer exports to the recorded hash (Drive merged it with
+     later edits), the pull stops and says so rather than guess.
+  3. **Edits are carried onto the source.** Each line of the published export is aligned
+     with the block of the published source it came from (a paragraph, list item,
+     heading, table row, code line), by in-order word similarity. An edited line is
+     applied to its block word by word: words nobody touched keep their source text, so
+     code spans, citations and `[[links]]` around an edit survive, and words stay on their
+     source lines, so the diff shows only the lines that changed. New lines are converted
+     back (links to synced docs and the site become `[[ID]]`, ☐/☑ checkboxes, Google's
+     escapes and redirect links go) and placed after the block before them; removed lines
+     remove their block. An edit that reached text the export does not keep exactly (a
+     rendered citation, a code span) is taken as the doc has it and counted in the
+     report.
+  4. **Three-way merge.** The page as published, read from `yajna_commit` (at its path
+     now, or by its ID if it moved), is the ancestor; the page as it is now in the repo is
+     one side and the doc's version is the other. The merge is by lines, like
+     `git merge-file`, except that edits on neighbouring lines both apply (a box ticked in
+     the doc next to a line changed in the repo is not a conflict); changes to the same
+     line that differ are left as conflict markers. Nothing is committed: `git diff` shows
+     exactly what came from the doc, and the pull names who edited it (Drive's revision
+     authors) for the commit message. Frontmatter and the *Review* section are never
+     touched, and a title changed in the doc is reported, since titles live in the
+     frontmatter.
   5. **Resolve and publish.** The human edits the page, removes the markers and commits.
-     `yajna validate` fails on conflict markers in a page and `yajna sync` refuses to
+     `yajna validate` fails on conflict markers in any page and `yajna sync` refuses to
      publish one. The next `yajna sync` publishes the resolved page and records the new
-     commit and revision.
+     commit, revision and hash.
   6. **Guard.** `yajna sync` will not overwrite a mirror doc whose revision moved past
-     `yajna_rev`: it says to pull first, so edits in the doc are never lost silently.
+     `yajna_rev` and was not pulled (a pull records the revision it reached as
+     `yajna_pulled`): it says to pull first, so edits in the doc are never lost silently.
      `--overwrite` publishes anyway, for a doc whose edits are to be discarded.
 
-  The conversion back is checked on its own first: an unedited doc must convert back to
-  exactly its page's normalised source, so that every difference a pull reports is an
-  edit. Comments are pulled before every publish, as in `publish`; replacing the body
-  keeps them in the page's *Review* section even when their anchors in the doc are lost.
-  Suggestions made in suggesting mode are not edits until accepted in the doc, so a pull
-  ignores them.
+  Comments are pulled before every publish, as in `publish`; replacing the body keeps them
+  in the page's *Review* section even when their anchors in the doc are lost. A mirror
+  doc's header says that edits come back, not only comments.
 - Where it runs: `yajna sync` from the laptop in Phase 1, then on the server after each push
   and on a schedule once the server exists. Credentials are a service account or OAuth token
   kept in `neusis` secrets.

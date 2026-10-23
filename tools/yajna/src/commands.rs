@@ -155,11 +155,16 @@ pub fn run(vault: &Vault, cmd: &Cmd, prompter: &mut dyn Prompter) -> Res<i32> {
             ..
         } => crate::sync::login(client),
         Cmd::Sync {
+            action: Some(crate::cli::SyncAction::Pull { ids }),
+            ..
+        } => crate::sync::cmd_pull(vault, ids),
+        Cmd::Sync {
             action: None,
             ids,
             dry_run,
             no_comments,
-        } => crate::sync::cmd_sync(vault, ids, *dry_run, *no_comments),
+            overwrite,
+        } => crate::sync::cmd_sync(vault, ids, *dry_run, *no_comments, *overwrite),
         Cmd::MigrateIds { dry_run } => crate::parallel::migrate_ids(vault, *dry_run),
         Cmd::Renumber { old, new } => crate::parallel::renumber(vault, old, new.as_deref()),
         Cmd::Worktree {

@@ -21,7 +21,7 @@ static CURATED_DIR_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^(PRJ-\d+)(?:-.*)?$").unwrap());
 const SHARED: &[&str] = &["PRO", "MAT", "EQP", "BLD"];
 
-fn git(dir: &Path, args: &[&str]) -> Res<String> {
+pub(crate) fn git(dir: &Path, args: &[&str]) -> Res<String> {
     let out = Command::new("git")
         .arg("-C")
         .arg(dir)

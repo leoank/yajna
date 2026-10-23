@@ -387,8 +387,12 @@ yajna sync [ID ...]                             # publish, and pull comments bac
 - Comments and replies come back into the page under `## Review` as checkboxes, before
   any re-upload. Tick one to resolve the comment in the doc at the next sync. Items stay
   even if the comment is deleted in the doc; the section itself is never published.
-- Only `publish` is built. `mirror` (edits in the doc come back) and `import` (the doc is
-  the truth) wait until publishing is routine.
+- `mode: mirror` (ADR-0026) also brings edits made in the doc back: a mirror page is
+  published only when committed; `yajna sync pull` merges the doc's edits into the page
+  as an uncommitted change (conflicts as `<<<<<<< this page` / `>>>>>>> the doc`
+  markers), and after review and a commit `yajna sync` publishes the result. `yajna sync`
+  will not overwrite a doc with edits not yet pulled unless given `--overwrite`.
+  `import` (the doc is the truth) is not built.
 - Credentials are a refresh token in `~/.config/yajna/gdoc.json` (or wherever
   `YAJNA_GDOC_CREDENTIALS` points, such as a secret from neusis), never in a repo. The
   token's scope is `drive.file`: yajna sees only the docs it created.

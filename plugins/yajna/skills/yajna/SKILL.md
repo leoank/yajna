@@ -104,6 +104,11 @@ A document that already exists (a proposal drafted beside the thesis, notes from
 elsewhere) becomes a page with `yajna adopt <file> --type <type> --kind <kind>` rather
 than being retyped; run it with `--dry-run` first and tell the author it renames the file.
 A page can cite from its own `.bib` with `bibliography: <file>.bib` in its frontmatter.
+A page with `sync: {provider: gdoc, mode: mirror}` gets edits made in its doc back:
+`yajna sync pull` merges them into the page as an uncommitted change. Show the author the
+`git diff` and leave conflict markers (`<<<<<<< this page` / `>>>>>>> the doc`) for them
+to resolve unless they ask you to; never use `yajna sync --overwrite` unasked, it
+discards the doc's edits. A mirror page publishes only once committed.
 
 ## Reproducible runs
 
