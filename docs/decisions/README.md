@@ -25,7 +25,7 @@ one rather than an edit.
 | [0016](ADR-0016-references.md) | References: Zotero for capture, citation keys as identity, notes in the vault | accepted |
 | [0017](ADR-0017-rust-single-binary-cli.md) | The CLI becomes a single Rust binary with embedded schemas and templates | accepted |
 | [0018](ADR-0018-repo-shapes-and-namespaces.md) | Two repo shapes (`lab`, `project`), namespaced cross-repo links, graduation procedure | accepted |
-| [0019](ADR-0019-index-and-site-as-caches.md) | The SQLite index and the static site are caches outside the repo, rebuilt when stale | accepted |
+| [0019](ADR-0019-index-and-site-as-caches.md) | The SQLite index and the static site are caches outside the repo, rebuilt when stale | accepted, amended by 0027 |
 | [0020](ADR-0020-directory-names.md) | `notes/`, `code/` and `assets/` as the top-level directories; two project page templates | accepted |
 | [0021](ADR-0021-parallel-worktrees.md) | Several agents in parallel worktrees: one project per branch, IDs allocated on main, `validate --against`, `renumber`, `worktree` | accepted |
 | [0022](ADR-0022-date-ids-for-experiments.md) | Experiments and analyses take date IDs with a time-sortable suffix; `migrate-ids` | accepted |
@@ -33,3 +33,6 @@ one rather than an edit.
 | [0024](ADR-0024-sync-folders-and-citations.md) | Synced docs mirror the notebook's folders in Drive; citations render through pandoc, with a page's own bibliography | accepted |
 | [0025](ADR-0025-adopt.md) | `yajna adopt` makes an existing markdown file a page of any type, its body kept | accepted |
 | [0026](ADR-0026-mirror-sync.md) | `mirror` sync: edits made in the doc come back through `yajna sync pull` as an uncommitted three-way merge to resolve by hand | accepted |
+| [0027](ADR-0027-yajna-serve.md) | `yajna serve`: the static site plus a live files section on one port; axum in a `yajna-serve` workspace crate; loopback only; JavaScript in `files/` only | accepted |
+| [0028](ADR-0028-files-roots-and-live-updates.md) | The files viewer shows named roots on disk (in or out of the repo), everything but `.git` and excludes, symlinks followed, listed lazily, kept live by watching or polling | accepted |
+| [0029](ADR-0029-files-viewer-frontend.md) | The files viewer's frontend: dockview-core, read-only CodeMirror 6, server-rendered markdown, panzoom images; a Nix-built bundle committed and embedded | accepted |

@@ -39,6 +39,7 @@
 # Design
 
 - [Architecture](design/architecture.md)
+  - [The files viewer](design/files-viewer.md)
 - [Conventions](design/conventions.md)
 - [Decision records](design/decisions/README.md)
 <!-- ADRS -->

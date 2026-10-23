@@ -592,10 +592,16 @@ Components, in the order they will exist:
    edges), material usage, search box backed by `qmd`. No backend needed.
    Alongside it, `yajna sync` publishes pages marked for Google Docs and pulls comments back
    (5.8). Also no backend needed; it moves to the server when one exists.
+   Beside the export, `yajna serve` shows the files on the machine it runs on, live, in an
+   IDE-like viewer with tabs and split views: the code, the vault and what runs write,
+   configured as roots in `yajna.toml`. Designed in `docs/files-viewer.md` (ADR-0027 to
+   ADR-0029).
 6. **Server.** A single service that is a git remote, runs the indexer on push, exposes an
    HTTP API for writes (`POST /log`, `POST /runs/{id}/metrics`, `POST /entities`) and reads
    (`GET /search`, `GET /entities/{id}`, `GET /timeline/{id}`), and exposes the same operations
    as an MCP server for agents. Token auth per client. Deployed as a NixOS module from `neusis`.
+   It grows from `yajna serve` (ADR-0027): axum in the `tools/yajna-serve` crate, which
+   already serves the site and the files viewer.
 7. **Agent layer.** See section 7.
 8. **Web and phone apps.** Thin clients over the server API. Phone focuses on capture: text,
    voice, photo of a gel or a plate. Web focuses on reading, reviewing agent changes, editing.
@@ -603,7 +609,7 @@ Components, in the order they will exist:
 Language: the file formats and the SQLite schema are the contract, so implementation language
 is swappable. Phase 0 used Python; from Phase 0b the CLI and indexer are Rust, one binary,
 because the tool has to run in other repos and on machines without Nix (ADR-0017). The
-server language is decided when the server exists.
+server is Rust too, axum in the `yajna-serve` crate linked into the same binary (ADR-0027).
 
 ## 7. Agent integration
 
@@ -886,6 +892,7 @@ Each phase has a verification that proves it worked before the next starts.
 | 0c. Editor | `tools/yajna.nvim/`, a Neovim plugin in plain Lua: follow `[[ID]]`, `[[ns/ID]]` and `@citekey` from the buffer, jump to an entity by ID or title, backlinks into the quickfix list; `packages.yajna-nvim` for `neusis`. No binary needed: pages are found by filename, which the conventions fix. | Following any link in a page is one keypress and lands on the page in either repo; `checks.yajna-nvim` runs the headless tests. |
 | 1. Index and site | Indexer, `yajna validate/timeline/tree`, static site with the experiment tree, `nix flake check` in CI. | "Everything I did with MAT-0210" and "all runs for EXP-0007 by metric" come from the index, and the site renders the tree. |
 | 1b. Collaboration | `sync` frontmatter, `yajna sync` with `publish` mode and comment pull-back, run from the laptop. `mirror` and `import` only once `publish` is routine. | The PI reads a project status page and an experiment conclusion in Google Docs, comments, and the comments appear in the repo within the hour without anyone touching git. |
+| 1c. Live files | `yajna serve` (axum, `tools/yajna-serve`), the files viewer: configured roots, lazy live listing, tabs and split views, text, markdown and image viewers, follow mode (`docs/files-viewer.md`). | ank follows an agent's run on a remote machine from the laptop, logs, new files and plots, without opening a shell there (EXP-20261023-kjvkas). |
 | 2. Data and runs | git-annex under `data/`, `ART` pages, AutoGo-style `experiment` and `autoresearch` commands in `.claude/` that write `EXP`/`RUN` pages and `results.tsv`. | A training sweep and an imaging session are both fully reconstructible from the repo plus annex. An agent runs an overnight autoresearch loop and the notebook has every run. |
 | 2b. Bench planning | `plan-bench` agent command, run sheets, inventory resolution, schedule computation, checklist ticking from the phone with `events.jsonl`. `BLD` pages, `kind: part` materials, and assembly run sheets ride on the same work. | An agent drafts a run sheet for a real experiment, the human approves it with few edits, executes from the phone, and actual timings land on the `RUN` page. |
 | 3. Server and agents | Server as git remote plus HTTP and MCP, `AGS` sessions, agent write rules, review UI for `pending` edits. | An agent reads a project, appends log entries, launches a sweep, and proposes a conclusion that shows up for review. |
@@ -973,7 +980,8 @@ Changes from v0.3 to v0.4:
 Companion documents: `docs/protocol-framework.md` (protocols as code, 2026-10-15),
 `docs/protocol-corpus.md` (published protocols as test fixtures for it, 2026-10-15),
 `docs/microfluidic-compiler.md` (codified protocols compiled to printable chips,
-2026-10-15) and the project log under `notes/log/` (timestamped, migrated from `docs/progress.md` on 2026-10-19).
+2026-10-15), `docs/files-viewer.md` (the live files viewer and
+`yajna serve`, 2026-10-23) and the project log under `notes/log/` (timestamped, migrated from `docs/progress.md` on 2026-10-19).
 
 Changes from v0.4 to v0.5:
 
