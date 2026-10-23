@@ -4,7 +4,7 @@ type: experiment
 schema_version: 1
 title: Do folder mirroring and pandoc citations work against the real Google Drive?
 project: PRJ-0001
-status: planned           # planned | active | paused | concluded | abandoned
+status: active            # planned | active | paused | concluded | abandoned
 outcome: null             # null | positive | negative | inconclusive | infra
 influenced_by: [EXP-20261021-as4202]
 created: 2026-10-23
@@ -52,8 +52,11 @@ two folders or none; if 3 fails, the reference list arrives unformatted.
 
 ## Runs
 One line per run after its link, what was tried and what it showed; `yajna validate`
-rejects a bare link here. Metric runs also land in results.tsv. Deferred: nothing has been
-run yet.
+rejects a bare link here. Metric runs also land in results.tsv.
+
+- [[RUN-20261023-d7vw53]] four pages from a scratch lab, a second clone, a move after a
+  comment: one root and seven folders found again, the doc moved with its URL and comment,
+  citations and reference list readable; every check passed on the first run.
 
 ## Conclusion
 Written once, by a human, when status becomes `concluded`.

@@ -99,4 +99,4 @@ One line per experiment after its link, what it asks and what came of it; `yajna
 rejects a bare link here. Newest last.
 - [[EXP-20261019-j4xp01]] does `import benchling` read real Benchling exports; planned, deferred until exports from the lab's tenant are at hand
 - [[EXP-20261021-as4202]] does `yajna sync` work against the real Google Docs API; positive: publish, updates in place and the comment round trip hold, after a checkbox fix
-- [[EXP-20261023-cy5j5f]] do folder mirroring and pandoc citations work against the real Drive; planned, deferred until the next real sync
+- [[EXP-20261023-cy5j5f]] do folder mirroring and pandoc citations work against the real Drive; every check passed in one run, conclusion pending
