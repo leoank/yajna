@@ -4,6 +4,9 @@
 //! review item resolves its comment in the doc. Only `publish` is built; `mirror` and
 //! `import` wait until publishing is routine.
 //!
+//! Docs mirror the notebook's folders under one root folder in Drive (ADR-0024): a page's
+//! directory relative to the vault, or to the repo for a `[docs]` directory.
+//!
 //! Credentials: `yajna sync login --client <client_secret.json>` runs the desktop OAuth
 //! flow once and stores a refresh token at `$YAJNA_GDOC_CREDENTIALS` or
 //! `~/.config/yajna/gdoc.json` (never in the repo). `YAJNA_GDOC_TOKEN` supplies an access
@@ -27,6 +30,7 @@ use crate::vault::{map_outside_code, rel, Page, Res, Vault, LINK_RE, NS_ID_RE};
 
 const SCOPE: &str = "https://www.googleapis.com/auth/drive.file";
 const DOC_MIME: &str = "application/vnd.google-apps.document";
+const FOLDER_MIME: &str = "application/vnd.google-apps.folder";
 const REVIEW: &str = "## Review";
 static REVIEW_ITEM_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^- \[( |x|X)\] .*<!-- gdoc:(\S+) -->\s*$").unwrap());
@@ -103,6 +107,18 @@ impl Api {
         )
     }
 
+    fn patch_json(&self, path: &str, body: &Value) -> Res<Value> {
+        let url = format!("{}{path}", self.base);
+        reply(
+            self.agent
+                .patch(&url)
+                .header("Authorization", &self.auth())
+                .header("Content-Type", "application/json")
+                .send(body.to_string()),
+            &format!("PATCH {path}"),
+        )
+    }
+
     /// files.create or files.update with a metadata part and an HTML part; Drive converts the
     /// HTML into the Google Doc.
     fn upload(&self, doc_id: Option<&str>, meta: &Value, html: &str) -> Res<Value> {
@@ -156,6 +172,134 @@ impl Api {
                 _ => return Ok(out),
             }
         }
+    }
+}
+
+// --- folders ------------------------------------------------------------------------------
+
+/// Where a page's doc goes in Drive, as a path under the root folder: the page's directory
+/// relative to the vault (so `notes/` is not part of it), or relative to the repo for a
+/// page in a `[docs]` directory. Empty for the vault's top level.
+pub fn drive_path(vault: &Vault, page: &Page) -> String {
+    let dir = page.path.parent().unwrap_or(&vault.root);
+    let rel_dir = dir
+        .strip_prefix(&vault.notes)
+        .or_else(|_| dir.strip_prefix(&vault.root))
+        .unwrap_or(Path::new(""));
+    rel_dir
+        .components()
+        .map(|c| c.as_os_str().to_string_lossy().to_string())
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+fn folder_url(id: &str) -> String {
+    format!("https://drive.google.com/drive/folders/{id}")
+}
+
+fn shown(path: &str) -> &str {
+    if path.is_empty() {
+        "the root folder"
+    } else {
+        path
+    }
+}
+
+/// The Drive folders that mirror the notebook's directories. They are found by the
+/// `appProperties` yajna gives them, so every clone and worktree finds the same ones, and
+/// created when missing; with the `drive.file` scope yajna sees only folders it made.
+struct Folders<'a> {
+    api: &'a Api,
+    root: String,
+    known: BTreeMap<String, String>,
+}
+
+impl<'a> Folders<'a> {
+    /// The root is `[sync] folder` when set, else a folder named after the notebook's
+    /// namespace that yajna creates once in My Drive and finds again by `yajna_notebook`.
+    fn open(api: &'a Api, vault: &Vault) -> Res<Folders<'a>> {
+        let mut f = Folders {
+            api,
+            root: String::new(),
+            known: BTreeMap::new(),
+        };
+        f.root = match &vault.cfg.sync.folder {
+            Some(id) => id.clone(),
+            None => {
+                let ns = vault
+                    .cfg
+                    .namespace
+                    .clone()
+                    .unwrap_or_else(|| "yajna".into());
+                match f.find(&[("yajna_notebook", &ns)])? {
+                    Some(id) => id,
+                    None => {
+                        let id = f.create(&ns, None, &[("yajna_notebook", &ns)])?;
+                        println!(
+                            "created the folder {ns} in My Drive for this notebook's docs; share it once with your readers: {}",
+                            folder_url(&id)
+                        );
+                        id
+                    }
+                }
+            }
+        };
+        Ok(f)
+    }
+
+    fn find(&self, props: &[(&str, &str)]) -> Res<Option<String>> {
+        let mut q = format!("mimeType='{FOLDER_MIME}' and trashed=false");
+        for (k, v) in props {
+            let v = v.replace('\\', "\\\\").replace('\'', "\\'");
+            q.push_str(&format!(
+                " and appProperties has {{ key='{k}' and value='{v}' }}"
+            ));
+        }
+        let v = self.api.get(&format!(
+            "/drive/v3/files?q={}&fields=files(id)&spaces=drive",
+            urlencode(&q)
+        ))?;
+        Ok(v["files"]
+            .as_array()
+            .and_then(|a| a.first())
+            .and_then(|f| f["id"].as_str())
+            .map(str::to_string))
+    }
+
+    fn create(&self, name: &str, parent: Option<&str>, props: &[(&str, &str)]) -> Res<String> {
+        let app: serde_json::Map<String, Value> = props
+            .iter()
+            .map(|(k, v)| (k.to_string(), Value::String(v.to_string())))
+            .collect();
+        let mut meta = json!({"name": name, "mimeType": FOLDER_MIME, "appProperties": app});
+        if let Some(p) = parent {
+            meta["parents"] = json!([p]);
+        }
+        let v = self.api.post_json("/drive/v3/files?fields=id", &meta)?;
+        v["id"]
+            .as_str()
+            .map(str::to_string)
+            .ok_or_else(|| format!("create folder {name}: no id in the reply"))
+    }
+
+    /// The folder for `path` (`thesis/meetings`), made with its parents as needed.
+    fn get(&mut self, path: &str) -> Res<String> {
+        if path.is_empty() {
+            return Ok(self.root.clone());
+        }
+        if let Some(id) = self.known.get(path) {
+            return Ok(id.clone());
+        }
+        let (parent_path, name) = path.rsplit_once('/').unwrap_or(("", path));
+        let parent = self.get(parent_path)?;
+        let root = self.root.clone();
+        let props = [("yajna_root", root.as_str()), ("yajna_path", path)];
+        let id = match self.find(&props)? {
+            Some(id) => id,
+            None => self.create(name, Some(&parent), &props)?,
+        };
+        self.known.insert(path.to_string(), id.clone());
+        Ok(id)
     }
 }
 
@@ -680,12 +824,16 @@ pub fn cmd_sync(vault: &Vault, ids: &[String], dry_run: bool, no_comments: bool)
                 ),
                 None => "create a new doc".to_string(),
             };
-            println!("{}: {what}", rel(&p.path, &vault.root));
+            println!(
+                "{}: {what} in {}",
+                rel(&p.path, &vault.root),
+                shown(&drive_path(vault, p))
+            );
         }
         return Ok(0);
     }
     let api = Api::new()?;
-    let folder = vault.cfg.sync.folder.clone();
+    let mut folders = Folders::open(&api, vault)?;
 
     // 1. every page gets a doc first, so links between synced pages can point at docs
     let mut docs: BTreeMap<String, String> = vault
@@ -704,10 +852,8 @@ pub fn cmd_sync(vault: &Vault, ids: &[String], dry_run: bool, no_comments: bool)
         )
         .trim()
         .to_string();
-        let mut meta = json!({"name": title, "mimeType": DOC_MIME});
-        if let Some(f) = &folder {
-            meta["parents"] = json!([f]);
-        }
+        let folder = folders.get(&drive_path(vault, page))?;
+        let meta = json!({"name": title, "mimeType": DOC_MIME, "parents": [folder]});
         let v = api.upload(None, &meta, "<html><body><p>Publishing…</p></body></html>")?;
         let id = v["id"]
             .as_str()
@@ -728,7 +874,7 @@ pub fn cmd_sync(vault: &Vault, ids: &[String], dry_run: bool, no_comments: bool)
     }
 
     // 2. per page: comments back first (an overwrite orphans their anchors), then publish
-    let (mut published, mut pulled, mut resolved) = (0, 0, 0);
+    let (mut published, mut pulled, mut resolved, mut moved) = (0, 0, 0, 0);
     for (page, s) in &work {
         let doc = s.doc_id.clone().unwrap();
         let r = rel(&page.path, &vault.root).to_string();
@@ -755,13 +901,35 @@ pub fn cmd_sync(vault: &Vault, ids: &[String], dry_run: bool, no_comments: bool)
         let html = render(vault, &page, &docs);
         let digest = hash(&html);
         let current = api.get(&format!(
-            "/drive/v3/files/{doc}?fields=id,trashed,appProperties"
+            "/drive/v3/files/{doc}?fields=id,trashed,appProperties,parents"
         ))?;
         if current["trashed"].as_bool().unwrap_or(false) {
             println!(
                 "{r}: the doc is in the trash; restore it or remove doc_id to publish a new one"
             );
             continue;
+        }
+        // a page that moved (or a doc from before folders) goes where the page is now
+        let path = drive_path(vault, &page);
+        let want = folders.get(&path)?;
+        let parents: Vec<String> = current["parents"]
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .filter_map(|p| p.as_str().map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default();
+        if !parents.contains(&want) {
+            api.patch_json(
+                &format!(
+                    "/drive/v3/files/{doc}?addParents={want}&removeParents={}&fields=id",
+                    urlencode(&parents.join(","))
+                ),
+                &json!({}),
+            )?;
+            moved += 1;
+            println!("moved {r} -> {}", shown(&path));
         }
         if current["appProperties"]["yajna_hash"].as_str() == Some(digest.as_str()) {
             continue;
@@ -775,7 +943,7 @@ pub fn cmd_sync(vault: &Vault, ids: &[String], dry_run: bool, no_comments: bool)
         println!("published {r} -> {}", doc_url(&doc));
     }
     println!(
-        "{} page(s) synced: {published} published, {pulled} new comment(s), {resolved} resolved in the doc",
+        "{} page(s) synced: {published} published, {pulled} new comment(s), {resolved} resolved in the doc, {moved} moved",
         work.len()
     );
     if published + pulled + resolved > 0 {

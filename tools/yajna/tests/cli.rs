@@ -1889,6 +1889,44 @@ struct Drive {
     uploads: usize,
     comments: std::collections::BTreeMap<String, Vec<serde_json::Value>>,
     resolved: Vec<String>,
+    folders: std::collections::BTreeMap<String, serde_json::Value>, // id -> its metadata
+    parents: std::collections::BTreeMap<String, Vec<String>>,       // doc or folder -> parents
+    moves: usize,
+}
+
+impl Drive {
+    /// The folder path a doc sits in, from its parent's `yajna_path` ("" for the root).
+    fn path_of(&self, id: &str) -> Option<String> {
+        let parent = self.parents.get(id)?.first()?;
+        let folder = self.folders.get(parent)?;
+        Some(
+            folder["appProperties"]["yajna_path"]
+                .as_str()
+                .unwrap_or("")
+                .to_string(),
+        )
+    }
+}
+
+/// A query parameter of a request target, percent-decoded.
+fn query_param(target: &str, name: &str) -> Option<String> {
+    let q = target.split_once('?')?.1;
+    let raw = q
+        .split('&')
+        .find_map(|kv| kv.strip_prefix(&format!("{name}=")))?;
+    let bytes = raw.as_bytes();
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            out.push(u8::from_str_radix(&raw[i + 1..i + 3], 16).unwrap());
+            i += 3;
+        } else {
+            out.push(if bytes[i] == b'+' { b' ' } else { bytes[i] });
+            i += 1;
+        }
+    }
+    Some(String::from_utf8(out).unwrap())
 }
 
 /// A fake of the Drive endpoints `yajna sync` uses, on a free port.
@@ -1933,11 +1971,71 @@ fn fake_drive() -> (String, std::sync::Arc<std::sync::Mutex<Drive>>) {
                     .unwrap_or_default()
             };
             let html_of = |b: &str| b[b.find("<html>").unwrap_or(0)..].to_string();
+            // the JSON metadata part of a multipart upload
+            let meta_of = |b: &str| -> serde_json::Value {
+                b.split("\r\n\r\n")
+                    .nth(1)
+                    .and_then(|r| r.split("\r\n--").next())
+                    .and_then(|m| serde_json::from_str(m).ok())
+                    .unwrap_or_default()
+            };
+            let ids_of = |v: &serde_json::Value| -> Vec<String> {
+                v.as_array()
+                    .map(|a| {
+                        a.iter()
+                            .filter_map(|x| x.as_str().map(str::to_string))
+                            .collect()
+                    })
+                    .unwrap_or_default()
+            };
             let reply = match (method.as_str(), seg.as_slice()) {
                 ("POST", ["upload", "drive", "v3", "files"]) => {
                     let id = format!("doc{}", d.docs.len() + 1);
                     d.docs.insert(id.clone(), (html_of(&body), hash_of(&body)));
+                    let parents = ids_of(&meta_of(&body)["parents"]);
+                    d.parents.insert(id.clone(), parents);
                     d.uploads += 1;
+                    serde_json::json!({"id": id})
+                }
+                ("POST", ["drive", "v3", "files"]) => {
+                    let meta: serde_json::Value = serde_json::from_str(&body).unwrap();
+                    assert_eq!(meta["mimeType"], "application/vnd.google-apps.folder");
+                    let id = format!("folder{}", d.folders.len() + 1);
+                    d.parents.insert(id.clone(), ids_of(&meta["parents"]));
+                    d.folders.insert(id.clone(), meta);
+                    serde_json::json!({"id": id})
+                }
+                ("GET", ["drive", "v3", "files"]) => {
+                    // only the appProperties clauses yajna sends: key='k' and value='v'
+                    let q = query_param(&target, "q").unwrap();
+                    let pairs: Vec<(String, String)> = q
+                        .split("key='")
+                        .skip(1)
+                        .map(|c| {
+                            let k = c[..c.find('\'').unwrap()].to_string();
+                            let v = c.split("value='").nth(1).unwrap();
+                            (k, v[..v.find('\'').unwrap()].to_string())
+                        })
+                        .collect();
+                    let files: Vec<serde_json::Value> = d
+                        .folders
+                        .iter()
+                        .filter(|(_, m)| {
+                            pairs
+                                .iter()
+                                .all(|(k, v)| m["appProperties"][k] == v.as_str())
+                        })
+                        .map(|(id, _)| serde_json::json!({"id": id}))
+                        .collect();
+                    serde_json::json!({"files": files})
+                }
+                ("PATCH", ["drive", "v3", "files", id]) => {
+                    let add = query_param(&target, "addParents").unwrap_or_default();
+                    let remove = query_param(&target, "removeParents").unwrap_or_default();
+                    let entry = d.parents.entry(id.to_string()).or_default();
+                    entry.retain(|p| !remove.split(',').any(|r| r == p));
+                    entry.push(add);
+                    d.moves += 1;
                     serde_json::json!({"id": id})
                 }
                 ("PATCH", ["upload", "drive", "v3", "files", id]) => {
@@ -1948,7 +2046,8 @@ fn fake_drive() -> (String, std::sync::Arc<std::sync::Mutex<Drive>>) {
                 }
                 ("GET", ["drive", "v3", "files", id]) => {
                     let h = d.docs.get(*id).map(|x| x.1.clone()).unwrap_or_default();
-                    serde_json::json!({"id": id, "trashed": false, "appProperties": {"yajna_hash": h}})
+                    let parents = d.parents.get(*id).cloned().unwrap_or_default();
+                    serde_json::json!({"id": id, "trashed": false, "appProperties": {"yajna_hash": h}, "parents": parents})
                 }
                 ("GET", ["drive", "v3", "files", id, "comments"]) => {
                     serde_json::json!({"comments": d.comments.get(*id).cloned().unwrap_or_default()})
@@ -2057,12 +2156,37 @@ fn sync_publishes_and_pulls_comments_back() {
         "{html}"
     );
     assert_eq!(v.run(&["validate"]).code, 0);
+    // docs mirror the notebook's folders without notes/, under one root named after it
+    {
+        let d = drive.lock().unwrap();
+        assert_eq!(
+            d.path_of(&prj_doc).as_deref(),
+            Some("projects/PRJ-0001-archaea")
+        );
+        assert_eq!(
+            d.path_of(&exp_doc).as_deref(),
+            Some("projects/PRJ-0001-archaea/experiments")
+        );
+        let roots: Vec<_> = d
+            .folders
+            .values()
+            .filter(|m| m["appProperties"]["yajna_notebook"].is_string())
+            .collect();
+        assert_eq!(roots.len(), 1);
+        assert_eq!(
+            d.folders.len(),
+            4,
+            "root, projects, the project, experiments"
+        );
+    }
 
-    // nothing changed: nothing uploaded
+    // nothing changed: nothing uploaded, no folder made twice, nothing moved
     let before = drive.lock().unwrap().uploads;
     let out = sync(&[]);
     assert!(out.stdout.contains("0 published"), "{}", out.stdout);
+    assert!(out.stdout.contains("0 moved"), "{}", out.stdout);
     assert_eq!(drive.lock().unwrap().uploads, before);
+    assert_eq!(drive.lock().unwrap().folders.len(), 4);
 
     // a comment in the doc comes back under ## Review, and is not republished into the doc
     drive.lock().unwrap().comments.insert(prj_doc.clone(), vec![serde_json::json!({
@@ -2439,11 +2563,60 @@ fn docs_go_where_asked_and_sync() {
         .contains("send the slides to the committee"));
     let out = v.run(&["sync", "--dry-run"]);
     assert!(
-        out.stdout
-            .contains("thesis/meetings/DOC-20261021-000001-committee-meeting.md: create a new doc"),
+        out.stdout.contains(
+            "thesis/meetings/DOC-20261021-000001-committee-meeting.md: create a new doc in thesis/meetings"
+        ) && out.stdout.contains("notes/docs/DOC-20261021-000003-lab-rota.md: create a new doc in docs"),
         "{}",
         out.stdout
     );
+    // docs outside the vault keep their repo path in Drive, and follow the page when it moves
+    let (base, drive) = fake_drive();
+    let env = [("YAJNA_GDOC_API", base.as_str()), ("YAJNA_GDOC_TOKEN", "t")];
+    let out = v.run_with(&["sync"], None, &env);
+    assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
+    let meeting = v
+        .root
+        .join("thesis/meetings/DOC-20261021-000001-committee-meeting.md");
+    let doc_of = |p: &Path| {
+        v.read(p)
+            .split("doc_id: ")
+            .nth(1)
+            .unwrap()
+            .split('}')
+            .next()
+            .unwrap()
+            .to_string()
+    };
+    let meeting_doc = doc_of(&meeting);
+    let rota_doc = doc_of(&v.root.join("notes/docs/DOC-20261021-000003-lab-rota.md"));
+    assert_eq!(
+        drive.lock().unwrap().path_of(&meeting_doc).as_deref(),
+        Some("thesis/meetings")
+    );
+    assert_eq!(
+        drive.lock().unwrap().path_of(&rota_doc).as_deref(),
+        Some("docs")
+    );
+    fs::create_dir_all(v.root.join("thesis/archive")).unwrap();
+    fs::rename(
+        &meeting,
+        v.root
+            .join("thesis/archive/DOC-20261021-000001-committee-meeting.md"),
+    )
+    .unwrap();
+    let out = v.run_with(&["sync"], None, &env);
+    assert!(
+        out.stdout.contains(
+            "moved thesis/archive/DOC-20261021-000001-committee-meeting.md -> thesis/archive"
+        ) && out.stdout.contains("1 moved"),
+        "{}",
+        out.stdout
+    );
+    assert_eq!(
+        drive.lock().unwrap().path_of(&meeting_doc).as_deref(),
+        Some("thesis/archive")
+    );
+    assert_eq!(drive.lock().unwrap().moves, 1);
     let site = v.root.join("site");
     assert_eq!(v.run(&["site", "--out", site.to_str().unwrap()]).code, 0);
     assert!(v.read(&site.join("index.html")).contains("<h2>Docs</h2>"));
