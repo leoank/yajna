@@ -130,7 +130,9 @@ Fill `Question`, `Hypothesis and predictions`, `Plan` and `Success criteria` bef
 first run. Set `status` as it moves: `planned`, `active`, `paused`, `concluded`,
 `abandoned`. When it concludes, set `outcome` (`positive`, `negative`, `inconclusive`,
 `infra`) and write `Conclusion` once, by hand. Record which earlier experiment motivated
-this one in `influenced_by`; the dead ends are the useful part.
+this one in `influenced_by`; the dead ends are the useful part. When a design rests on an
+assumption nobody has checked against the real thing (an external API, a filesystem, a
+size limit), plan an experiment for it and run it before building on it.
 
 ## Dry-lab runs
 
@@ -498,8 +500,10 @@ yajna renumber PRJ-0004                     # the fix, on the branch: next free 
 ## Agents
 
 Agents write through the same commands as `agent:<name>` (`YAJNA_AUTHOR` in the
-environment or `--author`) and record an `AGS` page per session listing what they created
-and edited. Curated pages (`EXP`, `PRO`, `MAT`) edited by an agent carry `review: pending`
+environment or `--author`) and record an `AGS` page per task listing what they created
+and edited, what they decided without asking, and when they finished. Without a terminal
+the CLI never prompts: a missing argument is an error, and `yajna new` prints the new
+page's path last. Curated pages (`EXP`, `PRO`, `MAT`) edited by an agent carry `review: pending`
 in frontmatter until a human removes it. Every compute run an agent records carries a
 `script` that re-creates it (see "Dry-lab runs").
 

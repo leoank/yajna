@@ -21,8 +21,12 @@ tree). The `yajna` binary creates and checks pages; never write a page by hand.
    `notes/README.md` in a project repo) for *Current belief*, *Open questions* and *What not
    to try again*; then `yajna tree PRJ-xxxx` for the experiments with outcomes; then the
    experiment you are working on and `yajna runs EXP-xxxx` for its runs.
-4. Open a session page: `yajna new agent "<task>"` gives an `AGS` page. Keep its
-   `created_entities` list current and summarise what you did when you finish.
+4. Open a session page: `yajna new agent "<task>"` gives an `AGS` page, one per task the
+   author hands you (a new request in the same conversation is a new page). Fill `model`
+   and `harness` at once, keep `created_entities` and `edited_entities` current, write
+   *Task* in a few lines and *What happened* as you go, including what you decided
+   without asking. When you finish, set `outcome` and `finished` (the time of your
+   closing log line, not a guess).
 
 ## Commands
 
@@ -41,6 +45,12 @@ yajna validate                                             # run before you repo
 ID, so create the run first, then write the script at the path printed on the page
 (`script:` in its frontmatter) and fill the page.
 
+Pass every argument: without a terminal a missing one is an error, not a prompt. The last
+line `yajna new` prints is the new page's path (`f=$(yajna new ... | tail -1)`). In a
+`project` repo `--project` is not needed. A new page is a template: fill each section and
+replace its placeholder lines (`If H1 is true we expect ...`, an empty `1. `); keep the
+one-line instructions under headings such as *Runs*.
+
 ## Conventions you must follow
 
 - **IDs are allocated by the CLI**: date IDs for experiments, analyses, runs, artifacts and
@@ -55,10 +65,10 @@ ID, so create the run first, then write the script at the path printed on the pa
   of what is planned and done: tick an item when its work lands, add one when the plan
   grows, never delete a done item.
 - **A code project's design lives with its code.** `yajna new project --code` creates
-  `code/<slug>/docs/architecture.md` and `code/<slug>/docs/decisions/`. Keep the
-  architecture current when the design changes, and record each decision, with the
-  alternatives considered, as a new `ADR-xxxx-*.md` there plus a row in its README; never
-  rewrite an accepted one, supersede it.
+  `code/<slug>/docs/architecture.md` and `code/<slug>/docs/decisions/` (in a `project`
+  repo, `docs/` at the root). Keep the architecture current when the design changes, and
+  record each decision, with the alternatives considered, as a new `ADR-xxxx-*.md` there
+  plus a row in its README; never rewrite an accepted one, supersede it.
 - **List children with one line each.** On a project page `- [[EXP-20261021-0k3m9x]] what it asks
   and what came of it`; on an experiment page `- [[RUN-20261016-k7f3x1]] what was tried and
   what it showed`. A bare `- [[ID]]` fails validation; the line is what the site shows
@@ -66,7 +76,8 @@ ID, so create the run first, then write the script at the path printed on the pa
   is known.
 - **Log, do not narrate in pages.** `yajna log` appends `- HH:MM text` to
   `notes/log/<year>/<date>.<author>.md`. Lines are appended, never reordered or edited.
-  Log when you start, when something surprises you, and when you finish.
+  Log when you start, when something surprises you, and when you finish, linking the pages
+  the line is about and your `AGS` page.
 - **One run per result the experiment will rest on**, not one per command. A `RUN`
   page has kind `compute` for anything executed, `bench` for bench sessions.
 - **Curated pages are human-signed.** When you edit an `EXP`, `PRO` or `MAT` page, set
@@ -92,6 +103,28 @@ Other agents may be working in other worktrees of the same notebook at the same 
 - Merge `main` into your branch before allocating anything, and never use a bare
   `git stash`.
 
+## Designing and planning
+
+Design work is recorded as it is done, not reconstructed afterwards.
+
+- **The author decides what is theirs to decide**: scope, trade-offs, what to depend on,
+  what users will see. Ask with the options and a recommendation; one answer can change
+  the next questions, so ask in rounds. Settle conventional details yourself and say so.
+- **Every accepted decision becomes a decision record** with its alternatives. A
+  feature too big for a section of the architecture gets its own design document, linked
+  from `architecture.md`.
+- **Plan an experiment for each assumption the design rests on that nobody has checked
+  against the real thing**: an external API or export format, a filesystem, a size or a
+  speed. Its predictions say what result changes the plan, and it runs before the step
+  that depends on it. Check what an external system really returns before designing a
+  round trip on it.
+- **The plan goes on the project page**: a *Progress* item per buildable step, naming the
+  experiment that de-risks it; new questions in *Open questions*; the experiments with
+  their one-line descriptions.
+- **When an approach is dropped**, add a line to *Lessons* (or *What not to try again*):
+  what was tried, why it failed, with links. A safety check that trusts a record of an
+  action instead of looking at its result is a typical entry.
+
 ## Docs for people
 
 Meeting notes, proposals, reports and admin pages are `doc` pages:
@@ -108,7 +141,10 @@ A page with `sync: {provider: gdoc, mode: mirror}` gets edits made in its doc ba
 `yajna sync pull` merges them into the page as an uncommitted change. Show the author the
 `git diff` and leave conflict markers (`<<<<<<< this page` / `>>>>>>> the doc`) for them
 to resolve unless they ask you to; never use `yajna sync --overwrite` unasked, it
-discards the doc's edits. A mirror page publishes only once committed.
+discards the doc's edits. A mirror page publishes only once committed. A pull can be
+thrown away (`git checkout -- <file>`) and pulled again; if the author keeps only some of
+the doc's edits, `yajna sync` refuses to publish over the rest, and choosing
+`--overwrite` then is theirs.
 
 ## Reproducible runs
 
@@ -141,3 +177,11 @@ questions that pin the project down, and only then creates the pages.
 Run `yajna validate` (and `nix flake check` if the repo's AGENTS.md asks for it), update
 the `AGS` page, log a closing line, and follow the repo's AGENTS.md for commits: by
 default, commit only when asked and stage files by path.
+
+- Nix sees only files git knows: before `nix flake check` or `nix build`, mark new pages
+  and files with `git add -N <paths>`, or the notebook's check never reads them.
+- Other people and agents may have uncommitted changes in the same tree. Commit only the
+  files your task touched (`git commit --only <paths>` keeps anything already staged out
+  of it), and say which changes you left alone.
+- Report what you checked and what you could not, and name the decisions the author
+  should look at.
