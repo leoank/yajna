@@ -69,16 +69,16 @@ is set, a new page offers to open in it.
   IDs with the 4-character suffix. Every worktree gets the same IDs. A migrated page keeps
   its old ID as `previous_id`, the CLI still accepts the old ID, and validation names the
   new one on a stale link.
-- Link with `[[EXP-0007]]` or `[[EXP-0007|the timing experiment]]`. Pin a protocol version
+- Link with `[[EXP-20261021-0k3m9x]]` or `[[EXP-20261021-0k3m9x|the timing experiment]]`. Pin a protocol version
   with `[[PRO-0012@3]]`. A link to an ID that does not exist fails validation.
-- Link into another repo with its namespace: `[[rc2s2/EXP-0003]]`, `[[yajna/PRO-0012@3]]`.
+- Link into another repo with its namespace: `[[rc2s2/EXP-20261003-a7k2m1]]`, `[[yajna/PRO-0012@3]]`.
   The namespace must be in `[repos]`; the target is checked only when that repo's `path`
   is on disk. Frontmatter ID fields accept namespaced IDs too.
 - Never reuse or hand-edit an ID. The one sanctioned change is `yajna renumber`, which
   resolves a collision between branches (see "Working in parallel").
 - A project page lists its experiments and an experiment page its runs as
   `- [[ID]] one line on what it asks and what came of it`. The line after the link is
-  required there (`yajna validate` rejects a bare `- [[EXP-0003]]`), is what `yajna site`
+  required there (`yajna validate` rejects a bare `- [[EXP-20261021-0k3m9x]]`), is what `yajna site`
   shows in the project's experiments table and the experiment's runs table, and is the
   summary a reader gets without opening the page. Links in prose need no such line.
 
@@ -87,7 +87,7 @@ is set, a new page offers to open in it.
 ```
 yajna new project "Archaeal division under confinement"
 yajna new experiment "ESCRT timing" --project PRJ-0001
-yajna new run --experiment EXP-0007 --kind bench
+yajna new run --experiment EXP-20261021-0k3m9x --kind bench
 yajna new protocol "Sulfolobus transformation"
 yajna new material "Strain xyz" --kind strain
 yajna new equipment "Spinning disk"
@@ -108,12 +108,12 @@ you. Where things go:
 | log | `notes/log/<year>/<date>.md`, one per day per author |
 
 Experiment-local and run-local files (scripts, `results.tsv`, figures, `events.jsonl`) go in
-a sidecar directory named by the bare ID next to the page: `experiments/EXP-0007/`.
+a sidecar directory named by the bare ID next to the page: `experiments/EXP-20261021-0k3m9x/`.
 
 ## The daily log
 
 ```
-yajna log "Started induction for [[EXP-0007]] with [[MAT-0210]], 0.2 mM. #bench"
+yajna log "Started induction for [[EXP-20261021-0k3m9x]] with [[MAT-0210]], 0.2 mM. #bench"
 yajna log --time 14:20 "Cells look stressed at 0.2 mM. Halving next time. Note for [[PRO-0012]]."
 ```
 
@@ -139,7 +139,7 @@ tried against a question, a simulation, a training job. Most software work recor
 hand:
 
 ```
-yajna new run --experiment EXP-0007 --kind compute
+yajna new run --experiment EXP-20261021-0k3m9x --kind compute
 ```
 
 Write what was done and what came out under `Notes`, tick the checklist, set `status`, and
@@ -174,12 +174,12 @@ then:
 
 ```
 python train.py 2>&1 | tee run.log
-yajna result --experiment EXP-0007 run.log
+yajna result --experiment EXP-20261021-0k3m9x run.log
 ```
 
 That writes the `RUN` page (status `done`, the repo commit recorded, `--script <path>` for
 the script that produced the line) and appends a row to
-`experiments/EXP-0007/results.tsv`, adding columns as new keys appear. The TSV is tracked
+`experiments/EXP-20261021-0k3m9x/results.tsv`, adding columns as new keys appear. The TSV is tracked
 in git. Use it only where a flat table of numbers is the natural summary of the experiment.
 
 ## Software projects
@@ -312,12 +312,12 @@ every query rebuilds when a page is newer than it (ADR-0019). The vault must val
 first; an invalid vault has no index.
 
 ```
-yajna show EXP-0007          # frontmatter, links out and in, how many log lines mention it
+yajna show EXP-20261021-0k3m9x # frontmatter, links out and in, how many log lines mention it
 yajna timeline MAT-0210      # everything recorded about it, oldest first: creation, pages that
                              #   link it (runs with their metrics), every log line mentioning it
 yajna tree PRJ-0001          # experiments by theme (the first tag), with status/outcome, run
                              #   counts and `<- EXP-xxxx` for influenced_by
-yajna runs EXP-0007 --by loss [--desc]   # runs with their results.tsv metrics, sorted
+yajna runs EXP-20261021-0k3m9x --by loss [--desc]   # runs with their results.tsv metrics, sorted
 yajna site [--out dir]       # one HTML page per entity, the log, tasks, and on each project
                              #   page the experiment tree: themes as rows, outcome as colour,
                              #   creation order as the solid line, influenced_by dotted
@@ -338,7 +338,7 @@ snapshots of it (ADR-0010). Nobody edits there and nothing comes back.
 ```
 yajna export --dry-run          # what would go: pages changed since the last export
 yajna export                    # cut the bundle; the first export takes every page
-yajna export EXP-0007 RUN-...   # just these pages
+yajna export EXP-20261021-0k3m9x RUN-...   # just these pages
 yajna export --since <commit>   # changed since a given commit instead
 ```
 
@@ -437,7 +437,7 @@ counter behind curated IDs.
 yajna worktree PRJ-0003 aero-map            # branch fbr-sim/aero-map in its own worktree,
                                             #   author agent:claude-fbr-sim-aero-map
 yajna validate --against main               # before merging back: IDs allocated on both sides?
-yajna renumber EXP-0012                     # the fix, on the branch: next free ID, every reference
+yajna renumber PRJ-0004                     # the fix, on the branch: next free ID, every reference
 ```
 
 1. **One agent per worktree, one project per branch.** Name the branch

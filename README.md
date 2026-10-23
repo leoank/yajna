@@ -39,12 +39,12 @@ under `notes/` inside the source tree and links to a lab's shared pages by names
 yajna                  # interactive menu: new, log, ref, tasks, validate
 yajna new experiment "ESCRT timing" --project PRJ-0001
 yajna log "Started the first growth curve."
-yajna result --experiment EXP-0007 train.log     # ===RESULT=== line → RUN page + results.tsv
+yajna result --experiment EXP-20261021-0k3m9x train.log  # ===RESULT=== line → RUN page + results.tsv
 yajna ref shih2015cloning --note
 yajna validate         # schema, IDs, links, citations
 yajna timeline MAT-0210                          # everything recorded about a material
 yajna tree PRJ-0001                              # experiments by theme, outcome, runs, influence
-yajna runs EXP-0007 --by loss                    # an experiment's runs ordered by a metric
+yajna runs EXP-20261021-0k3m9x --by loss                 # an experiment's runs ordered by a metric
 yajna site --serve --open                        # the static site in a browser, refreshed as pages change
 yajna import benchling exports/ --project PRJ-0004 # GenBank files and entries, one-off
 yajna new doc "Committee meeting" --kind meeting  # meeting notes, proposals, admin; asks where
@@ -52,7 +52,7 @@ yajna sync                                       # publish marked pages to Googl
 yajna export                                     # read-only bundle of what changed, for an institutional ELN
 yajna worktree PRJ-0003 aero-map                 # a branch and worktree with its own agent author
 yajna validate --against main                    # curated IDs allocated on both branches?
-yajna renumber EXP-0012                          # resolve one: new ID, every reference rewritten
+yajna renumber PRJ-0004                          # resolve one: new ID, every reference rewritten
 yajna graduate PRJ-0002 --to github:leoank/rc2s2  # a project moves to its own repo
 ```
 

@@ -59,8 +59,8 @@ ID, so create the run first, then write the script at the path printed on the pa
   architecture current when the design changes, and record each decision, with the
   alternatives considered, as a new `ADR-xxxx-*.md` there plus a row in its README; never
   rewrite an accepted one, supersede it.
-- **List children with one line each.** On a project page `- [[EXP-0007]] what it asks
-  and what came of it`; on an experiment page `- [[RUN-20261016-k7f3]] what was tried and
+- **List children with one line each.** On a project page `- [[EXP-20261021-0k3m9x]] what it asks
+  and what came of it`; on an experiment page `- [[RUN-20261016-k7f3x1]] what was tried and
   what it showed`. A bare `- [[ID]]` fails validation; the line is what the site shows
   next to the ID. Add the line when you create the page and rewrite it when the outcome
   is known.
