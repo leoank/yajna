@@ -32,17 +32,23 @@ pub enum Cmd {
         /// project, experiment, run, protocol, material, artifact, analysis, equipment, build, agent, doc; omit for an interactive prompt
         #[arg(value_name = "TYPE")]
         etype: Option<String>,
+        /// the page's title; a run needs none, an agent session defaults to "Agent session"
         title: Option<String>,
-        /// PRJ-xxxx for project-scoped entities
+        /// PRJ-xxxx the page belongs to: required for experiments, runs, analyses and
+        /// artifacts (implied in a project repo), optional for builds and docs
         #[arg(long)]
         project: Option<String>,
-        /// EXP-xxxx (runs); implies --project
+        /// EXP-xxxx the run belongs to; implies --project
         #[arg(long)]
         experiment: Option<String>,
-        /// run kind (bench, compute, assembly, calibration), material kind, or doc kind (meeting, proposal, report, admin, logistics, note)
+        /// run: bench (default), compute, assembly, calibration. material: reagent (default),
+        /// strain, plasmid, cell_line, stock, library, antibody, dataset, model, checkpoint,
+        /// part, other. protocol: bench (default), assembly, compute. doc: note (default),
+        /// meeting, proposal, report, admin, logistics. Projects have no kind; see --code
         #[arg(long)]
         kind: Option<String>,
-        /// project: also scaffold code/<slug>/ with a flake
+        /// project: a code project, with code/<slug>/ scaffolded (flake, README, design docs)
+        /// and the code template for the page
         #[arg(long)]
         code: bool,
         /// doc: the directory to create it in, relative to the repo root (default notes/docs;
@@ -80,8 +86,10 @@ pub enum Cmd {
         experiment: String,
         /// output file to scan (default stdin)
         file: Option<PathBuf>,
+        /// run kind: compute, bench, assembly or calibration
         #[arg(long, default_value = "compute")]
         kind: String,
+        /// author handle (default: $YAJNA_AUTHOR, else .yajna/author, else yajna.toml)
         #[arg(long)]
         author: Option<String>,
         /// free text for the run page
@@ -99,7 +107,9 @@ pub enum Cmd {
     },
     /// show a reference by citation key; --note creates its reading note
     Ref {
+        /// the citation key, as cited with @key
         key: String,
+        /// create the reading note, notes/references/<key>.md
         #[arg(long)]
         note: bool,
     },
@@ -151,16 +161,18 @@ pub enum Cmd {
         #[arg(long)]
         no_comments: bool,
     },
-    /// give counter-ID experiments and analyses date IDs and switch the repo to them (ADR-0022)
+    /// give counter-ID experiments and analyses date IDs, and older date IDs the time-sortable
+    /// suffix; every reference follows and each page keeps its old ID (ADR-0022)
     #[command(name = "migrate-ids")]
     MigrateIds {
         /// list the new IDs and stop
         #[arg(long)]
         dry_run: bool,
     },
-    /// give a curated page a new ID and rewrite every reference (resolves a branch collision)
+    /// give a page with a counter ID (PRJ, PRO, MAT, EQP, BLD) a new number and rewrite every
+    /// reference (resolves a branch collision)
     Renumber {
-        /// the ID to replace, e.g. EXP-0012
+        /// the ID to replace, e.g. PRJ-0004
         old: String,
         /// the new ID (default: the next free one from the counter)
         new: Option<String>,
@@ -177,16 +189,23 @@ pub enum Cmd {
         /// the branch to start from
         #[arg(long, default_value = "main")]
         from: String,
-        /// where to put the worktree (default: beside the others in a bare-repo layout)
+        /// where to put the worktree (default: <container>/<branch> in a bare-repo layout,
+        /// else <repo>-<slug>-<topic> beside the repo)
         #[arg(long)]
         path: Option<PathBuf>,
     },
     /// rebuild the SQLite index (a cache outside the repo; queries rebuild it when stale)
     Index,
     /// one entity: frontmatter, links out, links in, log mentions
-    Show { id: String },
+    Show {
+        /// any page's ID
+        id: String,
+    },
     /// everything that happened to an entity, in date order: log mentions, pages that link it, runs
-    Timeline { id: String },
+    Timeline {
+        /// any page's ID, such as a material's
+        id: String,
+    },
     /// a project's experiments by theme with status, outcome, runs and influence
     Tree {
         /// PRJ-xxxx; omitted in a project repo
@@ -194,10 +213,12 @@ pub enum Cmd {
     },
     /// an experiment's runs with their metrics from results.tsv
     Runs {
+        /// EXP-xxxx
         experiment: String,
         /// metric to sort by (ascending; --desc for descending)
         #[arg(long)]
         by: Option<String>,
+        /// sort descending
         #[arg(long)]
         desc: bool,
     },

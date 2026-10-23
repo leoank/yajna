@@ -422,6 +422,86 @@ fn missing_project_is_an_error() {
 }
 
 #[test]
+fn flags_a_type_has_no_field_for_are_errors() {
+    let v = vault();
+    // a project has no kind: --kind used to be dropped silently
+    let out = v.run(&["new", "project", "P", "--kind", "code"]);
+    assert_eq!(out.code, 1);
+    assert!(out.stderr.contains("--code"), "{}", out.stderr);
+    assert_eq!(v.run(&["new", "project", "P"]).code, 0);
+    let out = v.run(&[
+        "new",
+        "experiment",
+        "E",
+        "--project",
+        "PRJ-0001",
+        "--kind",
+        "bench",
+    ]);
+    assert_eq!(out.code, 1);
+    assert!(
+        out.stderr
+            .contains("--kind does not apply to experiment pages"),
+        "{}",
+        out.stderr
+    );
+    let out = v.run(&["new", "protocol", "Pr", "--project", "PRJ-0001"]);
+    assert_eq!(out.code, 1);
+    assert!(
+        out.stderr.contains("--project does not apply"),
+        "{}",
+        out.stderr
+    );
+
+    // a kind outside the schema fails here, not at the next validate
+    let out = v.run(&["new", "run", "--project", "PRJ-0001", "--kind", "compte"]);
+    assert_eq!(out.code, 1);
+    assert!(
+        out.stderr.contains("bench, compute, assembly, calibration"),
+        "{}",
+        out.stderr
+    );
+    let out = v.run(&["new", "material", "M", "--kind", "plasmid"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+
+    // a protocol's kind comes from --kind (it was always written as bench)
+    let out = v.run(&["new", "protocol", "Pr", "--kind", "compute"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(v.read(&v.path(&out)).contains("\nkind: compute "));
+    let out = v.run(&["new", "protocol", "Pr2"]);
+    assert!(v.read(&v.path(&out)).contains("\nkind: bench "));
+
+    let out = v.run(&["new", "experiment", "E", "--project", "PRJ-0001"]);
+    let exp = v.path(&out);
+    let id = v
+        .read(&exp)
+        .split("id: ")
+        .nth(1)
+        .unwrap()
+        .lines()
+        .next()
+        .unwrap()
+        .to_string();
+    let out = v.run(&["result", "--experiment", &id, "--kind", "gpu"]);
+    assert_eq!(out.code, 1);
+    assert!(
+        out.stderr
+            .contains("--kind gpu: run kind must be one of bench, compute"),
+        "{}",
+        out.stderr
+    );
+    let out = v.run(&["import", "benchling", "nothing", "--status", "done"]);
+    assert_eq!(out.code, 1);
+    assert!(
+        out.stderr
+            .contains("--status done: experiment status must be one of"),
+        "{}",
+        out.stderr
+    );
+    assert_eq!(v.run(&["validate"]).code, 0);
+}
+
+#[test]
 fn namespaced_links_need_a_registered_repo() {
     let v = vault();
     v.run(&["new", "project", "P"]);

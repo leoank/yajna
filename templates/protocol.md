@@ -5,7 +5,7 @@ schema_version: 1
 title: $title
 version: 1
 stage: text               # text | codified
-kind: bench               # bench | assembly | compute
+kind: $kind               # bench | assembly | compute
 status: draft             # draft | active | deprecated
 created: $created
 author: $author

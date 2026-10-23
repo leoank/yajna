@@ -11,11 +11,10 @@ use clap::Parser;
 use inquire::autocompletion::{Autocomplete, Replacement};
 use inquire::validator::Validation;
 use inquire::{CustomUserError, InquireError, Text};
-use serde_json::Value;
 
 use crate::cli::{Cli, Cmd};
 use crate::commands;
-use crate::vault::{canonical_type, entity_names, is_type, Res, Schemas, Vault};
+use crate::vault::{canonical_type, entity_names, enum_values, is_type, Res, Vault};
 
 pub type Check = std::rc::Rc<dyn Fn(&str) -> Result<(), String>>;
 
@@ -246,23 +245,6 @@ fn exists(ids: BTreeSet<String>, required: bool) -> Check {
     })
 }
 
-fn enum_values(schema: &str, field: &str) -> Vec<String> {
-    let Some(file) = Schemas::get(&format!("{schema}.json")) else {
-        return Vec::new();
-    };
-    let Ok(data) = serde_json::from_slice::<Value>(&file.data) else {
-        return Vec::new();
-    };
-    data["properties"][field]["enum"]
-        .as_array()
-        .map(|a| {
-            a.iter()
-                .filter_map(|v| v.as_str().map(str::to_string))
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
 // --- flows -----------------------------------------------------------------------------
 
 pub fn new(vault: &Vault, p: &mut dyn Prompter, author: Option<&str>) -> Res<PathBuf> {
@@ -272,6 +254,7 @@ pub fn new(vault: &Vault, p: &mut dyn Prompter, author: Option<&str>) -> Res<Pat
             !vault.is_project()
                 || crate::vault::PROJECT_SCOPED.contains(t)
                 || **t == "agent_session"
+                || **t == "doc"
         })
         .map(|s| s.to_string())
         .collect();
@@ -329,11 +312,11 @@ pub fn new(vault: &Vault, p: &mut dyn Prompter, author: Option<&str>) -> Res<Pat
     }
 
     let mut kind = None;
-    if etype == "run" || etype == "material" || etype == "doc" {
+    if ["run", "material", "protocol", "doc"].contains(&etype.as_str()) {
         let kinds = enum_values(&etype, "kind");
         let allowed = kinds.clone();
         let default = match etype.as_str() {
-            "run" => kinds.first().cloned().unwrap_or_default(),
+            "run" | "protocol" => kinds.first().cloned().unwrap_or_default(),
             "doc" => "note".to_string(),
             _ => "reagent".to_string(),
         };

@@ -94,6 +94,38 @@ pub fn entity_names() -> Vec<&'static str> {
     ENTITIES.iter().map(|e| e.name).collect()
 }
 
+/// The allowed values of an enum field in a page type's schema, such as a run's `kind`;
+/// empty when the type has no such field.
+pub fn enum_values(schema: &str, field: &str) -> Vec<String> {
+    let Some(file) = Schemas::get(&format!("{schema}.json")) else {
+        return Vec::new();
+    };
+    let Ok(data) = serde_json::from_slice::<Value>(&file.data) else {
+        return Vec::new();
+    };
+    data["properties"][field]["enum"]
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// A value given on the command line for an enum field must be one the schema allows, so
+/// a typo fails here rather than in the next `yajna validate`.
+pub fn check_enum(schema: &str, field: &str, value: &str, flag: &str) -> Res<()> {
+    let allowed = enum_values(schema, field);
+    if allowed.is_empty() || allowed.iter().any(|a| a == value) {
+        return Ok(());
+    }
+    Err(format!(
+        "{flag} {value}: {schema} {field} must be one of {}",
+        allowed.join(", ")
+    ))
+}
+
 pub fn prefix_to_type(prefix: &str) -> Option<&'static str> {
     ENTITIES.iter().find(|e| e.prefix == prefix).map(|e| e.name)
 }

@@ -7,7 +7,8 @@ Create and edit them on `main`, not on a branch.
 ## Protocols
 
 ```sh
-yajna new protocol "Sulfolobus transformation"
+yajna new protocol "Sulfolobus transformation"            # kind bench
+yajna new protocol "Segment the time-lapse" --kind compute
 ```
 
 A protocol page is free markdown except for `## Steps`, an ordered list in which each step
@@ -39,8 +40,8 @@ the IDs they name exist.
 *Notes*. Link the version you followed: `[[PRO-0012@3]]`. A step has a stable address,
 `PRO-0012@3.s4`: protocol, version, step.
 
-**Status** is `draft`, `active` or `deprecated`; **kind** is `bench`, `assembly` or
-`compute`. `stage: text` is the default; a protocol rewritten as code
+**Status** is `draft`, `active` or `deprecated`; **kind** (`--kind`) is `bench` (the
+default), `assembly` or `compute`. `stage: text` is the default; a protocol rewritten as code
 (`stage: codified`, with `source:`) has its steps generated from that code from then on.
 
 ## Materials

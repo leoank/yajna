@@ -216,6 +216,23 @@ pub fn create(
             ));
         }
     }
+    // a flag the page type has no field for is an error, not silently dropped
+    if let Some(k) = kind {
+        if crate::vault::enum_values(&etype, "kind").is_empty() {
+            return Err(if etype == "project" {
+                "--kind does not apply to a project; --code makes one with code/<slug>/".to_string()
+            } else {
+                format!("--kind does not apply to {etype} pages; runs, materials, protocols and docs have one")
+            });
+        }
+        crate::vault::check_enum(&etype, "kind", k, "--kind")?;
+    }
+    if project.is_some()
+        && !PROJECT_SCOPED.contains(&etype.as_str())
+        && !["build", "doc"].contains(&etype.as_str())
+    {
+        return Err(format!("--project does not apply to {etype} pages"));
+    }
     // an ID from before `yajna migrate-ids` is written as the page's current ID
     let experiment_id = experiment.map(|e| vault.canonical_id(e));
     let experiment = experiment_id.as_deref();
@@ -247,7 +264,7 @@ pub fn create(
     let kind = kind
         .map(str::to_string)
         .unwrap_or_else(|| match etype.as_str() {
-            "run" => "bench".to_string(),
+            "run" | "protocol" => "bench".to_string(),
             "material" => "reagent".to_string(),
             "doc" => "note".to_string(),
             _ => String::new(),
@@ -594,6 +611,7 @@ fn cmd_result(
             buf
         }
     };
+    crate::vault::check_enum("run", "kind", kind, "--kind")?;
     let Some(line) = source.lines().rfind(|l| l.starts_with(RESULT_MARK)) else {
         return Err(format!("no line starting with {RESULT_MARK} in input"));
     };

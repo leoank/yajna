@@ -55,6 +55,8 @@ fn files_under(path: &Path, out: &mut Vec<PathBuf>) -> Res<()> {
 }
 
 pub fn cmd_import_benchling(vault: &Vault, paths: &[PathBuf], opts: &Options) -> Res<i32> {
+    crate::vault::check_enum("material", "kind", opts.kind, "--kind")?;
+    crate::vault::check_enum("experiment", "status", opts.status, "--status")?;
     let mut files = Vec::new();
     for p in paths {
         files_under(p, &mut files)?;
