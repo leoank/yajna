@@ -108,6 +108,10 @@ What was tried and dropped, and why, so nobody tries it again.
   markup are lost), so `mirror` was redesigned around comparing two exports, published
   and current, which are deterministic; check what an external format really returns
   before designing a round trip on it ([[RUN-20261023-ftnr64]], ADR-0026).
+- A mark that an action happened (`yajna_pulled` holding the revision a pull reached) is
+  not proof its result is still there: ank threw a pull's changes away, the next pull
+  found nothing and the next publish would have overwritten the doc. Safety checks look
+  at content (ADR-0026).
 
 ## Experiments
 One line per experiment after its link, what it asks and what came of it; `yajna validate`
