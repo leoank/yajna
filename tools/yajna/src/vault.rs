@@ -71,7 +71,7 @@ pub const VOLUME_PREFIXES: &[&str] = &["RUN", "ART", "AGS"];
 pub const DATED_PREFIXES: &[&str] = &["EXP", "ANA", "DOC"];
 /// Frontmatter fields whose IDs are not links: paths (an ID there is a directory name) and
 /// `previous_id`, the counter ID a page had before `yajna migrate-ids`.
-pub const PATH_FIELDS: &[&str] = &["code", "script", "path", "previous_id"];
+pub const PATH_FIELDS: &[&str] = &["code", "script", "path", "previous_id", "bibliography"];
 const ALIASES: &[(&str, &str)] = &[
     ("agent", "agent_session"),
     ("exp", "experiment"),

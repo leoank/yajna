@@ -5,7 +5,9 @@
 //! `import` wait until publishing is routine.
 //!
 //! Docs mirror the notebook's folders under one root folder in Drive (ADR-0024): a page's
-//! directory relative to the vault, or to the repo for a `[docs]` directory.
+//! directory relative to the vault, or to the repo for a `[docs]` directory. Pages that
+//! cite papers are rendered by pandoc's citeproc against the notebook's bibliography and
+//! the page's own `bibliography`; pandoc is needed only for those.
 //!
 //! Credentials: `yajna sync login --client <client_secret.json>` runs the desktop OAuth
 //! flow once and stores a refresh token at `$YAJNA_GDOC_CREDENTIALS` or
@@ -17,6 +19,7 @@ use std::fs;
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 use std::sync::LazyLock;
 
 use pulldown_cmark::{html, Options, Parser};
@@ -25,8 +28,9 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
 use crate::init::edit_frontmatter;
+use crate::refs;
 use crate::site::esc;
-use crate::vault::{map_outside_code, rel, Page, Res, Vault, LINK_RE, NS_ID_RE};
+use crate::vault::{map_outside_code, rel, without_code, Page, Res, Vault, LINK_RE, NS_ID_RE};
 
 const SCOPE: &str = "https://www.googleapis.com/auth/drive.file";
 const DOC_MIME: &str = "application/vnd.google-apps.document";
@@ -564,10 +568,66 @@ fn find_section(body: &str) -> Option<(usize, usize)> {
     Some((start, end))
 }
 
+/// Whether a page cites papers, which sends it through pandoc.
+fn cites(page: &Page) -> bool {
+    !refs::citations(&without_code(&without_review(&page.body))).is_empty()
+}
+
+/// Markdown with citations to HTML through pandoc's citeproc, the reference list as the
+/// last section. Pandoc's own markdown, with lists allowed straight after a paragraph as in
+/// CommonMark; in-page citation links are left out because they do not survive the import.
+fn pandoc_html(body: &str, bibs: &[PathBuf]) -> Res<String> {
+    let mut cmd = Command::new("pandoc");
+    cmd.args([
+        "-f",
+        "markdown+lists_without_preceding_blankline",
+        "-t",
+        "html5",
+        "--wrap=none",
+        "--citeproc",
+    ]);
+    for b in bibs.iter().filter(|b| b.is_file()) {
+        cmd.arg(format!("--bibliography={}", b.display()));
+    }
+    let mut child = cmd
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| match e.kind() {
+            std::io::ErrorKind::NotFound => {
+                "it cites papers, and rendering citations needs pandoc on PATH".to_string()
+            }
+            _ => format!("pandoc: {e}"),
+        })?;
+    let input = format!(
+        "{}\n\n## References\n\n::: {{#refs}}\n:::\n",
+        body.trim_end()
+    );
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(input.as_bytes())
+        .map_err(|e| format!("pandoc: {e}"))?;
+    let out = child
+        .wait_with_output()
+        .map_err(|e| format!("pandoc: {e}"))?;
+    if !out.status.success() {
+        return Err(format!(
+            "pandoc: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout)
+        .replace("<input type=\"checkbox\" checked=\"\" />", "☑ ")
+        .replace("<input type=\"checkbox\" />", "☐ "))
+}
+
 /// The HTML a doc is made from: a header with ID, title and status, then the body with
 /// `[[links]]` to synced pages pointing at their docs, to the site when `[sync] site_url`
-/// is set, and plain text otherwise.
-fn render(vault: &Vault, page: &Page, docs: &BTreeMap<String, String>) -> String {
+/// is set, and plain text otherwise. Citations are rendered when the page has any.
+fn render(vault: &Vault, page: &Page, docs: &BTreeMap<String, String>) -> Res<String> {
     let site = vault.cfg.sync.site_url.clone();
     let body = map_outside_code(&without_review(&page.body), |prose| {
         LINK_RE
@@ -594,27 +654,31 @@ fn render(vault: &Vault, page: &Page, docs: &BTreeMap<String, String>) -> String
             })
             .into_owned()
     });
-    let mut opts = Options::empty();
-    opts.insert(Options::ENABLE_TABLES);
-    opts.insert(Options::ENABLE_TASKLISTS);
-    let mut html_body = String::new();
-    html::push_html(&mut html_body, Parser::new_ext(&body, opts));
     // Docs drops <input> on import, so a task's state becomes a character
-    let html_body = html_body
-        .replace(
-            "<input disabled=\"\" type=\"checkbox\" checked=\"\"/>\n",
-            "☑ ",
-        )
-        .replace("<input disabled=\"\" type=\"checkbox\"/>\n", "☐ ");
+    let html_body = if cites(page) {
+        pandoc_html(&body, &refs::page_bibliographies(vault, page))?
+    } else {
+        let mut opts = Options::empty();
+        opts.insert(Options::ENABLE_TABLES);
+        opts.insert(Options::ENABLE_TASKLISTS);
+        let mut html_body = String::new();
+        html::push_html(&mut html_body, Parser::new_ext(&body, opts));
+        html_body
+            .replace(
+                "<input disabled=\"\" type=\"checkbox\" checked=\"\"/>\n",
+                "☑ ",
+            )
+            .replace("<input disabled=\"\" type=\"checkbox\"/>\n", "☐ ")
+    };
     let id = page.id().unwrap_or("");
     let status = page.field("status").unwrap_or("");
-    format!(
+    Ok(format!(
         "<html><head><meta charset=\"utf-8\"></head><body>\n<p><b>{}</b>{}{}</p>\n<h1>{}</h1>\n{html_body}</body></html>\n",
         esc(id),
         if status.is_empty() { String::new() } else { format!(" · {}", esc(status)) },
         " · published from the notebook; comments here come back to it",
         esc(page.field("title").unwrap_or(id))
-    )
+    ))
 }
 
 fn hash(html: &str) -> String {
@@ -824,8 +888,13 @@ pub fn cmd_sync(vault: &Vault, ids: &[String], dry_run: bool, no_comments: bool)
                 ),
                 None => "create a new doc".to_string(),
             };
+            let pandoc = if cites(p) {
+                ", citations through pandoc"
+            } else {
+                ""
+            };
             println!(
-                "{}: {what} in {}",
+                "{}: {what} in {}{pandoc}",
                 rel(&p.path, &vault.root),
                 shown(&drive_path(vault, p))
             );
@@ -898,7 +967,13 @@ pub fn cmd_sync(vault: &Vault, ids: &[String], dry_run: bool, no_comments: bool)
             pulled += fresh;
         }
         let page = vault.read(&page.path)?;
-        let html = render(vault, &page, &docs);
+        let html = match render(vault, &page, &docs) {
+            Ok(h) => h,
+            Err(e) => {
+                println!("skip {r}: {e}");
+                continue;
+            }
+        };
         let digest = hash(&html);
         let current = api.get(&format!(
             "/drive/v3/files/{doc}?fields=id,trashed,appProperties,parents"

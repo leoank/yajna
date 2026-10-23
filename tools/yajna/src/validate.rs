@@ -271,11 +271,26 @@ pub fn validate(vault: &Vault) -> Res<(Vec<String>, usize)> {
     for page in &pages {
         let Some(meta) = &page.meta else { continue };
         let prose = without_code(&page.body);
-        for key in refs::citations(&prose) {
-            if !keys.contains(&key) {
+        // a page's own `bibliography` adds to the notebook's
+        let own = refs::own_bibliographies(page);
+        let mut own_keys = BTreeSet::new();
+        for b in &own {
+            if b.is_file() {
+                own_keys.extend(refs::keys_in(b));
+            } else {
                 problems.add(
                     &page.path,
-                    format!("citation @{key} not in {}", rel(&bib, &vault.root)),
+                    format!("bibliography {} does not exist", rel(b, &vault.root)),
+                );
+            }
+        }
+        for key in refs::citations(&prose) {
+            if !keys.contains(&key) && !own_keys.contains(&key) {
+                let mut bibs = vec![rel(&bib, &vault.root).to_string()];
+                bibs.extend(own.iter().map(|b| rel(b, &vault.root).to_string()));
+                problems.add(
+                    &page.path,
+                    format!("citation @{key} not in {}", bibs.join(" or ")),
                 );
             }
         }

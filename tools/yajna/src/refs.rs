@@ -3,12 +3,12 @@
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
 use regex::Regex;
 
-use crate::vault::{Res, Vault};
+use crate::vault::{Page, Res, Vault};
 
 static ENTRY_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?m)^@(\w+)\s*\{\s*([^,\s]+)\s*,").unwrap());
@@ -37,14 +37,40 @@ pub fn raw_entry<'a>(bib: &'a str, key: &str) -> Option<&'a str> {
 }
 
 pub fn bib_keys(vault: &Vault) -> BTreeSet<String> {
-    let path = bib_path(vault);
-    let Ok(text) = fs::read_to_string(&path) else {
+    keys_in(&bib_path(vault))
+}
+
+/// The citation keys of one `.bib` file; empty when it cannot be read.
+pub fn keys_in(path: &Path) -> BTreeSet<String> {
+    let Ok(text) = fs::read_to_string(path) else {
         return BTreeSet::new();
     };
     ENTRY_RE
         .captures_iter(&text)
         .map(|c| c[2].to_string())
         .collect()
+}
+
+/// A page's own bibliographies: its `bibliography` field, a path or a list of paths
+/// relative to the page, as pandoc takes it. They add to the notebook's bibliography.
+pub fn own_bibliographies(page: &Page) -> Vec<PathBuf> {
+    let dir = page.path.parent().unwrap_or(Path::new("."));
+    let Some(v) = page.meta.as_ref().and_then(|m| m.get("bibliography")) else {
+        return Vec::new();
+    };
+    let paths: Vec<&str> = match v {
+        serde_json::Value::String(s) => vec![s.as_str()],
+        serde_json::Value::Array(a) => a.iter().filter_map(|x| x.as_str()).collect(),
+        _ => Vec::new(),
+    };
+    paths.into_iter().map(|p| dir.join(p)).collect()
+}
+
+/// Every `.bib` a page's citations resolve in: the notebook's, then the page's own.
+pub fn page_bibliographies(vault: &Vault, page: &Page) -> Vec<PathBuf> {
+    let mut out = vec![bib_path(vault)];
+    out.extend(own_bibliographies(page));
+    out
 }
 
 pub fn citations(text: &str) -> BTreeSet<String> {

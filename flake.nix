@@ -16,7 +16,8 @@
           src = self;
           sourceRoot = "source/tools/yajna";
           cargoLock.lockFile = ./tools/yajna/Cargo.lock;
-          nativeCheckInputs = [ pkgs.git ]; # the graduate test drives `git subtree`
+          # the graduate test drives `git subtree`; the sync test renders citations with pandoc
+          nativeCheckInputs = [ pkgs.git pkgs.pandoc ];
         };
         default = yajna;
         # Neovim plugin (phase 0c): follow [[ID]] links and @citekeys, find entities, backlinks.
@@ -42,7 +43,7 @@
           '';
         in {
           default = pkgs.mkShell {
-            packages = [ yajnaDev pkgs.git pkgs.cargo pkgs.rustc pkgs.clippy pkgs.rustfmt pkgs.rust-analyzer pkgs.python3 pkgs.mdbook ];
+            packages = [ yajnaDev pkgs.git pkgs.cargo pkgs.rustc pkgs.clippy pkgs.rustfmt pkgs.rust-analyzer pkgs.python3 pkgs.mdbook pkgs.pandoc ];
             shellHook = ''
               export YAJNA_SRC="$PWD/tools/yajna"
             '';

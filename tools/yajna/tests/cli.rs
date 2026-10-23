@@ -2639,6 +2639,84 @@ fn docs_go_where_asked_and_sync() {
 }
 
 #[test]
+fn citations_resolve_in_the_page_bibliography_and_render_through_pandoc() {
+    let v = vault();
+    let out = v.run(&[
+        "new", "doc", "Proposal", "--kind", "proposal", "--dir", "thesis",
+    ]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let page = v.path(&out);
+    let bib = "@article{shih2015cloning,\n title={A versatile microfluidic device},\n author={Shih, Steve and Moraes, Christopher},\n year={2015},\n journal={ACS Synth Biol}\n}\n";
+    fs::write(v.root.join("thesis/refs.bib"), bib).unwrap();
+    let text = v
+        .read(&page)
+        .replacen("\ntags: []\n", "\ntags: []\nbibliography: refs.bib\n", 1);
+    fs::write(
+        &page,
+        format!("{text}\nBuilds on [@shih2015cloning].\n- [ ] ask the committee\n"),
+    )
+    .unwrap();
+    // the page's own bibliography counts for validation
+    let out = v.run(&["validate"]);
+    assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
+    fs::write(&page, v.read(&page) + "And @nobody2020.\n").unwrap();
+    let out = v.run(&["validate"]);
+    assert!(
+        out.stdout
+            .contains("citation @nobody2020 not in references/library.bib or thesis/refs.bib"),
+        "{}",
+        out.stdout
+    );
+    fs::write(&page, v.read(&page).replace("And @nobody2020.\n", "")).unwrap();
+
+    let (base, drive) = fake_drive();
+    let env = [("YAJNA_GDOC_API", base.as_str()), ("YAJNA_GDOC_TOKEN", "t")];
+    assert!(v
+        .run(&["sync", "--dry-run"])
+        .stdout
+        .contains("citations through pandoc"));
+    // without pandoc the page is skipped with the reason, and nothing else breaks
+    let out = v.run_with(&["sync"], None, &[env[0], env[1], ("PATH", "/nonexistent")]);
+    assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
+    assert!(
+        out.stdout
+            .contains("rendering citations needs pandoc on PATH"),
+        "{}",
+        out.stdout
+    );
+    // with pandoc: author-year citations and a reference list, task state as characters
+    let out = v.run_with(&["sync"], None, &env);
+    assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
+    assert!(out.stdout.contains("1 published"), "{}", out.stdout);
+    let html = drive
+        .lock()
+        .unwrap()
+        .docs
+        .values()
+        .next()
+        .unwrap()
+        .0
+        .clone();
+    assert!(
+        html.contains("Shih and Moraes 2015")
+            && html.contains(">References</h2>")
+            && html.contains("A Versatile Microfluidic Device")
+            && html.contains("☐ ask the committee")
+            && !html.contains("@shih2015cloning"),
+        "{html}"
+    );
+    // a missing bibliography file is a validation problem
+    fs::remove_file(v.root.join("thesis/refs.bib")).unwrap();
+    let out = v.run(&["validate"]);
+    assert!(
+        out.stdout
+            .contains("bibliography thesis/refs.bib does not exist"),
+        "{}",
+        out.stdout
+    );
+}
+
+#[test]
 fn site_serve_answers_http_and_rerenders() {
     use std::io::{BufRead, BufReader, Read, Write};
     let v = indexed_lab();
