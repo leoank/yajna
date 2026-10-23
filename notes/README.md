@@ -36,6 +36,7 @@ open items with the rest.
 - [x] Phase 1: the index, `show`, `timeline`, `tree` and `runs`, the static site with `--serve`, CI (ADR-0019)
 - [x] Agent tooling: the Claude Code plugin (skill and `/yajna:project` commands), agents as authors, reproducible runs
 - [x] Parallel work: `worktree`, `validate --against`, `renumber` (ADR-0021)
+- [ ] `yajna renumber` also rewrites IDs outside markdown: when manthan renumbered g2a (PRJ-0003 to PRJ-0004) and vesicle-protrusions-and-imaging (PRJ-0004 to PRJ-0005) on 2026-10-23, the IDs in their code (`flake.nix` descriptions, `pyproject.toml`, a Python docstring) were left behind and fixed by hand; it should rewrite them, or at least list the files that still name the old ID
 - [x] Phase 1: the one-way ELN exporter, `yajna export` (ADR-0010)
 - [ ] Verify `import benchling` against real exports from the lab's tenant ([[EXP-20261019-j4xp01]])
 - [ ] Phase 1: upload to the institutional ELN, and its import format, once the ELN is named
