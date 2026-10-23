@@ -51,7 +51,7 @@ open items with the rest.
 - [x] User guide on GitHub Pages: an mdBook with the CLI reference, page types and design docs generated at build time
 - [x] Phase 1c designed: `yajna serve` and a live files viewer with tabs and split views, `docs/files-viewer.md` (ADR-0027, ADR-0028, ADR-0029)
 - [x] Phase 1c step 1: `tools/` as a Cargo workspace; `yajna-serve` (axum) serves the site; `yajna serve`, `site --serve` its alias
-- [ ] Phase 1c step 2: `[files]` roots in `yajna.toml`; the read-only file API with ranges, path and Host checks ([[EXP-20261023-kjtach]])
+- [x] Phase 1c step 2: `[files]` roots in `yajna.toml`; the read-only file API with ranges, path and Host checks ([[EXP-20261023-kjtach]])
 - [ ] Phase 1c step 3: the UI (dockview, CodeMirror, markdown, images), the Nix-built committed bundle, files links from the site ([[EXP-20261023-kjv5wy]])
 - [ ] Phase 1c step 4: live: watch or poll, SSE, follow mode ([[EXP-20261023-kjtrwp]])
 - [ ] Phase 1c step 5: the paged viewer for files above the cap
@@ -130,6 +130,9 @@ What was tried and dropped, and why, so nobody tries it again.
   not proof its result is still there: ank threw a pull's changes away, the next pull
   found nothing and the next publish would have overwritten the doc. Safety checks look
   at content (ADR-0026).
+- A listing that stats every entry is four times slower than one that takes the type
+  `readdir` already returns, and a sort comparator that allocates is slower still; a
+  million-entry directory took 15 s before both were fixed ([[RUN-20261023-pjazct]]).
 
 ## Experiments
 One line per experiment after its link, what it asks and what came of it; `yajna validate`
@@ -138,7 +141,7 @@ rejects a bare link here. Newest last.
 - [[EXP-20261021-as4202]] does `yajna sync` work against the real Google Docs API; positive: publish, updates in place and the comment round trip hold, after a checkbox fix
 - [[EXP-20261023-cy5j5f]] do folder mirroring and pandoc citations work against the real Drive; every check passed in one run, conclusion pending
 - [[EXP-20261023-ftnatx]] does `mirror` sync bring a person's edits in a real doc back into the page; the scripted cycle passed, the hand edit is ank's to do
-- [[EXP-20261023-kjtach]] can `yajna serve` list a million-entry directory and read ranges of a 10 GB file fast enough; planned, before step 2
+- [[EXP-20261023-kjtach]] can `yajna serve` list a million-entry directory and read ranges of a 10 GB file fast enough; on the laptop, after a fix it found, 0.3 s at 100 000 entries and 4 s at a million (the disk's own floor), ranges 0.2 ms; rogue and the cluster to run
 - [[EXP-20261023-kjtrwp]] does filesystem watching see what runs write, per filesystem and host; planned, before step 4
 - [[EXP-20261023-kjv5wy]] how large a file the CodeMirror viewer handles, the bundle size and the binary growth; planned, with step 3
 - [[EXP-20261023-kjvkas]] can ank follow an agent's run on a remote machine from the laptop without a shell; planned, the Phase 1c verification

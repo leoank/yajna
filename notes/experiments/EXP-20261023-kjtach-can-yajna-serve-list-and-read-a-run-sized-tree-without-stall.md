@@ -4,7 +4,7 @@ type: experiment
 schema_version: 1
 title: Can yajna serve list and read a run-sized tree without stalling?
 project: PRJ-0001
-status: planned           # planned | active | paused | concluded | abandoned
+status: active            # planned | active | paused | concluded | abandoned
 outcome: null             # null | positive | negative | inconclusive | infra
 influenced_by: []
 created: 2026-10-23
@@ -50,6 +50,13 @@ stat per entry (kinds resolved on demand), and the design changes before step 2 
 ## Runs
 One line per run after its link, what was tried and what it showed; `yajna validate`
 rejects a bare link here. Metric runs also land in results.tsv.
+
+- [[RUN-20261023-pjazct]] the laptop, APFS, baseline: 1.3 s at 100 000 entries and 14.7 s
+  at a million, four to five times over; a stat per entry and an allocating sort were to
+  blame. Ranges 0.2 ms anywhere in 10 GiB, 1.8 GiB/s streamed.
+- [[RUN-20261023-pn80r2]] the laptop after the fix: 329 ms at 100 000, 4.0 s at a million,
+  where the disk's own directory read takes 3.5 s; cached pages about 1 ms, memory 192 MB.
+  Rogue and the cluster's storage are still to run.
 
 ## Conclusion
 Written once, by a human, when status becomes `concluded`.

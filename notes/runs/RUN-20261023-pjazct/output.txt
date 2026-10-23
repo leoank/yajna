@@ -1,0 +1,25 @@
+machine: Darwin arm64, Apple M3 Max
+filesystem: apfsapfs
+yajna: yajna 0.5.2 at b246d36+dirty
+server idle                  rss                               12 MB
+list d1k (1000 entries)      first page, empty cache           24.0 ms
+                             first page again                  0.8 ms
+                             all 2 pages                       2.0 ms, median page 0.7 ms
+                             server rss after                  13 MB
+list d100k (100000 entries)  first page, empty cache           1299.5 ms
+                             first page again                  1.0 ms
+                             all 200 pages                     233.2 ms, median page 0.9 ms
+                             server rss after                  28 MB
+list d1m (1000000 entries)   first page, empty cache           14667.8 ms
+                             first page again                  1.0 ms
+                             all 2000 pages                    12616.3 ms, median page 5.5 ms
+                             server rss after                  99 MB
+stat 100 levels down         median of 20                      0.4 ms
+64 KiB of 10 GiB, start      first byte / all, median of 10    0.2 / 0.2 ms
+64 KiB of 10 GiB, middle     first byte / all, median of 10    0.2 / 0.2 ms
+64 KiB of 10 GiB, end        first byte / all, median of 10    0.2 / 0.2 ms
+1 GiB range streamed         all                               575.1 ms, 1781 MiB/s
+                             server rss after                  99 MB
+list tree/loop               status                            404 in 0.5 ms
+list tree/link-out           status                            200 in 8.4 ms
+===RESULT=== {"list_d1k_first_ms": 24.0, "list_d1k_warm_ms": 0.8, "list_d100k_first_ms": 1299.5, "list_d100k_warm_ms": 1.0, "list_d1m_first_ms": 14667.8, "list_d1m_warm_ms": 1.0, "rss_after_listings_mb": 99, "stat_deep_ms": 0.4, "range_start_ms": 0.2, "range_middle_ms": 0.2, "range_end_ms": 0.2, "stream_mib_s": 1781, "rss_after_stream_mb": 99}
