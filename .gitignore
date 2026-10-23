@@ -3,3 +3,4 @@ __pycache__/
 tools/target/
 tools/yajna/target/
 result
+tools/yajna-serve/ui/node_modules/

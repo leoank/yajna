@@ -21,6 +21,19 @@
           nativeCheckInputs = [ pkgs.git pkgs.pandoc ];
         };
         default = yajna;
+        # The files viewer's frontend (ADR-0029): type-checked and bundled with tsc and
+        # esbuild from nixpkgs over the locked npm dependencies. `nix run .#ui` copies it
+        # into tools/yajna-serve/ui/dist, which is committed and embedded in the binary.
+        yajna-ui = pkgs.stdenv.mkDerivation {
+          pname = "yajna-files-ui";
+          version = "0.1.0";
+          src = ./tools/yajna-serve/ui;
+          npmDeps = pkgs.importNpmLock { npmRoot = ./tools/yajna-serve/ui; };
+          npmFlags = [ "--ignore-scripts" ];
+          nativeBuildInputs = [ pkgs.nodejs pkgs.importNpmLock.npmConfigHook pkgs.esbuild pkgs.typescript ];
+          buildPhase = "sh build.sh";
+          installPhase = "cp -r dist $out";
+        };
         # Neovim plugin (phase 0c): follow [[ID]] links and @citekeys, find entities, backlinks.
         yajna-nvim = pkgs.vimUtils.buildVimPlugin {
           pname = "yajna.nvim";
@@ -36,6 +49,22 @@
         '';
       });
 
+      # `nix run .#ui` from the repo root: rebuild the files viewer's committed bundle.
+      apps = forAll (pkgs: {
+        ui = {
+          type = "app";
+          program = toString (pkgs.writeShellScript "yajna-ui" ''
+            set -eu
+            dest=tools/yajna-serve/ui/dist
+            [ -f tools/yajna-serve/ui/package.json ] || { echo "run from the yajna repo root" >&2; exit 1; }
+            rm -rf "$dest"
+            cp -r ${self.packages.${pkgs.system}.yajna-ui} "$dest"
+            chmod -R u+w "$dest"
+            echo "$dest: rebuilt"
+          '');
+        };
+      });
+
       devShells = forAll (pkgs:
         let
           # Runs the checked-out source, so edits under tools/yajna take effect immediately.
@@ -44,7 +73,9 @@
           '';
         in {
           default = pkgs.mkShell {
-            packages = [ yajnaDev pkgs.git pkgs.cargo pkgs.rustc pkgs.clippy pkgs.rustfmt pkgs.rust-analyzer pkgs.python3 pkgs.mdbook pkgs.pandoc ];
+            packages = [ yajnaDev pkgs.git pkgs.cargo pkgs.rustc pkgs.clippy pkgs.rustfmt pkgs.rust-analyzer pkgs.python3 pkgs.mdbook pkgs.pandoc
+              # the files viewer's frontend (tools/yajna-serve/ui, ADR-0029)
+              pkgs.nodejs pkgs.esbuild pkgs.typescript ];
             shellHook = ''
               export YAJNA_SRC="$PWD/tools/yajna"
             '';
@@ -60,6 +91,12 @@
         } ''
           cd ${self}
           yajna --root . validate
+          touch $out
+        '';
+        # the committed bundle of the files viewer is what its source builds to
+        ui-bundle = pkgs.runCommand "yajna-ui-bundle" { } ''
+          diff -r ${self.packages.${pkgs.system}.yajna-ui} ${./tools/yajna-serve/ui/dist} \
+            || { echo "tools/yajna-serve/ui/dist is stale: run nix run .#ui" >&2; exit 1; }
           touch $out
         '';
         # the guide builds and every relative link in it resolves

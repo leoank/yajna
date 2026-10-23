@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 
 use yajna_serve::files::{Root, Watch};
 
-use crate::site::{render, site_dir, vault_mtime};
+use crate::site::{render, site_dir, vault_mtime, FileLinks};
 use crate::vault::{Res, Vault, CONFIG_NAME};
 
 /// `~` at the start and `$VAR` or `${VAR}` anywhere, from the environment. An unset
@@ -92,7 +92,14 @@ pub fn cmd_serve(
         .map(Path::to_path_buf)
         .unwrap_or_else(|| site_dir(vault));
     let roots = roots(vault)?;
-    let n = render(vault, &out)?;
+    let links = Arc::new(FileLinks {
+        repo: vault.root.clone(),
+        roots: roots
+            .iter()
+            .map(|r| (r.name.clone(), r.path.clone()))
+            .collect(),
+    });
+    let n = render(vault, &out, &links)?;
     println!("{}: {n} page(s)", out.display());
     for r in &roots {
         let missing = if r.path.is_dir() { "" } else { " (missing)" };
@@ -105,10 +112,22 @@ pub fn cmd_serve(
     let refresh = move || -> Result<(), String> {
         let mut at = rendered.lock().map_err(|e| e.to_string())?;
         if vault_mtime(&owned) > *at {
-            render(&owned, &site)?;
+            render(&owned, &site, &links)?;
             *at = vault_mtime(&owned);
         }
         Ok(())
+    };
+    // the preview renders markdown as the site does: links and citations resolved from the
+    // index when it can be built, plain otherwise
+    let for_render = Vault::open(vault.root.clone())?;
+    let render = move |path: &Path| -> Result<yajna_serve::Rendered, String> {
+        let page = for_render.read(path)?;
+        let ix = crate::index::Index::open(&for_render, false).ok();
+        Ok(yajna_serve::Rendered {
+            html: crate::site::markdown_for_viewer(ix.as_ref(), &page.body),
+            id: page.id().map(str::to_string),
+            title: page.field("title").map(str::to_string),
+        })
     };
     let cfg = yajna_serve::Config {
         site: out,
@@ -116,6 +135,9 @@ pub fn cmd_serve(
         port,
         hosts: hosts.to_vec(),
         roots,
+        render: Arc::new(render),
+        notebook: vault.namespace().unwrap_or("notebook").to_string(),
+        version: env!("CARGO_PKG_VERSION").to_string(),
     };
     yajna_serve::run(cfg, |addr| {
         let url = format!("http://{addr}/");

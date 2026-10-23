@@ -3,7 +3,9 @@
 //! a loopback address only (`docs/files-viewer.md`).
 //!
 //! The crate knows HTTP and files, not the notebook: the CLI hands it the site directory,
-//! a callback that re-renders the site when a page changed, and the roots.
+//! a callback that re-renders the site when a page changed, one that renders markdown the
+//! way the site does, and the roots. The viewer's frontend (`ui/`, ADR-0029) is built
+//! into `ui/dist` by `nix run .#ui` and embedded here.
 
 pub mod files;
 
@@ -23,6 +25,23 @@ use axum::Router;
 /// request, from a blocking thread.
 pub type Refresh = Arc<dyn Fn() -> Result<(), String> + Send + Sync>;
 
+/// Renders a markdown file for the viewer's preview, from a blocking thread.
+pub type Render = Arc<dyn Fn(&std::path::Path) -> Result<Rendered, String> + Send + Sync>;
+
+/// A rendered markdown file: its HTML, and its ID and title when it is a page.
+#[derive(serde::Serialize)]
+pub struct Rendered {
+    pub html: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+}
+
+#[derive(rust_embed::RustEmbed)]
+#[folder = "ui/dist"]
+struct Ui;
+
 pub struct Config {
     /// the rendered static site
     pub site: PathBuf,
@@ -34,6 +53,11 @@ pub struct Config {
     pub hosts: Vec<String>,
     /// what the files viewer shows
     pub roots: Vec<files::Root>,
+    pub render: Render,
+    /// the notebook's namespace, which keys the viewer's saved layout
+    pub notebook: String,
+    /// the version of yajna serving it, shown in the viewer
+    pub version: String,
 }
 
 #[derive(Clone)]
@@ -43,6 +67,9 @@ pub(crate) struct App {
     hosts: Arc<Vec<String>>,
     roots: Arc<Vec<files::Root>>,
     cache: Arc<files::Cache>,
+    render: Render,
+    notebook: Arc<String>,
+    version: Arc<String>,
 }
 
 /// Serve until the process is killed. `ready` gets the bound address once the server
@@ -63,6 +90,9 @@ pub fn run(cfg: Config, ready: impl FnOnce(SocketAddr)) -> Result<(), String> {
             hosts: Arc::new(cfg.hosts),
             roots: Arc::new(cfg.roots),
             cache: Arc::default(),
+            render: cfg.render,
+            notebook: Arc::new(cfg.notebook),
+            version: Arc::new(cfg.version),
         };
         axum::serve(listener, router(app))
             .await
@@ -81,8 +111,41 @@ fn router(app: App) -> Router {
         .route("/api/files/list", get(files::list_handler))
         .route("/api/files/stat", get(files::stat_handler))
         .route("/api/files/raw", get(files::raw_handler))
+        .route("/api/files/render", get(files::render_handler))
+        .route("/api/info", get(info))
+        .route(
+            "/files",
+            get(|| async { axum::response::Redirect::permanent("/files/") }),
+        )
+        .route("/files/", get(|| ui_file(Path("index.html".to_string()))))
+        .route("/files/{*asset}", get(ui_file))
         .layer(middleware::from_fn_with_state(app.clone(), check_host))
         .with_state(app)
+}
+
+async fn info(State(app): State<App>) -> Response {
+    axum::Json(serde_json::json!({
+        "notebook": *app.notebook,
+        "version": *app.version,
+    }))
+    .into_response()
+}
+
+/// The viewer's own files, from the bundle embedded at build time.
+async fn ui_file(Path(name): Path<String>) -> Response {
+    match Ui::get(&name) {
+        Some(f) => {
+            let mut res = Response::new(Body::from(f.data.into_owned()));
+            res.headers_mut().insert(
+                header::CONTENT_TYPE,
+                HeaderValue::from_static(content_type(&name)),
+            );
+            res.headers_mut()
+                .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
+            res
+        }
+        None => not_found(&format!("files/{name}")),
+    }
 }
 
 /// Answer only requests addressed to a loopback name or a configured tunnel name, so a web
@@ -149,6 +212,7 @@ fn content_type(name: &str) -> &'static str {
         Some("html") => "text/html; charset=utf-8",
         Some("svg") => "image/svg+xml",
         Some("css") => "text/css; charset=utf-8",
+        Some("js") => "text/javascript; charset=utf-8",
         Some("png") => "image/png",
         _ => "application/octet-stream",
     }

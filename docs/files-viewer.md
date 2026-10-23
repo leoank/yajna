@@ -1,6 +1,6 @@
 # The files viewer and `yajna serve`
 
-Status: design v0.1, 2026-10-23, nothing built yet. Companion to `architecture.md`
+Status: design v0.2, 2026-10-23; steps 1 to 3 built (yajna 0.7.0). Companion to `architecture.md`
 (sections 6 and 11). Decisions: ADR-0027 (`yajna serve`), ADR-0028 (what the viewer shows
 and how it stays live), ADR-0029 (the frontend). Experiments: section 10.
 
@@ -212,8 +212,10 @@ fast.
   narrows the loaded entries by name; finding a file anywhere in the roots (quick open)
   needs a server-side index and is later.
 - **Editor area**: dockview groups with tabs. A single click opens a *preview* tab (in
-  italics) that the next single click replaces; a double click, or scrolling in it, keeps
-  it. Splitting is by dragging a tab to an edge, or `Ctrl-\`. Tabs show a dot when their
+  italics) that the next single click replaces; a double click, or clicking into it,
+  keeps it. Splitting is by dragging a tab to an edge, the split button at the right of a
+  group's tabs, or `Ctrl-\` / `⌘-\`, which opens the active file again in a new group to
+  the right. Tabs show a dot when their
   file changed on disk since it was opened.
 - **Status line**: the focused file's path, size, mtime, encoding, cursor line, and
   whether it is following.
@@ -256,15 +258,21 @@ module in the registry and, where the browser cannot read the format, a server r
 
 - Source is TypeScript under `tools/yajna-serve/ui/src`, with `package.json` and
   `package-lock.json` pinning dockview-core, CodeMirror (`@codemirror/view`, `state`,
-  `language`, `search`, and the language packages) and @panzoom/panzoom.
-- `nix run .#ui` builds it with esbuild from the locked npm dependencies (through Nix, no
-  global Node) into `tools/yajna-serve/ui/dist/`: one JS file, one CSS file, the HTML
-  shell. `dist/` is committed, so `cargo build` needs no Node and the release workflow
-  does not change.
-- `rust-embed` includes `dist/` in the binary. A flake check rebuilds the bundle and fails
-  if it differs from what is committed, and `tsc --noEmit` type-checks the source.
-- The budget is about 350 KB gzipped for the whole bundle; `EXP-20261023-kjv5wy` measures
-  it and the binary growth from axum and tokio.
+  `language`, `search`, and the language packages) and @panzoom/panzoom: libraries only,
+  no build tools, installed with `--ignore-scripts`.
+- `build.sh` type-checks with `tsc` and bundles with `esbuild`, both from nixpkgs, so no
+  native npm binaries enter the lock file. `nix run .#ui` runs it in the sandbox over the
+  locked dependencies (`importNpmLock`) and copies the result into
+  `tools/yajna-serve/ui/dist/`: `index.html`, `app.js`, `app.css` and `chunks/`. `dist/` is
+  committed, so `cargo build` needs no Node and the release workflow does not change.
+- `rust-embed` includes `dist/` in the binary. The flake check `ui-bundle` rebuilds the
+  bundle and fails if it differs from what is committed.
+- dockview is imported through its UMD build, the only one that carries its stylesheet
+  (the ESM build ships none, and the CSS file is published only in the React package);
+  it costs about 190 KB more, minified, than a tree-shaken ESM import would.
+- Each language is a chunk loaded when a file first needs it. The first load is
+  `app.js` and two shared chunks, 230 KB gzipped, inside the 350 KB budget; everything
+  together is 457 KB gzipped.
 
 ## 7. What it does not do
 

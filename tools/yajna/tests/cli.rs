@@ -3503,6 +3503,89 @@ fn serve_files_api_lists_reads_and_refuses() {
     assert!(out.stderr.contains("watch \"sometimes\""), "{}", out.stderr);
 }
 
+#[test]
+fn serve_files_viewer_render_and_site_links() {
+    let v = indexed_lab();
+    // a project with a code directory, and a markdown file with raw HTML in it
+    let code = v.root.join("code/archaeal-division");
+    fs::create_dir_all(&code).unwrap();
+    fs::write(
+        code.join("NOTES.md"),
+        "# Notes\n\n<script>alert(1)</script>\n",
+    )
+    .unwrap();
+    let prj = v
+        .root
+        .join("notes/projects/PRJ-0001-archaeal-division/README.md");
+    let text = v.read(&prj);
+    let text = if text.contains("code: null") {
+        text.replace("code: null", "code: code/archaeal-division")
+    } else {
+        text.replacen("status:", "code: code/archaeal-division\nstatus:", 1)
+    };
+    fs::write(&prj, text).unwrap();
+    assert_eq!(v.run(&["validate"]).code, 0);
+
+    let (mut child, addr) = spawn_server(&v, &["serve"]);
+    // the viewer itself, from the bundle in the binary
+    let (status, headers, body) = http_req(&addr, "/files/", &[]);
+    assert!(
+        status.ends_with("200 OK") && headers.contains("text/html"),
+        "{status}"
+    );
+    assert!(String::from_utf8_lossy(&body).contains("app.js"));
+    let (status, headers, _) = http_req(&addr, "/files/app.js", &[]);
+    assert!(
+        status.ends_with("200 OK") && headers.contains("text/javascript"),
+        "{status}"
+    );
+    assert!(http_req(&addr, "/files/nope.js", &[]).0.contains("404"));
+    let (_, info) = api_json(&addr, "/api/info");
+    assert_eq!(info["version"], env!("CARGO_PKG_VERSION"));
+
+    // markdown as the site renders it, with the page's ID, and raw HTML as text
+    let (status, r) = api_json(
+        &addr,
+        "/api/files/render?path=notes/projects/PRJ-0001-archaeal-division/README.md",
+    );
+    assert!(status.ends_with("200 OK"), "{status} {r}");
+    assert_eq!(r["id"], "PRJ-0001");
+    assert!(
+        r["html"]
+            .as_str()
+            .unwrap()
+            .contains("href=\"EXP-20261021-000001.html\""),
+        "{r}"
+    );
+    let (_, r) = api_json(
+        &addr,
+        "/api/files/render?path=code/archaeal-division/NOTES.md",
+    );
+    let html = r["html"].as_str().unwrap();
+    assert!(
+        html.contains("&lt;script&gt;") && !html.contains("<script>"),
+        "{html}"
+    );
+    assert!(r.get("id").is_none());
+
+    // the served site links the viewer, and the project's code into it
+    let home = http_get(&addr, "localhost", "/");
+    assert!(home.contains("<a href=\"files/\">files</a>"), "{home}");
+    let page = http_get(&addr, "localhost", "/PRJ-0001.html");
+    assert!(
+        page.contains("<a href=\"files/#code/archaeal-division\">code/archaeal-division</a>"),
+        "{page}"
+    );
+    child.kill().unwrap();
+    let _ = child.wait();
+
+    // a static export has neither
+    let out = v.root.join("export");
+    assert_eq!(v.run(&["site", "--out", out.to_str().unwrap()]).code, 0);
+    assert!(!v.read(&out.join("index.html")).contains("files/"));
+    assert!(!v.read(&out.join("PRJ-0001.html")).contains("files/#"));
+}
+
 /// `EXP-20261021-0k3m9x`: a date ID with the 6-character time-sortable suffix.
 fn regex_like_date_id(id: &str) -> bool {
     let parts: Vec<&str> = id.split('-').collect();

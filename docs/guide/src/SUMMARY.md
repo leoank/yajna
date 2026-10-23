@@ -23,6 +23,7 @@
 - [References](guides/references.md)
 - [Tasks and queries](guides/queries.md)
 - [The static site](guides/site.md)
+- [The files viewer](guides/files.md)
 - [Docs and Google Docs](guides/docs-and-sync.md)
 - [Exporting and importing](guides/export-import.md)
 - [Working in parallel](guides/parallel.md)

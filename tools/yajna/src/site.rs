@@ -6,7 +6,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use pulldown_cmark::{html, Options, Parser};
+use pulldown_cmark::{html, Event, Options, Parser};
 use serde_json::Value;
 
 use crate::index::{Entity, Index, LogEntry};
@@ -104,6 +104,28 @@ fn markdown(ix: &Index, md: &str) -> String {
     out
 }
 
+/// Markdown for the files viewer (ADR-0029): the site's links and citations when the index
+/// is at hand, and raw HTML shown as text, because a file a run wrote must not run as
+/// part of the viewer. Links to pages stay relative (`ID.html`); the viewer points them
+/// at the site.
+pub(crate) fn markdown_for_viewer(ix: Option<&Index>, md: &str) -> String {
+    let mut opts = Options::empty();
+    opts.insert(Options::ENABLE_TABLES);
+    opts.insert(Options::ENABLE_TASKLISTS);
+    opts.insert(Options::ENABLE_STRIKETHROUGH);
+    let text = match ix {
+        Some(ix) => linkify(ix, md),
+        None => md.to_string(),
+    };
+    let parser = Parser::new_ext(&text, opts).map(|ev| match ev {
+        Event::Html(h) | Event::InlineHtml(h) => Event::Text(h),
+        ev => ev,
+    });
+    let mut out = String::new();
+    html::push_html(&mut out, parser);
+    out
+}
+
 fn page(title: &str, nav: &str, body: &str) -> String {
     format!(
         "<!doctype html>\n<html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>{}</title><style>{CSS}</style></head>\n<body><nav><a href=\"index.html\">home</a><a href=\"log.html\">log</a><a href=\"tasks.html\">tasks</a>{nav}</nav>\n{body}\n</body></html>\n",
@@ -136,7 +158,38 @@ fn link_to(ix: &Index, id: &str) -> String {
 }
 
 /// Frontmatter as a table; IDs inside values become links.
-fn meta_table(ix: &Index, e: &Entity) -> String {
+/// Where the files viewer shows a path, when the site is served by `yajna serve`
+/// (ADR-0028): the roots by name and directory. Empty for a static export.
+#[derive(Default)]
+pub(crate) struct FileLinks {
+    pub repo: PathBuf,
+    pub roots: Vec<(String, PathBuf)>,
+}
+
+impl FileLinks {
+    /// `files/#<root>/<rest>` for a path in a page's frontmatter (relative to the repo, or
+    /// absolute) that lies under a root.
+    fn href(&self, value: &str) -> Option<String> {
+        let path = Path::new(value.trim_end_matches('/'));
+        let abs = if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            self.repo.join(path)
+        };
+        let abs: PathBuf = abs.components().collect();
+        self.roots.iter().find_map(|(name, root)| {
+            let rest = abs.strip_prefix(root).ok()?;
+            let rest = rest.to_string_lossy();
+            Some(if rest.is_empty() {
+                format!("files/#{name}")
+            } else {
+                format!("files/#{name}/{rest}")
+            })
+        })
+    }
+}
+
+fn meta_table(ix: &Index, e: &Entity, files: &FileLinks) -> String {
     let mut rows = String::new();
     if let Some(obj) = e.meta.as_object() {
         for (k, v) in obj {
@@ -157,6 +210,18 @@ fn meta_table(ix: &Index, e: &Entity) -> String {
                     .join(", "),
                 other => other.to_string(),
             };
+            if let (true, Value::String(s)) = (["script", "code", "path"].contains(&k.as_str()), v)
+            {
+                if let Some(link) = files.href(s) {
+                    rows.push_str(&format!(
+                        "<tr><td>{}</td><td><a href=\"{}\">{}</a></td></tr>\n",
+                        esc(k),
+                        esc(&link),
+                        esc(s)
+                    ));
+                    continue;
+                }
+            }
             let shown = NS_ID_RE
                 .replace_all(&esc(&shown), |c: &regex::Captures| {
                     if c.get(1).is_some() {
@@ -372,13 +437,13 @@ fn runs_table(ix: &Index, experiment: &str) -> String {
     out
 }
 
-fn entity_page(ix: &Index, e: &Entity) -> String {
+fn entity_page(ix: &Index, e: &Entity, files: &FileLinks) -> String {
     let mut body = format!(
         "<h1>{} <small>{} {}</small></h1>\n{}\n",
         esc(&e.title),
         esc(&e.etype),
         status_span(e),
-        meta_table(ix, e)
+        meta_table(ix, e, files)
     );
     if e.etype == "project" {
         let svg = tree_svg(ix, &e.id);
@@ -505,11 +570,23 @@ pub fn site_dir(vault: &Vault) -> PathBuf {
 }
 
 /// Write every page; returns the output directory and the page count.
-pub fn render(vault: &Vault, out: &Path) -> Res<usize> {
+/// Write every page; returns the page count. With roots in `files`, the site is being
+/// served: the nav links the files viewer and paths in frontmatter link into it.
+pub fn render(vault: &Vault, out: &Path, files: &FileLinks) -> Res<usize> {
     let ix = Index::open(vault, false)?;
     fs::create_dir_all(out).map_err(|e| format!("{}: {e}", out.display()))?;
     let mut n = 0;
+    let served = !files.roots.is_empty();
     let mut put = |name: String, text: String| -> Res<()> {
+        let text = if served {
+            text.replacen(
+                "<a href=\"tasks.html\">tasks</a>",
+                "<a href=\"tasks.html\">tasks</a><a href=\"files/\">files</a>",
+                1,
+            )
+        } else {
+            text
+        };
         fs::write(out.join(&name), text).map_err(|e| format!("{name}: {e}"))?;
         n += 1;
         Ok(())
@@ -518,7 +595,7 @@ pub fn render(vault: &Vault, out: &Path) -> Res<usize> {
     put("log.html".into(), log_page(&ix))?;
     put("tasks.html".into(), tasks_page(&ix))?;
     for e in ix.entities("", &[]) {
-        put(href(&e.id), entity_page(&ix, &e))?;
+        put(href(&e.id), entity_page(&ix, &e, files))?;
     }
     Ok(n)
 }
@@ -527,7 +604,7 @@ pub fn cmd_site(vault: &Vault, out: Option<&Path>) -> Res<i32> {
     let out = out
         .map(Path::to_path_buf)
         .unwrap_or_else(|| site_dir(vault));
-    let n = render(vault, &out)?;
+    let n = render(vault, &out, &FileLinks::default())?;
     println!("{}: {n} page(s)", out.display());
     Ok(0)
 }

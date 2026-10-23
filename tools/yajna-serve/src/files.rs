@@ -585,6 +585,9 @@ async fn raw(
     Ok(res)
 }
 
+/// The largest markdown file the preview renders.
+const RENDER_MAX: u64 = 4 << 20;
+
 // --- handlers ------------------------------------------------------------------------
 
 #[derive(Deserialize)]
@@ -640,6 +643,28 @@ pub(crate) async fn stat_handler(
     blocking(move || stat(&app.roots, &q.path))
         .await
         .map(|s| Json(s).into_response())
+}
+
+pub(crate) async fn render_handler(
+    State(app): State<crate::App>,
+    Query(q): Query<PathQuery>,
+) -> Result<Response, ApiError> {
+    blocking(move || {
+        let t = resolve(&app.roots, &q.path)?;
+        if !t.meta.is_file() {
+            return Err(bad_request(format!("{}: not a file", q.path)));
+        }
+        if t.meta.len() > RENDER_MAX {
+            return Err(bad_request(format!(
+                "{}: over {} MB, too large to preview",
+                q.path,
+                RENDER_MAX >> 20
+            )));
+        }
+        (app.render)(&t.abs).map_err(|e| ApiError(StatusCode::UNPROCESSABLE_ENTITY, e))
+    })
+    .await
+    .map(|r| Json(r).into_response())
 }
 
 pub(crate) async fn raw_handler(
