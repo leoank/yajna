@@ -44,7 +44,10 @@ open items with the rest.
 - [x] Phase 1b: synced docs mirror the notebook's folders in Drive and follow moved pages; citations render through pandoc with a page's own bibliography (ADR-0024)
 - [x] `yajna adopt`: an existing markdown file becomes a page of any type, its body kept (ADR-0025)
 - [ ] Phase 1b verified: folders and citations against the real Drive ([[EXP-20261023-cy5j5f]])
-- [ ] Phase 1b later: `mirror` and `import` modes, once publishing is routine
+- [ ] Phase 1b: `mirror` round trip checked: an unedited doc exported and converted back (header, title and *References* stripped, links, checkboxes and citations undone, both sides normalised by pandoc) equals its page's source
+- [ ] Phase 1b: `mirror` mode: `yajna sync pull` brings edits made in a doc back as an uncommitted change to its page, three-way merged against the published commit recorded on the doc, conflicts left as markers to resolve by hand; the next sync publishes the result (architecture §5.8)
+- [ ] Phase 1b verified: a doc edited by someone else is pulled, merged with work done in the repo meanwhile, and published back without losing either
+- [ ] Phase 1b later: `import` mode, the doc as the truth
 - [x] User guide on GitHub Pages: an mdBook with the CLI reference, page types and design docs generated at build time
 - [ ] Phase 2: data and runs (git-annex, `ART` pages, `experiment` and `autoresearch` commands)
 - [ ] Phase 2b: bench planning (run sheets, inventory, schedules)
@@ -61,6 +64,11 @@ open items with the rest.
   installed, so two copies load. Should it skip the copy when the plugin is present?
 - Experiments keep counter IDs (ADR-0021). Do branch collisions stay rare enough that they
   never need volume IDs?
+
+- Is Drive's `text/markdown` export deterministic enough that an unedited doc converts
+  back to exactly its page, tables and nested lists included? `mirror` rests on it.
+- `mirror` publishes only committed pages, so the published version is in git for the
+  merge. Is committing before every sync of a mirror page a burden in practice?
 
 - Which ELN does the lab use, and does it take an upload through an API, an import
   format, or only files? That decides the last renderer of `yajna export`.
