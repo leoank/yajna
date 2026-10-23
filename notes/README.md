@@ -50,7 +50,7 @@ open items with the rest.
 - [ ] Phase 1b later: `import` mode, the doc as the truth
 - [x] User guide on GitHub Pages: an mdBook with the CLI reference, page types and design docs generated at build time
 - [x] Phase 1c designed: `yajna serve` and a live files viewer with tabs and split views, `docs/files-viewer.md` (ADR-0027, ADR-0028, ADR-0029)
-- [ ] Phase 1c step 1: `tools/` as a Cargo workspace; `yajna-serve` (axum) serves the site; `yajna serve`, `site --serve` its alias
+- [x] Phase 1c step 1: `tools/` as a Cargo workspace; `yajna-serve` (axum) serves the site; `yajna serve`, `site --serve` its alias
 - [ ] Phase 1c step 2: `[files]` roots in `yajna.toml`; the read-only file API with ranges, path and Host checks ([[EXP-20261023-kjtach]])
 - [ ] Phase 1c step 3: the UI (dockview, CodeMirror, markdown, images), the Nix-built committed bundle, files links from the site ([[EXP-20261023-kjv5wy]])
 - [ ] Phase 1c step 4: live: watch or poll, SSE, follow mode ([[EXP-20261023-kjtrwp]])
