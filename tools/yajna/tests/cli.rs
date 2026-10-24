@@ -3586,6 +3586,131 @@ fn serve_files_viewer_render_and_site_links() {
     assert!(!v.read(&out.join("PRJ-0001.html")).contains("files/#"));
 }
 
+/// An open `/api/events` stream: its `change` events as JSON, read until one matches.
+struct Events {
+    lines: std::io::Lines<std::io::BufReader<std::net::TcpStream>>,
+}
+
+impl Events {
+    fn open(addr: &str, watch: &[&str]) -> Events {
+        use std::io::{BufRead, Write};
+        let q: Vec<String> = watch.iter().map(|w| format!("watch={w}")).collect();
+        let mut s = std::net::TcpStream::connect(addr).unwrap();
+        write!(
+            s,
+            "GET /api/events?{} HTTP/1.1\r\nHost: localhost\r\nAccept: text/event-stream\r\n\r\n",
+            q.join("&")
+        )
+        .unwrap();
+        s.set_read_timeout(Some(std::time::Duration::from_millis(500)))
+            .unwrap();
+        Events {
+            lines: std::io::BufReader::new(s).lines(),
+        }
+    }
+
+    /// The first change event `want` accepts within `secs` seconds.
+    fn until(
+        &mut self,
+        secs: u64,
+        want: impl Fn(&serde_json::Value) -> bool,
+    ) -> Option<serde_json::Value> {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(secs);
+        while std::time::Instant::now() < deadline {
+            match self.lines.next() {
+                Some(Ok(line)) => {
+                    if let Some(data) = line
+                        .strip_prefix("data: ")
+                        .or_else(|| line.strip_prefix("data:"))
+                    {
+                        if let Ok(v) = serde_json::from_str::<serde_json::Value>(data) {
+                            if want(&v) {
+                                return Some(v);
+                            }
+                        }
+                    }
+                }
+                Some(Err(_)) => continue, // a read timeout: look at the clock again
+                None => return None,
+            }
+        }
+        None
+    }
+}
+
+#[test]
+fn serve_events_follow_changes_by_watching_and_polling() {
+    let v = indexed_lab();
+    let code = v.root.join("code");
+    fs::create_dir_all(&code).unwrap();
+    fs::write(code.join("train.log"), "step 1\n").unwrap();
+    let scratch = tempfile::tempdir().unwrap();
+    fs::write(scratch.path().join("out.log"), "a\n").unwrap();
+    let cfg = v.root.join("yajna.toml");
+    let base = v.read(&cfg);
+    fs::write(
+        &cfg,
+        format!(
+            "{base}\n[[files.roots]]\nname = \"code\"\npath = \"code\"\n\n[[files.roots]]\nname = \"scratch\"\npath = \"{}\"\nwatch = \"poll\"\n",
+            scratch.path().display()
+        ),
+    )
+    .unwrap();
+    let (mut child, addr) = spawn_server(&v, &["serve"]);
+    let (_, roots) = api_json(&addr, "/api/files/roots");
+    assert_eq!(roots[0]["live"], "notify", "{roots}");
+    assert_eq!(roots[1]["live"], "poll", "{roots}");
+
+    let mut ev = Events::open(
+        &addr,
+        &["code/train.log", "code", "scratch/out.log", "code/nope.log"],
+    );
+    // first, each path as it is now
+    let mut initial = std::collections::BTreeMap::new();
+    while initial.len() < 4 {
+        let e = ev
+            .until(5, |_| true)
+            .expect("the initial state of every path");
+        initial.insert(e["path"].as_str().unwrap().to_string(), e);
+    }
+    let log = &initial["code/train.log"];
+    assert_eq!(
+        (log["kind"].as_str(), log["size"].as_u64()),
+        (Some("file"), Some(7))
+    );
+    assert_eq!(initial["code"]["kind"], "dir");
+    assert_eq!(initial["scratch/out.log"]["size"], 2);
+    assert_eq!(initial["code/nope.log"]["exists"], false);
+    let is = |p: &'static str| move |e: &serde_json::Value| e["path"] == p;
+
+    // a log that grows, watched through filesystem events
+    let mut f = fs::OpenOptions::new()
+        .append(true)
+        .open(code.join("train.log"))
+        .unwrap();
+    std::io::Write::write_all(&mut f, b"step 2\n").unwrap();
+    drop(f);
+    let grew = ev
+        .until(5, |e| e["path"] == "code/train.log" && e["size"] == 14)
+        .expect("the append arrives");
+    assert_eq!(grew["exists"], true);
+    // a new file in a watched directory
+    fs::write(code.join("plot.png"), "x").unwrap();
+    assert!(ev.until(5, is("code")).is_some(), "the directory changed");
+    // a polled root sees an append within its two seconds
+    fs::write(scratch.path().join("out.log"), "a\nb\n").unwrap();
+    assert!(ev
+        .until(6, |e| e["path"] == "scratch/out.log" && e["size"] == 4)
+        .is_some());
+    // a removed file
+    fs::remove_file(code.join("train.log")).unwrap();
+    assert!(ev
+        .until(5, |e| e["path"] == "code/train.log" && e["exists"] == false)
+        .is_some());
+    child.kill().unwrap();
+    let _ = child.wait();
+}
+
 /// `EXP-20261021-0k3m9x`: a date ID with the 6-character time-sortable suffix.
 fn regex_like_date_id(id: &str) -> bool {
     let parts: Vec<&str> = id.split('-').collect();

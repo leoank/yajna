@@ -79,6 +79,9 @@ main { display: flex; min-height: 0; }
 .dockview-theme-light, .dockview-theme-dark { --dv-tabs-and-actions-container-font-size: 12.5px; }
 .yw-tab { display: flex; align-items: center; gap: 6px; padding: 0 4px 0 10px; height: 100%; }
 .yw-preview .yw-tab-title { font-style: italic; }
+.yw-changed .yw-tab-title::before { content: '●'; color: var(--accent); font-size: 9px; margin-right: 5px; vertical-align: 1px; }
+.yw-gone .yw-tab-title { text-decoration: line-through; opacity: 0.6; }
+#status-live.on::before { content: '●'; color: #2ea043; margin-right: 4px; }
 .yw-tab-close { opacity: 0.5; padding: 0 4px; border-radius: 3px; }
 .yw-tab-close:hover { opacity: 1; background: var(--hover); }
 .yw-actions { display: flex; height: 100%; align-items: center; padding-right: 4px; }

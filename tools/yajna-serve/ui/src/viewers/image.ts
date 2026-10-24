@@ -37,6 +37,12 @@ register({
     }
     return {
       dispose: () => pz.destroy(),
+      // a plot a run rewrites: the new image, at the same zoom
+      async follow(next) {
+        img.src = `${rawUrl(ctx.path)}&t=${next.mtime ?? Date.now()}`;
+        await img.decode().catch(() => undefined);
+        return true;
+      },
       status: () =>
         `${img.naturalWidth}×${img.naturalHeight} · ${Math.round((pz.getScale() * img.clientWidth * 100) / Math.max(1, img.naturalWidth))}%`,
     };

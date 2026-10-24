@@ -1,6 +1,7 @@
 //! The server behind `yajna serve` (ADR-0027): the rendered site, brought up to date
 //! before a page is served, and the read-only file API of the files viewer (ADR-0028), on
-//! a loopback address only (`docs/files-viewer.md`).
+//! a loopback address only, with change events for what the viewer has open
+//! (`docs/files-viewer.md`).
 //!
 //! The crate knows HTTP and files, not the notebook: the CLI hands it the site directory,
 //! a callback that re-renders the site when a page changed, one that renders markdown the
@@ -8,6 +9,7 @@
 //! into `ui/dist` by `nix run .#ui` and embedded here.
 
 pub mod files;
+pub mod live;
 
 use std::net::{Ipv4Addr, SocketAddr};
 use std::path::PathBuf;
@@ -77,6 +79,7 @@ pub(crate) struct App {
 pub fn run(cfg: Config, ready: impl FnOnce(SocketAddr)) -> Result<(), String> {
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_io()
+        .enable_time()
         .build()
         .map_err(|e| format!("runtime: {e}"))?;
     rt.block_on(async {
@@ -112,6 +115,7 @@ fn router(app: App) -> Router {
         .route("/api/files/stat", get(files::stat_handler))
         .route("/api/files/raw", get(files::raw_handler))
         .route("/api/files/render", get(files::render_handler))
+        .route("/api/events", get(live::events_handler))
         .route("/api/info", get(info))
         .route(
             "/files",

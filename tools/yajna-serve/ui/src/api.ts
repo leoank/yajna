@@ -5,6 +5,8 @@ export interface Root {
   path: string;
   exists: boolean;
   watch: string;
+  /** how changes reach the viewer: notify, poll or off */
+  live: 'notify' | 'poll' | 'off';
 }
 
 export type Kind = 'dir' | 'file' | 'broken' | 'loop' | 'other';
@@ -19,6 +21,8 @@ export interface Entry {
 
 export interface Listing {
   path: string;
+  /** the directory's own mtime */
+  mtime?: number;
   total: number;
   entries: Entry[];
   next?: number;

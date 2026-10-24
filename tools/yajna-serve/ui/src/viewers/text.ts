@@ -24,11 +24,13 @@ import {
 } from '@codemirror/language';
 import { searchKeymap, highlightSelectionMatches } from '@codemirror/search';
 import { oneDark } from '@codemirror/theme-one-dark';
-import { raw, formatSize, basename } from '../api';
+import { raw, rawUrl, formatSize, basename, type Stat } from '../api';
 import { register, toolbar, message, type Context, type Viewer } from './registry';
 
 /** Above this a file opens as its first part only. */
 export const CAP = 20 << 20;
+/** Files that open at their end. */
+const LOGS = /\.(log|out|err|jsonl)$/i;
 const HEAD = 256 << 10;
 
 type Lang = Promise<Extension | null>;
@@ -77,7 +79,11 @@ export const textKind = {
     const size = ctx.stat.size ?? 0;
     const partial = size > CAP;
     const bytes = await raw(ctx.path, partial ? HEAD : undefined);
-    const doc = new TextDecoder().decode(bytes);
+    // a streaming decoder, so a character split between two appends comes out whole
+    const decoder = new TextDecoder();
+    const doc = decoder.decode(bytes, { stream: true });
+    let loaded = bytes.byteLength;
+    let total = size;
     const name = basename(ctx.path);
     if (/\.(md|markdown)$/i.test(name)) toolbar(el, [['Preview', () => ctx.switchTo('markdown')]]);
     if (partial) {
@@ -131,6 +137,29 @@ export const textKind = {
       v.dispatch({ selection: { anchor: a.from, head: b.to }, scrollIntoView: true });
       ctx.onLines(a.number, b.number);
     }
+    // logs open at their end and follow; any file follows while scrolled to its end
+    const atEnd = () => {
+      const s = view.scrollDOM;
+      return s.scrollTop + s.clientHeight >= s.scrollHeight - 4;
+    };
+    const toEnd = () => view.dispatch({ effects: EditorView.scrollIntoView(view.state.doc.length, { y: 'end' }) });
+    // following: at the end, and kept there as the file grows, until scrolled away from it
+    let following = LOGS.test(name) && !partial;
+    if (following) requestAnimationFrame(toEnd);
+    // only scrolling the reader does counts: CodeMirror measuring lines also moves the
+    // scroll position, and must not stop the following
+    let touched = 0;
+    for (const ev of ['wheel', 'pointerdown', 'keydown', 'touchstart']) {
+      view.scrollDOM.addEventListener(ev, () => (touched = Date.now()), { passive: true });
+    }
+    view.scrollDOM.addEventListener('scroll', () => {
+      if (Date.now() - touched > 1000) return;
+      const now = atEnd();
+      if (now !== following) {
+        following = now;
+        ctx.onStatus();
+      }
+    });
     const onTheme = () => view.dispatch({ effects: themes.reconfigure(theme()) });
     dark.addEventListener('change', onTheme);
     return {
@@ -138,7 +167,29 @@ export const textKind = {
         dark.removeEventListener('change', onTheme);
         view.destroy();
       },
-      status: () => `${cursor} · ${view.state.doc.lines} lines${partial ? ' (first part)' : ''}`,
+      status: () =>
+        `${cursor} · ${view.state.doc.lines} lines${partial ? ` (first part of ${formatSize(total)})` : ''}${!partial && following ? ' · following' : ''}`,
+      async follow(next: Stat) {
+        const grown = next.size ?? 0;
+        if (partial) {
+          // the first part does not change as a log grows; its end is the paged view's job
+          total = grown;
+          return true;
+        }
+        if (grown <= loaded) return false; // rewritten or truncated: load it again
+        const res = await fetch(rawUrl(ctx.path), { headers: { Range: `bytes=${loaded}-${grown - 1}` } });
+        if (res.status !== 206) return false;
+        const more = new Uint8Array(await res.arrayBuffer());
+        const stick = following || atEnd();
+        view.dispatch({ changes: { from: view.state.doc.length, insert: decoder.decode(more, { stream: true }) } });
+        loaded += more.byteLength;
+        total = loaded;
+        if (stick) {
+          following = true;
+          toEnd();
+        }
+        return true;
+      },
       reveal(from, to = from) {
         const doc = view.state.doc;
         const a = doc.line(Math.max(1, Math.min(from, doc.lines)));

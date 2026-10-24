@@ -6,12 +6,17 @@
 import { dv, type DockviewApi, type IDockviewPanel, type GroupPanelPartInitParameters, type TabPartInitParameters, type IContentRenderer, type ITabRenderer, type PanelUpdateEvent, type Parameters, type IWatermarkRenderer, type IHeaderActionsRenderer, type DockviewGroupPanel } from './dockview';
 import { api, basename, formatSize, formatTime, ApiError, type Stat } from './api';
 import { pick, byName, message, type Context, type Viewer } from './viewers/registry';
+import type { Change } from './live';
 
 export interface Params extends Parameters {
   path: string;
   pinned?: boolean;
   /** a viewer chosen by hand (open as text, source) */
   kind?: string;
+  /** changed on disk while the tab was not in view */
+  changed?: boolean;
+  /** deleted on disk */
+  gone?: boolean;
 }
 
 export interface Status {
@@ -55,6 +60,9 @@ class Tab implements ITabRenderer {
     this.title.textContent = basename(p.path);
     this.element.title = p.path;
     this.element.classList.toggle('yw-preview', !p.pinned);
+    this.element.classList.toggle('yw-changed', !!p.changed);
+    this.element.classList.toggle('yw-gone', !!p.gone);
+    this.element.title = p.gone ? `${p.path} (deleted on disk)` : p.path;
   }
 }
 
@@ -75,14 +83,41 @@ class Panel implements IContentRenderer {
   init(p: GroupPanelPartInitParameters) {
     this.api = p.api;
     this.params = p.params as Params;
+    // a tab brought into view has been seen
+    p.api.onDidVisibilityChange((e) => {
+      if (e.isVisible && this.params.changed) this.api.updateParameters({ changed: false });
+    });
     void this.load();
   }
 
   update(e: PanelUpdateEvent) {
     const next = { ...this.params, ...e.params } as Params;
     const reload = next.path !== this.params.path || next.kind !== this.params.kind;
+    if (next.path !== this.params.path) this.bench.watchChanged();
     this.params = next;
     if (reload) void this.load();
+  }
+
+  /** The file changed on disk: show it in place when the viewer can, else load it again. */
+  async changed(c: Change) {
+    if (!c.exists) {
+      if (!this.params.gone) this.api.updateParameters({ gone: true });
+      this.bench.refreshStatus();
+      return;
+    }
+    const s = this.stat;
+    if (!this.params.gone && s && s.size === c.size && s.mtime === c.mtime) return; // nothing new
+    if (this.params.gone) this.api.updateParameters({ gone: false });
+    const next: Stat | undefined = s && { ...s, size: c.size, mtime: c.mtime };
+    const shown = next && this.viewer?.follow ? await this.viewer.follow(next).catch(() => false) : false;
+    if (shown) this.stat = next;
+    else await this.load();
+    if (!this.api.isVisible) this.api.updateParameters({ changed: true });
+    this.bench.refreshStatus();
+  }
+
+  get gone() {
+    return !!this.params.gone;
   }
 
   private pin() {
@@ -99,7 +134,11 @@ class Panel implements IContentRenderer {
 
   status(): Status {
     const s = this.stat;
-    const left = s ? [formatSize(s.size), formatTime(s.mtime)].filter(Boolean).join(' · ') : '';
+    const left = this.params.gone
+      ? 'deleted on disk'
+      : s
+        ? [formatSize(s.size), formatTime(s.mtime)].filter(Boolean).join(' · ')
+        : '';
     return { path: this.params.path, left, right: this.viewer?.status?.() ?? '' };
   }
 
@@ -184,6 +223,8 @@ export class Workbench {
     private storageKey: string,
     private onStatus: (s: Status | null) => void,
     private onActive: (path: string | null) => void,
+    /** the set of open files changed */
+    private onWatch: () => void,
   ) {
     this.api = dv.createDockview(el, {
       theme: theme(),
@@ -202,7 +243,11 @@ export class Workbench {
       this.onActive(panel?.path ?? null);
       this.refreshStatus();
     });
-    this.api.onDidRemovePanel((p) => this.panels.delete(p.id));
+    this.api.onDidRemovePanel((p) => {
+      this.panels.delete(p.id);
+      this.onWatch();
+    });
+    this.api.onDidAddPanel(() => this.onWatch());
     let timer: number | undefined;
     this.api.onDidLayoutChange(() => {
       window.clearTimeout(timer);
@@ -214,6 +259,20 @@ export class Workbench {
         this.splitRight(this.api.activePanel);
       }
     });
+  }
+
+  watchChanged() {
+    this.onWatch();
+  }
+
+  /** The paths the open tabs show. */
+  paths(): string[] {
+    return [...new Set([...this.panels.values()].map((p) => p.path))];
+  }
+
+  /** A watched file changed: every tab that shows it follows. */
+  fileChanged(c: Change) {
+    for (const panel of this.panels.values()) if (panel.path === c.path) void panel.changed(c);
   }
 
   private active(): Panel | undefined {

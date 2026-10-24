@@ -68,6 +68,17 @@ register({
     rewrite(body, ctx);
     scroll.append(body);
     el.append(scroll);
-    return { status: () => (rendered.id ? `page ${rendered.id}` : 'markdown') };
+    return {
+      status: () => (rendered.id ? `page ${rendered.id}` : 'markdown'),
+      // rendered again in place, keeping the scroll position
+      async follow() {
+        const again = await api.render(ctx.path);
+        const top = scroll.scrollTop;
+        body.innerHTML = again.html;
+        rewrite(body, ctx);
+        scroll.scrollTop = top;
+        return true;
+      },
+    };
   },
 });

@@ -8,6 +8,7 @@ import './viewers/binary';
 import { api } from './api';
 import { Tree } from './tree';
 import { Workbench, parseHash, type Status } from './workbench';
+import { Live } from './live';
 
 const WIDTH_KEY = 'yajna-files:sidebar';
 
@@ -20,19 +21,52 @@ async function main() {
   const statusPath = document.querySelector('#status-path')!;
   const statusLeft = document.querySelector('#status-left')!;
   const statusRight = document.querySelector('#status-right')!;
+  const statusLive = document.querySelector('#status-live') as HTMLElement;
+  const modes = new Map(roots.map((r) => [r.name, r.live]));
+  let stream: 'live' | 'connecting' | 'idle' = 'idle';
+  let shown: Status | null = null;
+  // how the active file is kept current: by events, by polling, or not at all
+  const showLive = () => {
+    const mode = shown ? modes.get(shown.path.split('/')[0]) : undefined;
+    const text =
+      !shown || !mode
+        ? ''
+        : mode === 'off'
+          ? 'not live'
+          : stream === 'connecting'
+            ? 'reconnecting…'
+            : mode === 'poll'
+              ? 'live, polled every 2 s'
+              : 'live';
+    statusLive.textContent = text;
+    statusLive.className = text.startsWith('live') ? 'on' : '';
+  };
   const showStatus = (s: Status | null) => {
+    shown = s;
     statusPath.textContent = s?.path ?? '';
     statusLeft.textContent = s?.left ?? '';
     statusRight.textContent = s?.right ?? '';
+    showLive();
   };
 
   let bench: Workbench;
-  const tree = new Tree(roots, (path, pin) => bench.open(path, { pin }));
+  const live = new Live(
+    (c) => (c.kind === 'dir' ? tree.dirChanged(c) : bench.fileChanged(c)),
+    (s) => ((stream = s), showLive()),
+  );
+  const watch = () => live.set([...bench.paths(), ...tree.expanded()]);
+  const tree = new Tree(roots, (path, pin) => bench.open(path, { pin }), () => watch());
   document.querySelector('#sidebar')!.append(tree.element);
 
-  bench = new Workbench(document.querySelector('#editor')!, `yajna-files:${info.notebook}`, showStatus, (path) => {
-    if (path && parseHash(location.hash)?.path !== path) history.replaceState(null, '', `#${encodeURI(path)}`);
-  });
+  bench = new Workbench(
+    document.querySelector('#editor')!,
+    `yajna-files:${info.notebook}`,
+    showStatus,
+    (path) => {
+      if (path && parseHash(location.hash)?.path !== path) history.replaceState(null, '', `#${encodeURI(path)}`);
+    },
+    () => watch(),
+  );
   // the file a link asked for: read before the saved layout is restored, because
   // restoring activates the last tab, and that rewrites the URL
   const requested = location.hash;

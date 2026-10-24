@@ -43,6 +43,20 @@ read, because ignored files are usually what a run produced. Symlinks are follow
   `/files/#code/g2a/train.py:L12-30` to paste into a log line or a message.
 - The tabs and splits are remembered per notebook in the browser.
 
+## Live
+
+What is open stays current while runs write. A log opened in the viewer starts at its end
+and follows as lines arrive, as long as you have not scrolled up; a plot that is
+rewritten is redrawn at the same zoom; rendered markdown is rendered again in place. A
+new file appears in an expanded directory and a deleted one disappears, without closing
+what is expanded below it. A tab not in view that changed gets a dot, and a file deleted
+on disk is struck through in its tab.
+
+Changes arrive in about a quarter of a second where the filesystem reports them, and
+within a second or two where it does not: network storage (NFS, Lustre, SMB, GPFS and the
+like) is polled, and so is any root with `watch = "poll"`. The status line says which:
+*live*, *live, polled every 2 s*, or *not live* for a root with `watch = "off"`.
+
 ## Viewers
 
 | Files | Shown as |

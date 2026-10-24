@@ -9,6 +9,8 @@ export interface Viewer {
   status?(): string;
   /** select lines and scroll to them (1-based, inclusive) */
   reveal?(from: number, to?: number): void;
+  /** the file changed on disk: show `next` in place and say so, or false to be reloaded */
+  follow?(next: Stat): Promise<boolean>;
 }
 
 export interface Context {

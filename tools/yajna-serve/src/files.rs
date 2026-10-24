@@ -148,22 +148,22 @@ fn bad_request(msg: impl Into<String>) -> ApiError {
 }
 
 /// A request path resolved on disk.
-struct Target<'a> {
-    root: &'a Root,
-    abs: PathBuf,
+pub(crate) struct Target<'a> {
+    pub(crate) root: &'a Root,
+    pub(crate) abs: PathBuf,
     /// below the root, `/`-separated; empty for the root itself
     rel: String,
     /// (device, inode) of every directory from the root down, this one included when it is
     /// a directory
     ancestry: Vec<(u64, u64)>,
-    meta: fs::Metadata,
+    pub(crate) meta: fs::Metadata,
 }
 
 fn id(m: &fs::Metadata) -> (u64, u64) {
     (m.dev(), m.ino())
 }
 
-fn resolve<'a>(roots: &'a [Root], path: &str) -> Result<Target<'a>, ApiError> {
+pub(crate) fn resolve<'a>(roots: &'a [Root], path: &str) -> Result<Target<'a>, ApiError> {
     let path = path.strip_suffix('/').unwrap_or(path);
     let mut segments = path.split('/');
     let name = segments.next().unwrap_or("");
@@ -248,6 +248,9 @@ struct Entry {
 #[derive(Serialize)]
 struct Listing {
     path: String,
+    /// the directory's own mtime: a change event for it is news only when this differs
+    #[serde(skip_serializing_if = "Option::is_none")]
+    mtime: Option<u64>,
     total: usize,
     entries: Vec<Entry>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -353,6 +356,7 @@ fn list(roots: &[Root], cache: &Cache, path: &str, cursor: usize) -> Result<List
     let next = (cursor + PAGE < all.len()).then_some(cursor + PAGE);
     Ok(Listing {
         path: path.trim_end_matches('/').to_string(),
+        mtime: millis(t.meta.modified()),
         total: all.len(),
         entries,
         next,
@@ -603,6 +607,8 @@ struct RootInfo {
     path: String,
     exists: bool,
     watch: &'static str,
+    /// how changes reach the viewer here: notify, poll or off
+    live: &'static str,
 }
 
 pub(crate) async fn roots_handler(State(app): State<crate::App>) -> Response {
@@ -614,6 +620,7 @@ pub(crate) async fn roots_handler(State(app): State<crate::App>) -> Response {
             path: r.path.display().to_string(),
             exists: r.path.is_dir(),
             watch: r.watch.as_str(),
+            live: crate::live::Live::of(r.watch, &r.path).as_str(),
         })
         .collect();
     Json(roots).into_response()

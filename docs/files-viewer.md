@@ -1,8 +1,9 @@
 # The files viewer and `yajna serve`
 
-Status: design v0.2, 2026-10-23; steps 1 to 3 built (yajna 0.7.0). Companion to `architecture.md`
-(sections 6 and 11). Decisions: ADR-0027 (`yajna serve`), ADR-0028 (what the viewer shows
-and how it stays live), ADR-0029 (the frontend). Experiments: section 10.
+Status: design v0.3, 2026-10-24; steps 1 to 4 built (yajna 0.8.0). Companion to
+`architecture.md` (sections 6 and 11). Decisions: ADR-0027 (`yajna serve`), ADR-0028
+(what the viewer shows and how it stays live), ADR-0029 (the frontend). Experiments:
+section 10.
 
 ## 1. What it is for
 
@@ -179,16 +180,31 @@ fast.
 
 ### 5.5 Live updates
 
-- The watcher (`notify`, inotify on Linux, FSEvents on macOS) watches only what clients
-  ask for: each open file's directory and each expanded directory, non-recursively. That
-  stays far below inotify's per-user watch limit however big the roots are.
-- Events are debounced (250 ms) and coalesced per path before they go out over SSE, so a
-  log written line by line produces a few `changed` events a second, not thousands.
-- `watch = "auto"` uses notify unless the root sits on a filesystem where events from
-  other machines are not delivered (NFS, Lustre, GPFS, SMB, found with `statfs` on Linux).
-  Then, and with `watch = "poll"`, the server polls the watched paths' size and mtime
-  every 2 s. `watch = "off"` sends nothing; the UI shows a refresh button.
-  `EXP-20261023-kjtrwp` checks this on the storage runs really write to.
+- **One stream per page.** `GET /api/events?watch=<path>&watch=…` names the open files and
+  expanded directories; the page opens a new stream, 300 ms after the set last changed,
+  whenever a tab opens or closes or a directory is expanded or collapsed. On connecting,
+  the server sends every path's current state, so nothing that changed between the page
+  loading and subscribing is missed, and EventSource's own reconnection is safe.
+- **One `change` event shape**: `{path, kind: file|dir, exists, size?, mtime?}`.
+- **Change is decided by comparison.** A file has changed when its existence, size or
+  mtime differs from what was last sent, a directory when its existence or mtime does.
+  Filesystem events only say when to look, so a missed or spurious event costs latency,
+  never a wrong update.
+- **When to look.** The watcher (`notify`: inotify on Linux, FSEvents on macOS) watches
+  only each open file's directory and each expanded directory, non-recursively, far below
+  inotify's per-user limit however big the roots are; its events are debounced 250 ms.
+  Open files are also looked at every second, because macOS reports writes to a file a
+  process keeps open (a run's log) only when it is closed (`RUN-20261024-p44p6z`).
+  Directories in poll mode are looked at every 2 s, and everything every 30 s in case an
+  event was lost. A path the watcher cannot take (out of watches) falls back to polling.
+- **`watch = "auto"`** uses notify unless the path sits on a filesystem where events from
+  other machines do not arrive: by `statfs` type on Linux (NFS, SMB/CIFS, Lustre, GPFS,
+  BeeGFS, Ceph, AFS, 9p, FUSE), by the absence of `MNT_LOCAL` on macOS. Then, and with
+  `watch = "poll"`, it polls. `watch = "off"` sends a path's state once and nothing after.
+  `/api/files/roots` reports what each root gets as `live`.
+- **Measured on the laptop** (APFS): an append reaches the page in 266 ms through events
+  and 0.5 s polled; a log written through one open handle updates about once a second.
+  The cluster's shared storage is still to measure (`EXP-20261023-kjtrwp`).
 - SSE carries a heartbeat every 15 s so that tunnels and proxies keep the connection.
 
 ## 6. The frontend: `tools/yajna-serve/ui`
