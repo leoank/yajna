@@ -4,7 +4,7 @@ type: experiment
 schema_version: 1
 title: Does file watching see what runs write, on the storage they write to?
 project: PRJ-0001
-status: planned           # planned | active | paused | concluded | abandoned
+status: active            # planned | active | paused | concluded | abandoned
 outcome: null             # null | positive | negative | inconclusive | infra
 influenced_by: []
 created: 2026-10-23
@@ -50,6 +50,13 @@ writes from the same host are missed too, polling is the only option on it.
 ## Runs
 One line per run after its link, what was tried and what it showed; `yajna validate`
 rejects a bare link here. Metric runs also land in results.tsv.
+
+- [[RUN-20261024-p44p6z]] the laptop, APFS: appends arrive in 264 ms through events and
+  1.5 s polled, none missed; but a log written through one open handle produced events
+  only when opened and closed, so a running job's log would have waited 30 s.
+- [[RUN-20261024-p68f0e]] after looking at open files every second: the same log updates
+  about once a second, polled appends arrive in 0.5 s. The cluster's storage, from the
+  login node and from a compute node, is still to run.
 
 ## Conclusion
 Written once, by a human, when status becomes `concluded`.

@@ -54,7 +54,7 @@ open items with the rest.
 - [x] Phase 1c step 1: `tools/` as a Cargo workspace; `yajna-serve` (axum) serves the site; `yajna serve`, `site --serve` its alias
 - [x] Phase 1c step 2: `[files]` roots in `yajna.toml`; the read-only file API with ranges, path and Host checks ([[EXP-20261023-kjtach]])
 - [x] Phase 1c step 3: the UI (dockview, CodeMirror, markdown, images), the Nix-built committed bundle, files links from the site ([[EXP-20261023-kjv5wy]])
-- [ ] Phase 1c step 4: live: watch or poll, SSE, follow mode ([[EXP-20261023-kjtrwp]])
+- [x] Phase 1c step 4: live: watch or poll, SSE, follow mode ([[EXP-20261023-kjtrwp]])
 - [ ] Phase 1c step 5: the paged viewer for files above the cap
 - [ ] Phase 1c verified: ank follows an agent's run on a remote machine from the laptop ([[EXP-20261023-kjvkas]])
 - [ ] Phase 2: data and runs (git-annex, `ART` pages, `experiment` and `autoresearch` commands)
@@ -137,6 +137,9 @@ What was tried and dropped, and why, so nobody tries it again.
 - A listing that stats every entry is four times slower than one that takes the type
   `readdir` already returns, and a sort comparator that allocates is slower still; a
   million-entry directory took 15 s before both were fixed ([[RUN-20261023-pjazct]]).
+- A watcher that waits for filesystem events misses a log a process keeps open: macOS's
+  FSEvents reported 2 000 lines written through one handle only when the file was opened
+  and closed. Open files are looked at every second as well ([[RUN-20261024-p44p6z]]).
 
 ## Experiments
 One line per experiment after its link, what it asks and what came of it; `yajna validate`
@@ -146,6 +149,6 @@ rejects a bare link here. Newest last.
 - [[EXP-20261023-cy5j5f]] do folder mirroring and pandoc citations work against the real Drive; every check passed in one run, conclusion pending
 - [[EXP-20261023-ftnatx]] does `mirror` sync bring a person's edits in a real doc back into the page; the scripted cycle passed, the hand edit is ank's to do
 - [[EXP-20261023-kjtach]] can `yajna serve` list a million-entry directory and read ranges of a 10 GB file fast enough; on the laptop, after a fix it found, 0.3 s at 100 000 entries and 4 s at a million (the disk's own floor), ranges 0.2 ms; rogue and the cluster to run
-- [[EXP-20261023-kjtrwp]] does filesystem watching see what runs write, per filesystem and host; planned, before step 4
+- [[EXP-20261023-kjtrwp]] does filesystem watching see what runs write, per filesystem and host; on the laptop events take 0.27 s and polling 0.5 s once open files are looked at every second, since macOS holds back writes to an open file; the cluster's storage still to run
 - [[EXP-20261023-kjv5wy]] how large a file the CodeMirror viewer handles, the bundle size and the binary growth; planned; first numbers from step 3: 230 KB gzipped on first load, the binary 11.5 to 13.6 MB, large files still to test
 - [[EXP-20261023-kjvkas]] can ank follow an agent's run on a remote machine from the laptop without a shell; planned, the Phase 1c verification

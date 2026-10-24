@@ -1,0 +1,8 @@
+machine: Darwin arm64, Apple M3 Max
+filesystem: apfsapfs
+yajna: yajna 0.7.1 at 43baa5d+dirty
+watched (notify)  append to event, median / max         266 / 267 ms, 0 missed of 20
+                  burst of 2000 lines over 3.2 s        4 events, 1.2 a second; last size seen
+polled (poll)     append to event, median / max         495 / 786 ms, 0 missed of 20
+                  burst of 2000 lines over 2.7 s        4 events, 1.5 a second; last size seen
+===RESULT=== {"watched_median_ms": 266, "watched_missed": 0, "watched_burst_events_per_s": 1.2, "polled_median_ms": 495, "polled_missed": 0, "polled_burst_events_per_s": 1.5}
