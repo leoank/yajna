@@ -659,7 +659,7 @@ fn cites(page: &Page) -> bool {
 /// last section. Pandoc's own markdown, with lists allowed straight after a paragraph as in
 /// CommonMark; in-page citation links are left out because they do not survive the import.
 fn pandoc_html(body: &str, bibs: &[PathBuf]) -> Res<String> {
-    let mut cmd = Command::new("pandoc");
+    let mut cmd = Command::new(pandoc_on_path().ok_or_else(|| NO_PANDOC.to_string())?);
     cmd.args([
         "-f",
         "markdown+lists_without_preceding_blankline",
@@ -750,6 +750,16 @@ fn latex_marks(bib: &str) -> String {
     out
 }
 
+const NO_PANDOC: &str = "it cites papers, and rendering citations needs pandoc on PATH";
+
+/// pandoc on PATH, looked up before spawning: under qemu-user a failed exec is not reported
+/// to the parent, and the child exits 127 instead of the spawn failing as not found.
+fn pandoc_on_path() -> Option<PathBuf> {
+    std::env::split_paths(&std::env::var_os("PATH")?)
+        .map(|dir| dir.join("pandoc"))
+        .find(|p| p.is_file())
+}
+
 fn run_pandoc(mut cmd: Command, body: &str) -> Res<String> {
     let mut child = cmd
         .stdin(Stdio::piped())
@@ -757,9 +767,7 @@ fn run_pandoc(mut cmd: Command, body: &str) -> Res<String> {
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|e| match e.kind() {
-            std::io::ErrorKind::NotFound => {
-                "it cites papers, and rendering citations needs pandoc on PATH".to_string()
-            }
+            std::io::ErrorKind::NotFound => NO_PANDOC.to_string(),
             _ => format!("pandoc: {e}"),
         })?;
     let input = format!(
@@ -776,10 +784,12 @@ fn run_pandoc(mut cmd: Command, body: &str) -> Res<String> {
         .wait_with_output()
         .map_err(|e| format!("pandoc: {e}"))?;
     if !out.status.success() {
-        return Err(format!(
-            "pandoc: {}",
-            String::from_utf8_lossy(&out.stderr).trim()
-        ));
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        let why = match stderr.trim() {
+            "" => out.status.to_string(),
+            s => s.to_string(),
+        };
+        return Err(format!("pandoc: {why}"));
     }
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
