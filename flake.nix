@@ -12,7 +12,7 @@
         # The yajna CLI (ADR-0017): one static binary with schema/ and templates/ embedded.
         yajna = pkgs.rustPlatform.buildRustPackage {
           pname = "yajna";
-          version = "0.8.1";
+          version = "0.8.2";
           src = self;
           # the workspace: the CLI and the yajna-serve library it links (ADR-0027)
           sourceRoot = "source/tools";
