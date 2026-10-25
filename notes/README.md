@@ -31,7 +31,9 @@ open items with the rest.
 - [x] Phase 0b: `packages.yajna` installed through neusis
 - [x] Phase 0b: a tagged release, v0.2.0, with binaries for Linux and macOS
 - [ ] Phase 0b: a machine without Nix running `init project`, `new` and `validate` from the release binary
-- [ ] Phase 0b: rc2s2 graduates by the documented procedure and both repos validate
+- [x] Phase 0b: rc2s2 graduates by the documented procedure and both repos validate
+  (2026-10-25: manthan PRJ-0002 is now github:leoank/rc2s2 as rc2s2/PRJ-0001; the lab paths
+  graduate left in run pages and scripts were fixed in yajna 0.8.2 and in the rc2s2 repo)
 - [x] Phase 0c: the Neovim plugin
 - [x] Phase 1: the index, `show`, `timeline`, `tree` and `runs`, the static site with `--serve`, CI (ADR-0019)
 - [x] Agent tooling: the Claude Code plugin (skill and `/yajna:project` commands), agents as authors, reproducible runs
