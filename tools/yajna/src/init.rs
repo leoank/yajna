@@ -226,6 +226,14 @@ pub fn import_project(
     let mut rename = BTreeMap::new();
     rename.insert(prj.to_string(), SOLE_PROJECT.to_string());
     let rewrite = |text: &str| rewrite_ids(text, &keep, &rename, &lab_ns);
+    // Paths in pages and their sidecars (a run's `script`, the commands in a run script)
+    // name the lab's layout: the project directory becomes notes/, the code directory the root.
+    let project_dir = rel(&src, &lab.root);
+    let code = page
+        .field("code")
+        .filter(|c| !c.contains(':'))
+        .map(|c| c.trim_end_matches('/').to_string());
+    let paths = |text: &str| rewrite_paths(text, &project_dir, code.as_deref());
 
     let lab_url = lab_url.or_else(|| remote_url(&lab.root));
     let lab_entry = repo_entry(lab_url.as_deref(), &relative(root, &lab.root));
@@ -243,7 +251,7 @@ pub fn import_project(
         }
         if f.extension().map(|e| e == "md").unwrap_or(false) {
             let text = fs::read_to_string(f).map_err(|e| format!("{}: {e}", f.display()))?;
-            let mut text = rewrite(&text);
+            let mut text = paths(&rewrite(&text));
             if r == Path::new("README.md") {
                 text = edit_frontmatter(&text, |lines| {
                     set_field(lines, "code", ".");
@@ -263,7 +271,16 @@ pub fn import_project(
             fs::write(&target, text).map_err(|e| format!("{}: {e}", target.display()))?;
             pages += 1;
         } else {
-            fs::copy(f, &target).map_err(|e| format!("{}: {e}", target.display()))?;
+            match fs::read_to_string(f) {
+                Ok(text) => fs::write(&target, paths(&text)),
+                Err(_) => fs::copy(f, &target).map(|_| ()),
+            }
+            .map_err(|e| format!("{}: {e}", target.display()))?;
+            #[cfg(unix)]
+            {
+                let mode = fs::metadata(f).map_err(|e| e.to_string())?.permissions();
+                fs::set_permissions(&target, mode).map_err(|e| e.to_string())?;
+            }
         }
         println!("copied {}", rel(&target, root));
     }
@@ -299,6 +316,52 @@ pub fn import_project(
         cited.len()
     );
     Ok(())
+}
+
+/// Lab paths in an imported file, as the project repo has them: `project_dir` (the
+/// project's notebook directory, relative to the lab root) becomes `notes`, and `code` (its
+/// code directory) the repo root. A path matches only as a whole relative path, so
+/// `code/x` leaves `code/xy` and `/abs/code/x` alone.
+fn rewrite_paths(text: &str, project_dir: &str, code: Option<&str>) -> String {
+    let text = replace_path(text, project_dir, |dotted, slash| match (dotted, slash) {
+        (true, true) => "./notes/",
+        (true, false) => "./notes",
+        (false, true) => "notes/",
+        (false, false) => "notes",
+    });
+    match code {
+        Some(code) => replace_path(&text, code, |dotted, slash| match (dotted, slash) {
+            (true, true) => "./",
+            (false, true) => "",
+            _ => ".",
+        }),
+        None => text,
+    }
+}
+
+/// Replace each whole relative path `from` (optionally written `./from`, optionally followed
+/// by `/`) with `to(dotted, slash)`.
+fn replace_path(text: &str, from: &str, to: impl Fn(bool, bool) -> &'static str) -> String {
+    let in_path = |c: char| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | '/' | '$');
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(i) = rest.find(from) {
+        let (before, after) = (&rest[..i], &rest[i + from.len()..]);
+        let dotted = before.ends_with("./") && !before[..i - 2].ends_with(in_path);
+        let starts = dotted || !before.ends_with(in_path);
+        let ends = !after.starts_with(|c: char| in_path(c) && c != '/');
+        if !(starts && ends) {
+            out.push_str(&rest[..i + from.len()]);
+            rest = after;
+            continue;
+        }
+        let slash = after.starts_with('/');
+        out.push_str(&before[..if dotted { i - 2 } else { i }]);
+        out.push_str(to(dotted, slash));
+        rest = if slash { &after[1..] } else { after };
+    }
+    out.push_str(rest);
+    out
 }
 
 /// `(prefix, number)` of a curated ID such as `EXP-0007`; volume IDs give None.
@@ -711,6 +774,23 @@ mod tests {
             out,
             "---\nid: EXP-0001\nproject: PRJ-0001\nprotocols: [yajna/PRO-0012, yajna/PRO-0013]\nmaterials: []\n---\nSee [[yajna/PRO-0012@3|the protocol]], [[RUN-20261016-abcd]], [[PRJ-0001]] and [[yajna/MAT-0001]]; bare MAT-0002 stays.\n"
         );
+    }
+
+    #[test]
+    fn lab_paths_become_project_paths() {
+        let dir = "notes/projects/PRJ-0002-x";
+        let text = "script: notes/projects/PRJ-0002-x/runs/RUN-1/run.sh  # c\n\
+                    nix develop ./code/x -c notes/projects/PRJ-0002-x/runs/RUN-1/run.sh\n\
+                    project=code/x\ncargo run --manifest-path code/x/Cargo.toml\n\
+                    cd ./code/x/crates; ls code/xy /abs/code/x my-code/x `code/x`\n";
+        assert_eq!(
+            rewrite_paths(text, dir, Some("code/x")),
+            "script: notes/runs/RUN-1/run.sh  # c\n\
+             nix develop . -c notes/runs/RUN-1/run.sh\n\
+             project=.\ncargo run --manifest-path Cargo.toml\n\
+             cd ./crates; ls code/xy /abs/code/x my-code/x `.`\n"
+        );
+        assert_eq!(rewrite_paths("code/x\n", dir, None), "code/x\n");
     }
 
     #[test]

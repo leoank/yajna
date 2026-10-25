@@ -92,8 +92,10 @@ yajna graduate PRJ-0002 --to github:you/rc2s2
 2. copies the project's notebook there: the project page becomes `notes/README.md` as
    `PRJ-0001` with `origin: mylab/PRJ-0002`; its experiments, runs, analyses and artifacts
    keep their IDs; links to anything that stays in the lab are rewritten with the lab's
-   namespace (`[[PRO-0012]]` becomes `[[mylab/PRO-0012]]`); reading notes and the
-   bibliography entries it cites come along,
+   namespace (`[[PRO-0012]]` becomes `[[mylab/PRO-0012]]`); paths in the pages and their
+   files follow the new layout (`notes/projects/PRJ-0002-rc2s2/runs/…` becomes
+   `notes/runs/…`, and `code/rc2s2` the repo root, so a run's `script` and its `run.sh`
+   still work); reading notes and the bibliography entries it cites come along,
 3. marks the lab's page `status: moved` with `continued_in: rc2s2/PRJ-0001`,
 4. removes the project from the lab's root flake and adds `rc2s2` to `[repos]`.
 

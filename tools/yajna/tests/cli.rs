@@ -805,6 +805,28 @@ fn init_project_from_a_lab() {
 #[test]
 fn graduate_moves_code_and_notebook() {
     let lab = lab_with_project();
+    // a run whose script and page name the lab's layout
+    let script = "notes/projects/PRJ-0002-toy-model/runs/bench/run.sh";
+    let out = lab.run(&[
+        "new",
+        "run",
+        "--experiment",
+        "EXP-20261021-000001",
+        "--script",
+        script,
+    ]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let run = lab.path(&out);
+    fs::write(
+        &run,
+        lab.read(&run) + "\nReproduce: `nix develop ./code/toy-model -c " + script + "`.\n",
+    )
+    .unwrap();
+    let mut sh = fs::OpenOptions::new()
+        .append(true)
+        .open(lab.root.join(script))
+        .unwrap();
+    writeln!(sh, "cargo run --manifest-path code/toy-model/Cargo.toml").unwrap();
     git(&lab.root, &["init", "-q", "-b", "main"]);
     git(&lab.root, &["add", "-A"]);
     git(&lab.root, &["commit", "-q", "-m", "lab"]);
@@ -847,6 +869,25 @@ fn graduate_moves_code_and_notebook() {
         .root
         .join("notes/experiments/EXP-20261021-000001-timing.md")
         .is_file());
+    // paths name the project repo's layout: notes/ for the notebook, the root for the code
+    let run = run
+        .strip_prefix(lab.root.join("notes/projects/PRJ-0002-toy-model"))
+        .unwrap();
+    let page = into.read(&into.root.join("notes").join(run));
+    assert!(page.contains("script: notes/runs/bench/run.sh"), "{page}");
+    assert!(
+        page.contains("Reproduce: `nix develop . -c notes/runs/bench/run.sh`."),
+        "{page}"
+    );
+    let sh = into.root.join("notes/runs/bench/run.sh");
+    assert!(into
+        .read(&sh)
+        .contains("cargo run --manifest-path Cargo.toml\n"));
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        assert_ne!(fs::metadata(&sh).unwrap().permissions().mode() & 0o111, 0);
+    }
 
     // the lab page points onward
     let moved = lab.read(&lab.root.join("notes/projects/PRJ-0002-toy-model/README.md"));
