@@ -59,6 +59,20 @@ open items with the rest.
 - [x] Phase 1c step 4: live: watch or poll, SSE, follow mode ([[EXP-20261023-kjtrwp]])
 - [ ] Phase 1c step 5: the paged viewer for files above the cap
 - [ ] Phase 1c verified: ank follows an agent's run on a remote machine from the laptop ([[EXP-20261023-kjvkas]])
+- [x] Phase 1d designed: code review in the notebook, `docs/review.md` (ADR-0030)
+- [ ] Phase 1d: `REV` pages, their validation and `yajna review` over branches, commit ranges and pages
+- [ ] Phase 1d: reviews of runs, experiments and phases; `yajna phase start`; re-anchoring with `review update`
+- [ ] Phase 1d: `review approve`, `merge` and `todo`; the warning in `validate --against`; the skill
+- [ ] Phase 1d: the diff view in `yajna serve --review`, behind a token
+- [ ] Phase 1d: reviews in Neovim
+- [ ] Phase 1d verified: ank reviews a real agent branch in manthan from the browser and Neovim, the agent addresses the threads, `review merge` brings it into main
+- [x] Phase 1e designed: reproducing runs, `docs/reproduce.md` (ADR-0031)
+- [ ] Phase 1e: `host`, `env`, `outputs` on runs, full SHAs, `run record`; a `done` compute run's commit must resolve; manthan's and rc2s2's runs cleaned up
+- [ ] Phase 1e: `yajna run shell` and `run clean`
+- [ ] Phase 1e: `yajna run diff` and `run reproduce`
+- [ ] Phase 1e: `--on <host>`
+- [ ] Phase 1e: `graduate` remaps run and review commits; rc2s2 remapped with `--commits-only`
+- [ ] Phase 1e verified: RUN-20261023-g78vwy reproduced from a fresh clone gives the manifest hash it recorded
 - [ ] Phase 2: data and runs (git-annex, `ART` pages, `experiment` and `autoresearch` commands)
 - [ ] Phase 2b: bench planning (run sheets, inventory, schedules)
 - [ ] Phase 3: the server and agents over HTTP and MCP
@@ -111,6 +125,9 @@ code.
 - `yajna serve` and the files viewer are designed in `docs/files-viewer.md`: a
   `yajna-serve` crate (axum) in a `tools/` workspace, linked into the one binary; the
   rendered pages stay JavaScript-free, `files/` is the one application (ADR-0027).
+- Code review is designed in `docs/review.md` (ADR-0030) and reproducing runs in
+  `docs/reproduce.md` (ADR-0031); both resolve runs, experiments and phases to commit
+  ranges the same way.
 - Future work is designed in `docs/protocol-framework.md`, `docs/protocol-corpus.md` and
   `docs/microfluidic-compiler.md`.
 

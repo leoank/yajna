@@ -36,3 +36,5 @@ one rather than an edit.
 | [0027](ADR-0027-yajna-serve.md) | `yajna serve`: the static site plus a live files section on one port; axum in a `yajna-serve` workspace crate; loopback only; JavaScript in `files/` only | accepted |
 | [0028](ADR-0028-files-roots-and-live-updates.md) | The files viewer shows named roots on disk (in or out of the repo), everything but `.git` and excludes, symlinks followed, listed lazily, kept live by watching or polling | accepted |
 | [0029](ADR-0029-files-viewer-frontend.md) | The files viewer's frontend: dockview-core, read-only CodeMirror 6, server-rendered markdown, panzoom images; a Nix-built bundle committed and embedded | accepted |
+| [0030](ADR-0030-code-review-in-the-notebook.md) | Code review in the notebook: `REV` pages over branches, ranges, pages, runs, experiments and phases; agents address, a human resolves; `review merge`; `serve --review` writes behind a token | accepted |
+| [0031](ADR-0031-reproducing-runs.md) | Reproducing runs: `yajna run shell`, `reproduce`, `diff` and `--on`; `host`, `env` and `outputs` on runs; resolvable commits; graduation remaps them | accepted |

@@ -41,6 +41,8 @@
 
 - [Architecture](design/architecture.md)
   - [The files viewer](design/files-viewer.md)
+  - [Code review](design/review.md)
+  - [Reproducing runs](design/reproduce.md)
 - [Conventions](design/conventions.md)
 - [Decision records](design/decisions/README.md)
 <!-- ADRS -->
