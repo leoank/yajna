@@ -273,11 +273,16 @@ pub enum Cmd {
         #[arg(long)]
         path: Option<PathBuf>,
     },
-    /// review a branch, a commit range or a page in the notebook: REV pages with threads
-    /// anchored to lines (ADR-0030)
+    /// review a branch, a commit range, a page, a run, an experiment or a project phase in
+    /// the notebook: REV pages with threads anchored to lines (ADR-0030)
     Review {
         #[command(subcommand)]
         action: ReviewAction,
+    },
+    /// a project's phases: the items of its Progress checklist
+    Phase {
+        #[command(subcommand)]
+        action: PhaseAction,
     },
     /// rebuild the SQLite index (a cache outside the repo; queries rebuild it when stale)
     Index,
@@ -401,15 +406,31 @@ pub enum ImportSource {
 }
 
 #[derive(Subcommand, Debug, Clone)]
+pub enum PhaseAction {
+    /// mark a Progress item as started at HEAD: appends `(since <sha>)` to its line, the
+    /// base of a review of the phase
+    Start {
+        /// PRJ-xxxx
+        project: String,
+        /// words from the item's text
+        item: Vec<String>,
+    },
+}
+
+#[derive(Subcommand, Debug, Clone)]
 pub enum ReviewAction {
     /// open a review: of a branch against its base (written on the branch, in its
-    /// worktree), of a commit range A..B, or of a page by ID
+    /// worktree), of a commit range A..B, of a page, run or experiment by ID, or of a
+    /// project's phase (PRJ-xxxx --phase "<item>")
     Open {
-        /// a branch, A..B, or a page ID
+        /// a branch, A..B, or an ID
         target: String,
         /// the branch a branch review is against
         #[arg(long, default_value = "main")]
         base: String,
+        /// with a project ID: the Progress item whose phase is reviewed (words from its text)
+        #[arg(long)]
+        phase: Option<String>,
         /// limit the diff to these paths, relative to the repo root
         #[arg(long, num_args = 1..)]
         paths: Vec<String>,
@@ -432,6 +453,8 @@ pub enum ReviewAction {
         #[arg(long)]
         target: Option<String>,
     },
+    /// move a review's head to where its target is now and re-anchor its threads
+    Update { review: String },
     /// a review's threads, or with --diff the changes under review
     Show {
         review: String,

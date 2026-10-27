@@ -61,7 +61,7 @@ open items with the rest.
 - [ ] Phase 1c verified: ank follows an agent's run on a remote machine from the laptop ([[EXP-20261023-kjvkas]])
 - [x] Phase 1d designed: code review in the notebook, `docs/review.md` (ADR-0030)
 - [x] Phase 1d: `REV` pages, their validation and `yajna review` over branches, commit ranges and pages
-- [ ] Phase 1d: reviews of runs, experiments and phases; `yajna phase start`; re-anchoring with `review update`
+- [x] Phase 1d: reviews of runs, experiments and phases; `yajna phase start`; re-anchoring with `review update`
 - [ ] Phase 1d: `review approve`, `merge` and `todo`; the warning in `validate --against`; the skill
 - [ ] Phase 1d: the diff view in `yajna serve --review`, behind a token
 - [ ] Phase 1d: reviews in Neovim

@@ -4243,3 +4243,208 @@ fn review_a_branch_a_range_and_a_page() {
     assert_eq!(out.code, 1);
     assert!(out.stderr.contains("yajna review open"), "{}", out.stderr);
 }
+
+#[test]
+fn review_a_run_an_experiment_a_phase_and_update() {
+    let lab = vault();
+    let root = lab.root.canonicalize().unwrap();
+    let commit = |msg: &str| {
+        git(&root, &["add", "notes", "code"]);
+        git(&root, &["commit", "-q", "-m", msg]);
+        git(&root, &["rev-parse", "HEAD"]).trim().to_string()
+    };
+    let out = lab.run(&["new", "project", "Toy model"]);
+    let prj = lab.path(&out);
+    let text = lab
+        .read(&prj)
+        .replace("code: null", "code: code/toy-model")
+        .replace(
+            "- [ ] \n",
+            "- [x] Setup of the model\n- [ ] Speed it up\n- [ ] Write it down\n",
+        );
+    fs::write(&prj, text).unwrap();
+    let file: Vec<String> = (1..=12).map(|i| format!("line{i} = {i}")).collect();
+    fs::create_dir_all(root.join("code/toy-model")).unwrap();
+    fs::write(root.join("code/toy-model/x.py"), file.join("\n") + "\n").unwrap();
+    git(&root, &["init", "-q", "-b", "main"]);
+    let c0 = commit("lab");
+
+    // a phase starts where it says
+    let out = lab.run(&["phase", "start", "PRJ-0001", "speed"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(
+        lab.read(&prj)
+            .contains(&format!("- [ ] Speed it up (since {})\n", &c0[..7])),
+        "{}",
+        lab.read(&prj)
+    );
+    assert_eq!(lab.run(&["phase", "start", "PRJ-0001", "it"]).code, 1);
+    assert_eq!(lab.run(&["phase", "start", "PRJ-0001", "setup"]).code, 1);
+    let c1 = commit("start");
+
+    // an experiment, and two runs at two commits
+    let out = lab.run(&[
+        "new",
+        "experiment",
+        "Does it scale",
+        "--project",
+        "PRJ-0001",
+    ]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let exp_path = lab.path(&out);
+    let exp = exp_path.file_name().unwrap().to_string_lossy()[..19].to_string();
+    commit("experiment");
+    let ran = |at: &str, started: &str| {
+        let out = lab.run(&["new", "run", "--experiment", &exp, "--kind", "compute"]);
+        assert_eq!(out.code, 0, "{}", out.stderr);
+        let path = lab.path(&out);
+        let text = lab.read(&path).replace(
+            "status: planned",
+            // quoted: a short SHA of digits alone would be a number
+            &format!("status: done\nstarted: {started}\ncommit: \"{at}\""),
+        );
+        fs::write(&path, text).unwrap();
+        path.file_stem().unwrap().to_string_lossy().to_string()
+    };
+    let mut changed = file.clone();
+    changed[1] = "line2 = 20".to_string();
+    fs::write(root.join("code/toy-model/x.py"), changed.join("\n") + "\n").unwrap();
+    let c3 = commit("faster");
+    let run1 = ran(&c3, "2026-10-21T10:00Z");
+    commit("run 1");
+    changed[2] = "line3 = 30".to_string();
+    fs::write(root.join("code/toy-model/x.py"), changed.join("\n") + "\n").unwrap();
+    let c5 = commit("fastest");
+    let run2 = ran(&c5[..7], "2026-10-21T11:00Z");
+    commit("run 2");
+
+    // a run against the run before it; the first run against the experiment's start
+    let open = |args: &[&str]| {
+        let out = lab.run(&[&["review", "open"], args].concat());
+        assert_eq!(out.code, 0, "{}", out.stderr);
+        let path = lab.path(&out);
+        (
+            path.file_name().unwrap().to_string_lossy()[..19].to_string(),
+            lab.read(&path),
+            path,
+        )
+    };
+    let (_, page, _) = open(&[&run2]);
+    assert!(
+        page.contains("  kind: run   ")
+            && page.contains(&format!("\n  ref: {run2}\n"))
+            && page.contains(&format!("base: {c3}\nhead: {c5}\n"))
+            && page.contains(&format!(
+                "Base: the commit of the previous run, [[{run1}]]."
+            ))
+            && page.contains("code/toy-model"),
+        "{page}"
+    );
+    let (rid2, _, _) = open(&[&run2]);
+    let out = lab.run(&["review", "show", &rid2, "--diff"]);
+    assert!(
+        out.stdout.contains("+line3 = 30") && !out.stdout.contains("+line2 = 20"),
+        "{}",
+        out.stdout
+    );
+    let (_, page, _) = open(&[&run1]);
+    assert!(
+        page.contains(&format!("base: {c1}\nhead: {c3}\n")),
+        "{page}"
+    );
+
+    // an open experiment runs to now; a concluded one to its last run
+    let (_, page, _) = open(&[&exp]);
+    let now = git(&root, &["rev-parse", "HEAD"]).trim().to_string();
+    assert!(
+        page.contains(&format!("base: {c1}\nhead: {now}\n")),
+        "{page}"
+    );
+    fs::write(
+        &exp_path,
+        lab.read(&exp_path)
+            .replace("status: planned", "status: concluded"),
+    )
+    .unwrap();
+    let (_, page, _) = open(&[&exp]);
+    assert!(page.contains(&format!("head: {c5}\n")), "{page}");
+
+    // a phase from its (since …) to now, then to the commit that ticked it; the next one
+    // from that tick, said to be inferred
+    let (_, page, _) = open(&["PRJ-0001", "--phase", "speed"]);
+    assert!(
+        page.contains("\n  ref: PRJ-0001\n  phase: Speed it up\nbase: ")
+            && page.contains(&format!("base: {c0}\nhead: {now}\n")),
+        "{page}"
+    );
+    fs::write(
+        &prj,
+        lab.read(&prj)
+            .replace("- [ ] Speed it up", "- [x] Speed it up"),
+    )
+    .unwrap();
+    let ticked = commit("sped up");
+    let (_, page, _) = open(&["PRJ-0001", "--phase", "speed"]);
+    assert!(page.contains(&format!("head: {ticked}\n")), "{page}");
+    let (_, page, _) = open(&["PRJ-0001", "--phase", "write"]);
+    assert!(
+        page.contains(&format!("base: {ticked}\n"))
+            && page.contains(
+                "Base inferred: the commit that ticked the item before it, \"Speed it up\""
+            ),
+        "{page}"
+    );
+    let out = lab.run(&["review", "open", "PRJ-0001", "--phase", "it"]);
+    assert_eq!(out.code, 1);
+    assert!(
+        out.stderr.contains("Progress items; say more"),
+        "{}",
+        out.stderr
+    );
+
+    // update: a thread follows its lines through a rename; one whose lines went is outdated
+    fs::write(
+        &exp_path,
+        lab.read(&exp_path)
+            .replace("status: concluded", "status: active"),
+    )
+    .unwrap();
+    commit("reopened");
+    let (rid, _, rpath) = open(&[&exp]);
+    commit("review");
+    let at = |at: &str| {
+        let out = lab.run(&["review", "comment", &rid, "--at", at, "look"]);
+        assert_eq!(out.code, 0, "{}", out.stderr);
+    };
+    at("code/toy-model/x.py:9-10");
+    at("code/toy-model/x.py:5");
+    at(&format!("{}#Question", rel_of(&lab.root, &exp_path)));
+    lab.run(&["review", "comment", &rid, "in general"]);
+    commit("comments");
+    git(&root, &["mv", "code/toy-model/x.py", "code/toy-model/y.py"]);
+    let mut moved = vec!["import os".to_string(), "import sys".to_string()];
+    moved.extend(changed.iter().filter(|l| !l.starts_with("line5 ")).cloned());
+    fs::write(root.join("code/toy-model/y.py"), moved.join("\n") + "\n").unwrap();
+    let c9 = commit("renamed");
+    let out = lab.run(&["review", "update", &rid]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let page = lab.read(&rpath);
+    let s = &c9[..7];
+    assert!(
+        page.contains(&format!("head: {c9}\n"))
+            && page.contains(&format!("### T1 (open) code/toy-model/y.py:10-11 @ {s}\n"))
+            && page.contains("### T2 (outdated) code/toy-model/x.py:5 @ ")
+            && page.contains(&format!("#Question @ {s}\n"))
+            && page.contains("### T4 (open) general\n"),
+        "{}\n{page}",
+        out.stdout
+    );
+    let out = lab.run(&["review", "update", &rid]);
+    assert!(out.stdout.contains("already"), "{}", out.stdout);
+    let out = lab.run(&["validate"]);
+    assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
+}
+
+fn rel_of(root: &Path, p: &Path) -> String {
+    p.strip_prefix(root).unwrap().to_string_lossy().to_string()
+}

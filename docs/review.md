@@ -1,6 +1,6 @@
 # Code review in the notebook
 
-Status: design v0.2, 2026-10-27; step 1 built (yajna 0.10.0). Companion to `architecture.md` (section 11,
+Status: design v0.3, 2026-10-27; steps 1 and 2 built (yajna 0.10.0, 0.11.0). Companion to `architecture.md` (section 11,
 Phase 1d) and `reproduce.md`, which shares its commit resolution. Decision: ADR-0030.
 
 ## 1. What it is for
@@ -108,10 +108,10 @@ is reviewed is `git diff base head -- paths`. Resolution is shared with `yajna r
 |---|---|---|---|---|
 | branch | a branch name, `--base` defaulting to `main` | merge base of the two | the branch tip | everything |
 | range | `A..B` | A | B | everything, or `--paths` |
-| page | any page ID | the commit of the last approved review of that page, else the one that created it | the current commit | the page and its directory |
-| run | `RUN-…` | the `commit` of the previous run of the same experiment, by `started` then `created`, else the commit that created the experiment's page | the run's `commit` | the project's code and the run's directory |
-| experiment | `EXP-…` | the commit that created the page | the last run's `commit`; the current commit while it is `planned` or `active` | the project's code and the experiment's directory |
-| phase | `PRJ-… --phase "<item>"` | `(since <sha>)` in the item; else the commit that ticked the item before it in *Progress* | the commit that ticked it; the current commit while it is open | the project's code and notes |
+| page | any page ID | the commit of the last approved review of that page, else the one before the commit that created it | the current commit | the page and its directory |
+| run | `RUN-…` | the `commit` of the previous run of the same experiment that records one, by `started` then `created`, else the one before the commit that created the experiment's page | the run's `commit` | the project's code, the run's page and its directory |
+| experiment | `EXP-…` | the one before the commit that created the page | the last run's `commit`; the current commit while it is `planned` or `active`, or when no run records one | the project's code, the experiment's page and its directory |
+| phase | `PRJ-… --phase "<words>"` | `(since <sha>)` in the item; else the commit that ticked the item before it in *Progress*; else the one before the project page was created | the commit that ticked it; the current commit while it is open | the project's code and notes |
 
 - **The run directory postdates the run** for most runs: `run.sh` is committed after the
   code it ran (`reproduce.md` section 3). A run review therefore shows two diffs: the code
@@ -121,6 +121,14 @@ is reviewed is `git diff base head -- paths`. Resolution is shared with `yajna r
   survives merges and graduation (where it is remapped like any other commit). Without it,
   the base is inferred from when the previous item was ticked, found with `git log -S` on
   the item's line; overlapping phases make that approximate, which the review says.
+- **"The one before the commit that created it"**: the parent of that commit, so the diff
+  shows the page being added. (v0.2 said the creating commit itself, which hid it.)
+- **The project's code** is the `code` field of its page when it is a path in this repo;
+  `code: .` (a project repo) is the whole repo, and a `github:…` URL adds nothing.
+- **A phase is named** by words from its item, matched without case against the items of
+  *Progress*; more than one match lists them. The item's text, without `(since …)`, is
+  stored as `target.phase` beside `ref: PRJ-…`. A run, an experiment or a phase whose base
+  or head is a guess says how it was found in the page's `## Summary`.
 - **Commits in the notebook are full SHAs** from now on. Short ones in older pages still
   resolve; an ambiguous one is an error that lists the candidates.
 
@@ -130,14 +138,16 @@ A thread records the commit it was opened at, its path and lines, and the quoted
 When the head moves (`yajna review update`, or the diff view opened on a newer head), each
 `open` and `addressed` thread is looked for in the new head:
 
-1. the path, followed through renames (`git diff -M` from the old head);
-2. the quoted lines, exactly, then ignoring whitespace; the nearest match to the old line
-   numbers wins;
+1. the path, followed through renames (`git diff -M` from the thread's commit);
+2. the lines it pointed at, read from the thread's commit (the quote in the page is a copy
+   of them), exactly, then ignoring whitespace; the nearest match to the old line numbers
+   wins. A heading anchor looks for the heading;
 3. found: the anchor moves to the new commit and lines. Not found: the thread becomes
    `outdated` and keeps showing against its own commit.
 
 Threads are never deleted. An `outdated` thread that still matters is answered or resolved
-like any other.
+like any other. `update` moves a branch review's head to the branch tip, a range's to what
+`B` names now, and re-resolves the other targets; the base stays.
 
 ## 6. Who does what
 

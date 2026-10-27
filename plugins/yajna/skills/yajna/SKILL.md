@@ -42,6 +42,7 @@ yajna tasks                                                # open checkboxes acr
 yajna log|todo|tasks --in <notebook>[/<project>] …         # another notebook on the machine (yajna repos)
 yajna review list --open | show REV-… [--diff]             # reviews of your branch and what they ask
 yajna review reply|address REV-… T<n> "<text>" [--commit <sha>]   # answer; address with the fixing commit
+yajna review update REV-…                                  # after new commits: move the head, re-anchor threads
 yajna validate                                             # run before you report anything as done
 ```
 

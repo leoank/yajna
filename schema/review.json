@@ -57,7 +57,7 @@
     },
     "target": {
       "type": "object",
-      "description": "What was asked for: a branch, a commit range A..B, a page ID, a run, an experiment, or a project phase",
+      "description": "What was asked for: a branch, a commit range A..B, a page ID, a run, an experiment, or a project phase (ref is the project, phase the item)",
       "required": [
         "kind",
         "ref"
@@ -75,6 +75,10 @@
         },
         "ref": {
           "type": "string"
+        },
+        "phase": {
+          "type": "string",
+          "description": "The Progress item of a phase target, without its (since …)"
         }
       },
       "additionalProperties": false

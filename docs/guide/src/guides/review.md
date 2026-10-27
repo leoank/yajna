@@ -1,13 +1,31 @@
 # Reviews
 
 A review keeps the comments on a set of changes in the notebook, as a `REV` page, instead
-of in a chat that ends with the session (ADR-0030). It can be of a branch, a commit range
-or a page; reviews of runs, experiments and project phases come next.
+of in a chat that ends with the session (ADR-0030). It can be of a branch, a commit range,
+a page, a run, an experiment or a phase of a project.
 
 ```sh
 yajna review open toy-model/speedup            # a branch against main (--base for another)
 yajna review open 84ce40f..a1da1b4             # a commit range
-yajna review open EXP-20261021-0k3m9x          # a page, since its last approved review
+yajna review open PRO-0012                     # a page, since its last approved review
+yajna review open RUN-20261023-nvfv0n          # a run, against the run before it
+yajna review open EXP-20261021-0k3m9x          # an experiment, from its start to its last run
+yajna review open PRJ-0005 --phase "E1c"       # a phase: an item of the project's Progress
+```
+
+| Target | From | To |
+|---|---|---|
+| run | the previous run's `commit` | the run's `commit` |
+| experiment | before its page was created | its last run's `commit`; now, while it is planned or active |
+| phase | the item's `(since <sha>)`, else when the item before it was ticked | when it was ticked; now, while it is open |
+
+A run, experiment or phase review covers the project's code (its `code` field) and the
+page with its directory; when the base or head is a guess the page's `## Summary` says
+how it was found. For a run, `show --diff` adds the two runs' directories as they are now,
+since a run's script is usually committed after the code it ran.
+
+```sh
+yajna phase start PRJ-0005 "E1c"               # appends (since <HEAD>) to the item
 ```
 
 `open` resolves the target to a base and a head commit, writes the page and prints its
@@ -53,3 +71,15 @@ clones).
 `yajna review list [--open]` lists the reviews in this checkout and every other worktree
 of the repository, with how many threads are open. `yajna review show REV-…` prints the
 threads, `--diff` the changes under review (`git diff base head -- paths`).
+
+## Keeping up
+
+```sh
+yajna review update REV-20261027-k3m8vd
+```
+
+After new commits, `update` moves the review's head to where its target is now (the
+branch tip, or the target resolved again) and moves each open or addressed thread with
+it: the file is followed through renames and the lines it pointed at are looked for in the
+new version, exactly and then ignoring whitespace, nearest first. A thread whose lines are
+gone becomes `(outdated)` and keeps its old anchor; it can still be answered and resolved.

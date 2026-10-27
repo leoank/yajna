@@ -317,15 +317,19 @@ done <words>` ticks the one that matches.
 ## Reviews
 
 A review is a `REV` page with threads on a set of changes (ADR-0030, `docs/review.md`):
-`yajna review open <branch | A..B | ID>` resolves the target to a base and head commit and
-writes the page, a branch review on the branch itself (in its worktree), anything of a
-project under its `reviews/`. Comments are threads: `yajna review comment REV-… --at
+`yajna review open <branch | A..B | ID>` (or `PRJ-… --phase "<words>"`) resolves the target
+to a base and head commit and writes the page, a branch review on the branch itself (in
+its worktree), anything of a project under its `reviews/`. A run is reviewed against the
+run before it, an experiment from its creation to its last run, a phase of *Progress* from
+the `(since <sha>)` that `yajna phase start PRJ-… "<words>"` appends to its item. Comments are threads: `yajna review comment REV-… --at
 code/x.py:120-126 "<text>"` (or `--at <path>#<heading>`, or no `--at` for a general one)
 quotes the lines at the review's head. Replies, `address` (with the commit that fixes it)
 and `resolve` append dated lines `- YYYY-MM-DD HH:MM <author>: <text>`; nothing is edited.
 An agent replies and addresses; only a human resolves, and `yajna validate` rejects a
 thread an agent resolved. `yajna review list` shows the reviews of every worktree, `show`
-the threads, `show --diff` the changes.
+the threads, `show --diff` the changes. `yajna review update REV-…` moves the head to where
+the target is now and re-anchors open threads, following renames; a thread whose lines
+are gone becomes `(outdated)`.
 
 ## From anywhere
 
