@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://yajna.local/schema/v1/review.json",
+  "title": "review",
+  "type": "object",
+  "required": [
+    "id",
+    "type",
+    "schema_version",
+    "created",
+    "author",
+    "title",
+    "target",
+    "base",
+    "head",
+    "status"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^REV-\\d{8}-[0-9a-z]{4}([0-9a-z]{2})?$"
+    },
+    "type": {
+      "const": "review"
+    },
+    "schema_version": {
+      "const": 1
+    },
+    "created": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "author": {
+      "type": "string",
+      "pattern": "^(agent:)?[a-z][a-z0-9_-]*$"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "session": {
+      "type": "string",
+      "pattern": "^AGS-\\d{8}-[0-9a-z]{4}([0-9a-z]{2})?$"
+    },
+    "title": {
+      "type": "string"
+    },
+    "project": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^([a-z][a-z0-9_-]*/)?PRJ-\\d{4,}$"
+    },
+    "target": {
+      "type": "object",
+      "description": "What was asked for: a branch, a commit range A..B, a page ID, a run, an experiment, or a project phase",
+      "required": [
+        "kind",
+        "ref"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "branch",
+            "range",
+            "page",
+            "run",
+            "experiment",
+            "phase"
+          ]
+        },
+        "ref": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "base": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$",
+      "description": "The commit the diff starts from, resolved when the review was opened"
+    },
+    "head": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$",
+      "description": "The commit the diff ends at; review update moves it"
+    },
+    "paths": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Paths the diff is limited to, relative to the repo root; empty for everything"
+    },
+    "status": {
+      "enum": [
+        "open",
+        "changes_requested",
+        "approved",
+        "merged",
+        "closed"
+      ]
+    },
+    "merge": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    }
+  },
+  "additionalProperties": true
+}

@@ -4048,3 +4048,198 @@ fn todos_and_log_lines_from_anywhere() {
         out.stdout
     );
 }
+
+#[test]
+fn review_a_branch_a_range_and_a_page() {
+    let home = Home::new();
+    let lab = vault();
+    let root = lab.root.canonicalize().unwrap();
+    assert_eq!(lab.run(&["new", "project", "Toy model"]).code, 0);
+    fs::create_dir_all(root.join("code")).unwrap();
+    fs::write(root.join("code/x.py"), "a = 1\nb = 2\nc = 3\n").unwrap();
+    git(&root, &["init", "-q", "-b", "main"]);
+    git(&root, &["add", "-A"]);
+    git(&root, &["commit", "-q", "-m", "lab"]);
+    let main_tip = git(&root, &["rev-parse", "HEAD"]).trim().to_string();
+
+    // an agent's branch in its own worktree, with one commit
+    let spot = empty();
+    let wt = spot.root.join("speedup");
+    let out = lab.run(&[
+        "worktree",
+        "PRJ-0001",
+        "speedup",
+        "--path",
+        wt.to_str().unwrap(),
+    ]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    fs::write(wt.join("code/x.py"), "a = 1\nb = 20\nc = 30\n").unwrap();
+    git(&wt, &["commit", "-q", "-am", "faster"]);
+
+    // a review of the branch is written on the branch
+    let out = lab.run(&["review", "open", "toy-model/speedup"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let rev_path = PathBuf::from(out.stdout.lines().next().unwrap());
+    assert!(
+        rev_path.starts_with(&wt)
+            && rev_path
+                .to_string_lossy()
+                .contains("notes/projects/PRJ-0001-toy-model/reviews/REV-20261021-"),
+        "{}",
+        out.stdout
+    );
+    let id = rev_path.file_name().unwrap().to_string_lossy()[..19].to_string();
+    let page = fs::read_to_string(&rev_path).unwrap();
+    assert!(page.contains("target:\n  kind: branch"), "{page}");
+    assert!(page.contains(&format!("base: {main_tip}\n")), "{page}");
+    assert!(page.contains("project: PRJ-0001\n"), "{page}");
+
+    // ank comments from main, on lines and in general
+    let out = lab.run(&[
+        "review",
+        "comment",
+        &id,
+        "--at",
+        "code/x.py:2-3",
+        "why",
+        "these",
+        "numbers?",
+    ]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let out = lab.run(&["review", "comment", &id, "add a test"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert_eq!(
+        lab.run(&["review", "comment", &id, "--at", "code/x.py:3-9", "x"])
+            .code,
+        1
+    );
+    let page = fs::read_to_string(&rev_path).unwrap();
+    assert!(
+        page.contains("### T1 (open) code/x.py:2-3 @ ")
+            && page.contains("```py\nb = 20\nc = 30\n```\n- 2026-")
+            && page.contains(" tester: why these numbers?\n\n### T2 (open) general\n- "),
+        "{page}"
+    );
+    let out = lab.run(&["review", "list"]);
+    assert!(
+        out.stdout.contains(&id) && out.stdout.contains("2/2 open") && out.stdout.contains("(in "),
+        "{}",
+        out.stdout
+    );
+
+    // the agent addresses T1 with a commit on the branch; it may not resolve
+    fs::write(wt.join("code/x.py"), "a = 1\nb = 20  # measured\nc = 30\n").unwrap();
+    git(&wt, &["commit", "-q", "-am", "explain"]);
+    let out = home.run(
+        &wt,
+        &[
+            "review",
+            "address",
+            &id,
+            "T1",
+            "explained",
+            "in",
+            "a",
+            "comment",
+        ],
+        &[],
+    );
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let out = home.run(&wt, &["review", "resolve", &id, "T1"], &[]);
+    assert_eq!(out.code, 1);
+    assert!(
+        out.stderr.contains("only a human resolves"),
+        "{}",
+        out.stderr
+    );
+    // a commit that is not on the branch does not address anything
+    fs::write(root.join("notes/other.md"), "x\n").unwrap();
+    git(&root, &["add", "-A"]);
+    git(&root, &["commit", "-q", "-m", "elsewhere"]);
+    let out = lab.run(&["review", "address", &id, "T2", "--commit", "HEAD", "done"]);
+    assert_eq!(out.code, 1);
+    assert!(
+        out.stderr.contains("is not on toy-model/speedup"),
+        "{}",
+        out.stderr
+    );
+
+    // ank resolves from main; the page validates on the branch
+    let out = lab.run(&["review", "resolve", &id, "T1", "thanks"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let page = fs::read_to_string(&rev_path).unwrap();
+    assert!(
+        page.contains("### T1 (resolved) code/x.py:2-3 @ "),
+        "{page}"
+    );
+    assert!(
+        page.contains(" agent:claude-toy-model-speedup addressed in "),
+        "{page}"
+    );
+    assert!(page.contains(" tester resolved: thanks\n"), "{page}");
+    let out = home.run(&wt, &["validate"], &[]);
+    assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
+    let out = lab.run(&["review", "show", &id]);
+    assert!(
+        out.stdout.contains("### T1 (resolved)") && out.stdout.contains("### T2 (open) general"),
+        "{}",
+        out.stdout
+    );
+    let out = lab.run(&["review", "show", &id, "--diff"]);
+    assert!(out.stdout.contains("+b = 20"), "{}", out.stdout);
+
+    // validation catches what the CLI refuses
+    fs::write(
+        &rev_path,
+        page.replace(" tester resolved: thanks", " agent:claude resolved"),
+    )
+    .unwrap();
+    let out = home.run(&wt, &["validate"], &[]);
+    assert_eq!(out.code, 1);
+    assert!(
+        out.stdout.contains("only a human resolves a thread"),
+        "{}",
+        out.stdout
+    );
+    fs::write(&rev_path, &page).unwrap();
+
+    // a range and a page, reviewed on main
+    let out = lab.run(&[
+        "review",
+        "open",
+        &format!("{main_tip}..HEAD"),
+        "--project",
+        "PRJ-0001",
+    ]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(
+        out.stdout
+            .starts_with("notes/projects/PRJ-0001-toy-model/reviews/REV-"),
+        "{}",
+        out.stdout
+    );
+    let out = lab.run(&["review", "open", "PRJ-0001"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let page_rev = lab.path(&out);
+    let pid = page_rev.file_name().unwrap().to_string_lossy()[..19].to_string();
+    let out = lab.run(&[
+        "review",
+        "comment",
+        &pid,
+        "--at",
+        "notes/projects/PRJ-0001-toy-model/README.md#Introduction",
+        "say",
+        "what",
+        "it",
+        "is",
+    ]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(lab
+        .read(&page_rev)
+        .contains("### T1 (open) notes/projects/PRJ-0001-toy-model/README.md#Introduction @ "));
+    let out = lab.run(&["validate"]);
+    assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
+    let out = lab.run(&["new", "review", "x"]);
+    assert_eq!(out.code, 1);
+    assert!(out.stderr.contains("yajna review open"), "{}", out.stderr);
+}

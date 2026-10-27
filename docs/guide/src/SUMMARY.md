@@ -27,6 +27,7 @@
 - [Docs and Google Docs](guides/docs-and-sync.md)
 - [Exporting and importing](guides/export-import.md)
 - [Working in parallel](guides/parallel.md)
+- [Reviews](guides/review.md)
 - [Neovim](guides/neovim.md)
 - [Claude Code](guides/claude-code.md)
 

@@ -159,6 +159,7 @@ pub fn run(vault: &Vault, cmd: &Cmd, prompter: &mut dyn Prompter) -> Res<i32> {
             from,
             path,
         } => crate::parallel::worktree(vault, project, topic, agent, from, path.as_deref()),
+        Cmd::Review { action } => crate::review::run(vault, action),
         Cmd::Index => crate::query::cmd_index(vault),
         Cmd::Show { id } => crate::query::cmd_show(vault, id),
         Cmd::Timeline { id } => crate::query::cmd_timeline(vault, id),
@@ -209,6 +210,9 @@ pub fn create(
     dir: Option<&str>,
 ) -> Res<PathBuf> {
     let etype = canonical_type(etype);
+    if etype == "review" {
+        return Err("a review is opened with yajna review open <branch | A..B | ID>".to_string());
+    }
     let Some(ent) = entity(&etype) else {
         return Err(format!(
             "unknown entity type {etype:?}; one of {}",

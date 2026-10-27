@@ -511,6 +511,7 @@ fn index_page(ix: &Index) -> String {
         ("analysis", "Analyses"),
         ("artifact", "Artifacts"),
         ("doc", "Docs"),
+        ("review", "Reviews"),
         ("agent_session", "Agent sessions"),
         ("reference", "Reading notes"),
     ] {

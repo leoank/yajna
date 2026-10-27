@@ -1,6 +1,6 @@
 # Code review in the notebook
 
-Status: design v0.1, 2026-10-26; nothing built. Companion to `architecture.md` (section 11,
+Status: design v0.2, 2026-10-27; step 1 built (yajna 0.10.0). Companion to `architecture.md` (section 11,
 Phase 1d) and `reproduce.md`, which shares its commit resolution. Decision: ADR-0030.
 
 ## 1. What it is for
@@ -60,9 +60,9 @@ What the changes do and the verdict, written by the reviewer.
 ## Threads
 
 ### T1 (open) code/vesicle-protrusions-and-imaging/vpi/explore.py:120-126 @ a1da1b4
-> ```python
-> os.environ["OMP_NUM_THREADS"] = "32"
-> ```
+```py
+os.environ["OMP_NUM_THREADS"] = "32"
+```
 - 2026-10-26 14:02 ank: why a fixed 32 and not the cores the job was given?
 - 2026-10-26 14:31 agent:claude-vpi addressed in 5e6f7a8: reads `SLURM_CPUS_PER_TASK`, 32 without it
 
@@ -72,7 +72,9 @@ What the changes do and the verdict, written by the reviewer.
 - 2026-10-26 15:10 ank resolved
 ```
 
-- **IDs** are date IDs (ADR-0022), so two branches never collide on one.
+- **IDs** are date IDs (ADR-0022), so two branches never collide on one. The file is
+  `REV-<date>-<suffix>-<slug of the title>.md`; `yajna new review` refuses and points at
+  `yajna review open`.
 - **Where.** A review of something in a project sits in that project's `reviews/`, so it
   graduates with it. A branch review is written into the branch's worktree (found through
   `git worktree list`) and merges with the branch. Reviews of anything else are written on
@@ -80,9 +82,11 @@ What the changes do and the verdict, written by the reviewer.
 - **`target`** is what was asked for. `base`, `head` and `paths` are what it resolved to,
   stored so that the review means the same thing later. `yajna review update` moves `head`.
 - **A thread** is a level-3 heading `T<n> (<state>) <anchor>`. Its states are `open`,
-  `addressed`, `resolved` and `outdated`. The anchor is `<path>:<from>-<to> @ <commit>`, or
-  `general`, or for a page target a heading of the page (`## Plan`). The quoted lines under
-  it are what the anchor pointed at when the thread was opened.
+  `addressed`, `resolved` and `outdated`. The anchor is `<path>:<from>-<to> @ <commit>`
+  (or `<path>:<line> @ <commit>`), `<path>#<heading> @ <commit>` for a heading of a page,
+  or `general`. The quoted lines under it are what the anchor pointed at when the thread
+  was opened, in a fenced block (```` ``` ```` or `~~~`, whichever the lines do not
+  contain), so links and headings in them are text.
 - **Replies** are list items `- <date> <time> <author>: <text>`, appended and never edited,
   like the log. `<author> addressed in <sha>:` and `<author> resolved` / `reopened` are the
   state changes; the heading's state follows the last one. Links and `@citekeys` work in
@@ -165,7 +169,7 @@ alike.
 yajna review open <branch | A..B | ID> [--base main] [--phase "<item>"] [--paths …]
 yajna review list [--open] [--target <ref>]
 yajna review show REV-… [--diff]                 # threads with their context, or the diff
-yajna review comment REV-… <path>:<from>[-<to>] "<text>"   # or --general, or --heading
+yajna review comment REV-… [--at <path>:<from>[-<to>] | --at <path>#<heading>] "<text>"   # no --at: general
 yajna review reply|address|resolve|reopen REV-… T<n> ["<text>"] [--commit <sha>]
 yajna review approve|request-changes REV-… ["<text>"]
 yajna review update REV-…                        # move head, re-anchor

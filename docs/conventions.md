@@ -314,6 +314,19 @@ project, `--all` covers every notebook on the machine. `yajna todo done 3` ticks
 the last listing (refused if the line changed since), adding `done:<date>`; `yajna todo
 done <words>` ticks the one that matches.
 
+## Reviews
+
+A review is a `REV` page with threads on a set of changes (ADR-0030, `docs/review.md`):
+`yajna review open <branch | A..B | ID>` resolves the target to a base and head commit and
+writes the page, a branch review on the branch itself (in its worktree), anything of a
+project under its `reviews/`. Comments are threads: `yajna review comment REV-… --at
+code/x.py:120-126 "<text>"` (or `--at <path>#<heading>`, or no `--at` for a general one)
+quotes the lines at the review's head. Replies, `address` (with the commit that fixes it)
+and `resolve` append dated lines `- YYYY-MM-DD HH:MM <author>: <text>`; nothing is edited.
+An agent replies and addresses; only a human resolves, and `yajna validate` rejects a
+thread an agent resolved. `yajna review list` shows the reviews of every worktree, `show`
+the threads, `show --diff` the changes.
+
 ## From anywhere
 
 `yajna log`, `todo` and `tasks` take `--in <notebook>[/<project>]` from any directory

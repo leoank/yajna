@@ -63,15 +63,24 @@ pub const ENTITIES: &[Entity] = &[
     entity!("build", "BLD", "build", "builds"),
     entity!("agent_session", "AGS", "agent_session", "agents"),
     entity!("doc", "DOC", "doc", "docs"),
+    // opened with `yajna review open`, not `yajna new` (ADR-0030)
+    entity!("review", "REV", "review", "reviews"),
 ];
 pub const PROJECT_SCOPED: &[&str] = &["experiment", "run", "analysis", "artifact"];
-pub const VOLUME_PREFIXES: &[&str] = &["RUN", "ART", "AGS"];
+pub const VOLUME_PREFIXES: &[&str] = &["RUN", "ART", "AGS", "REV"];
 /// Curated entities that take date IDs instead of counter IDs (ADR-0022): the ones created
 /// on branches, where a shared counter collides.
 pub const DATED_PREFIXES: &[&str] = &["EXP", "ANA", "DOC"];
 /// Frontmatter fields whose IDs are not links: paths (an ID there is a directory name) and
 /// `previous_id`, the counter ID a page had before `yajna migrate-ids`.
-pub const PATH_FIELDS: &[&str] = &["code", "script", "path", "previous_id", "bibliography"];
+pub const PATH_FIELDS: &[&str] = &[
+    "code",
+    "script",
+    "path",
+    "paths",
+    "previous_id",
+    "bibliography",
+];
 const ALIASES: &[(&str, &str)] = &[
     ("agent", "agent_session"),
     ("exp", "experiment"),
@@ -152,7 +161,7 @@ pub fn is_type(name: &str) -> bool {
 
 // Date IDs first, so `EXP-20261021-0k3m9x` is never read as the counter ID `EXP-20261021`.
 // A date ID's suffix is 4 characters (older IDs) or 6 (time-sortable, ADR-0022).
-const ID_PATTERN: &str = r"\b(?:RUN|ART|AGS|EXP|ANA|DOC)-\d{8}-[0-9a-z]{4}(?:[0-9a-z]{2})?\b|\b(?:PRJ|EXP|PRO|MAT|ANA|EQP|BLD)-\d{4,}\b";
+const ID_PATTERN: &str = r"\b(?:RUN|ART|AGS|EXP|ANA|DOC|REV)-\d{8}-[0-9a-z]{4}(?:[0-9a-z]{2})?\b|\b(?:PRJ|EXP|PRO|MAT|ANA|EQP|BLD)-\d{4,}\b";
 pub static ID_FULL_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(&format!("^(?:{ID_PATTERN})$")).unwrap());
 /// An ID with an optional `namespace/` in front, as it appears in frontmatter and links.

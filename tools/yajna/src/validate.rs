@@ -187,6 +187,11 @@ pub fn validate(vault: &Vault) -> Res<(Vec<String>, usize)> {
         for msg in schema_errors(validator, &Value::Object(meta.clone()), "frontmatter") {
             problems.add(&page.path, msg);
         }
+        if ptype == "review" {
+            for msg in crate::review::problems(vault, page) {
+                problems.add(&page.path, msg);
+            }
+        }
         if crate::sync::has_markers(&page.body) {
             problems.add(
                 &page.path,

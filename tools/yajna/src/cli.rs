@@ -273,6 +273,12 @@ pub enum Cmd {
         #[arg(long)]
         path: Option<PathBuf>,
     },
+    /// review a branch, a commit range or a page in the notebook: REV pages with threads
+    /// anchored to lines (ADR-0030)
+    Review {
+        #[command(subcommand)]
+        action: ReviewAction,
+    },
     /// rebuild the SQLite index (a cache outside the repo; queries rebuild it when stale)
     Index,
     /// one entity: frontmatter, links out, links in, log mentions
@@ -391,6 +397,94 @@ pub enum ImportSource {
         /// list what would be imported and stop
         #[arg(long)]
         dry_run: bool,
+    },
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum ReviewAction {
+    /// open a review: of a branch against its base (written on the branch, in its
+    /// worktree), of a commit range A..B, or of a page by ID
+    Open {
+        /// a branch, A..B, or a page ID
+        target: String,
+        /// the branch a branch review is against
+        #[arg(long, default_value = "main")]
+        base: String,
+        /// limit the diff to these paths, relative to the repo root
+        #[arg(long, num_args = 1..)]
+        paths: Vec<String>,
+        /// the review's title (default: from the target)
+        #[arg(long)]
+        title: Option<String>,
+        /// PRJ-xxxx the review belongs to (default: the page's, or the branch's <slug>/)
+        #[arg(long)]
+        project: Option<String>,
+        /// author handle (default: $YAJNA_AUTHOR, else .yajna/author, else yajna.toml)
+        #[arg(long)]
+        author: Option<String>,
+    },
+    /// the reviews in this checkout and the repo's other worktrees
+    List {
+        /// only open and changes-requested reviews
+        #[arg(long)]
+        open: bool,
+        /// only reviews of this branch, range or ID
+        #[arg(long)]
+        target: Option<String>,
+    },
+    /// a review's threads, or with --diff the changes under review
+    Show {
+        review: String,
+        #[arg(long)]
+        diff: bool,
+    },
+    /// start a thread: on lines (--at path:from-to), a heading (--at path#Heading), or the
+    /// whole review
+    Comment {
+        review: String,
+        /// <path>:<from>[-<to>] or <path>#<heading>, at the review's head; omit for a general thread
+        #[arg(long)]
+        at: Option<String>,
+        text: Vec<String>,
+        #[arg(long)]
+        author: Option<String>,
+    },
+    /// answer in a thread
+    Reply {
+        review: String,
+        /// T<n>
+        thread: String,
+        text: Vec<String>,
+        #[arg(long)]
+        author: Option<String>,
+    },
+    /// mark a thread addressed by a commit (on the branch, for a branch review)
+    Address {
+        review: String,
+        thread: String,
+        /// the commit that addresses it (default HEAD)
+        #[arg(long)]
+        commit: Option<String>,
+        /// what changed
+        text: Vec<String>,
+        #[arg(long)]
+        author: Option<String>,
+    },
+    /// resolve a thread; humans only
+    Resolve {
+        review: String,
+        thread: String,
+        text: Vec<String>,
+        #[arg(long)]
+        author: Option<String>,
+    },
+    /// reopen an addressed or resolved thread
+    Reopen {
+        review: String,
+        thread: String,
+        text: Vec<String>,
+        #[arg(long)]
+        author: Option<String>,
     },
 }
 

@@ -250,6 +250,7 @@ fn exists(ids: BTreeSet<String>, required: bool) -> Check {
 pub fn new(vault: &Vault, p: &mut dyn Prompter, author: Option<&str>) -> Res<PathBuf> {
     let mut types: Vec<String> = entity_names()
         .iter()
+        .filter(|t| **t != "review")
         .filter(|t| {
             !vault.is_project()
                 || crate::vault::PROJECT_SCOPED.contains(t)
