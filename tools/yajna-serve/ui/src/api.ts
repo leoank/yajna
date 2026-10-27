@@ -47,6 +47,87 @@ export interface Rendered {
 export interface Info {
   notebook: string;
   version: string;
+  /** reviews can be written: the server runs with --review */
+  review: boolean;
+}
+
+// --- reviews (docs/review.md 7.2) ---
+
+export interface ReviewSummary {
+  id: string;
+  title: string;
+  status: string;
+  kind: string;
+  ref: string;
+  open: number;
+  threads: number;
+  /** the worktree it lives in, when not this checkout */
+  elsewhere: string | null;
+}
+
+export interface Anchor {
+  raw: string;
+  path?: string;
+  from?: number;
+  to?: number;
+  heading?: string;
+  commit?: string;
+}
+
+export interface Reply {
+  when: string;
+  author: string;
+  action: 'addressed' | 'resolved' | 'reopened' | null;
+  commit: string | null;
+  text: string;
+}
+
+export interface Thread {
+  n: number;
+  state: 'open' | 'addressed' | 'resolved' | 'outdated';
+  anchor: Anchor;
+  quote: string[];
+  replies: Reply[];
+}
+
+export interface ChangedFile {
+  status: string;
+  path: string;
+  old?: string;
+}
+
+export interface Review {
+  id: string;
+  title: string;
+  status: string;
+  kind: string;
+  ref: string;
+  base: string;
+  head: string;
+  page: string;
+  /** who the viewer writes as */
+  author: string;
+  summary: string;
+  files: ChangedFile[];
+  /** changed after the head or not committed (status `?`: untracked), not in the review yet */
+  unreviewed: ChangedFile[];
+  threads: Thread[];
+  problems: string[];
+  /** the page's version, sent back with a write */
+  version: string;
+}
+
+export interface Sides {
+  path: string;
+  base: string | null;
+  head: string | null;
+}
+
+export interface Write {
+  thread?: string;
+  at?: string;
+  text?: string;
+  commit?: string;
 }
 
 export class ApiError extends Error {
@@ -73,6 +154,30 @@ export const api = {
   list: (path: string, cursor = 0) => json<Listing>(`/api/files/list?path=${q(path)}&cursor=${cursor}`),
   stat: (path: string) => json<Stat>(`/api/files/stat?path=${q(path)}`),
   render: (path: string) => json<Rendered>(`/api/files/render?path=${q(path)}`),
+};
+
+/** The token from the URL `yajna serve --review` printed, kept in memory only. */
+let token = '';
+export const setToken = (t: string) => (token = t);
+export const canWrite = () => token !== '';
+
+export const reviews = {
+  list: () => json<ReviewSummary[]>('/api/reviews'),
+  get: (id: string) => json<Review>(`/api/reviews/${q(id)}`),
+  /** a changed file at the base and head; with `work`, at the head and in the working tree */
+  file: (id: string, f: ChangedFile, work = false) =>
+    json<Sides>(`/api/reviews/${q(id)}/file?path=${q(f.path)}${f.old ? `&old=${q(f.old)}` : ''}${work ? '&work=true' : ''}`),
+  /** A write; a page that changed since `version` is refused with status 409. */
+  async write(id: string, action: string, version: string, w: Write): Promise<Review> {
+    const res = await fetch(`/api/reviews/${q(id)}/${action}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-yajna-token': token },
+      body: JSON.stringify({ version, ...w }),
+    });
+    const body = await res.json().catch(() => ({ error: res.statusText }));
+    if (!res.ok) throw new ApiError(res.status, body.error ?? res.statusText);
+    return body as Review;
+  },
 };
 
 export const rawUrl = (path: string) => `/api/files/raw?path=${q(path)}`;

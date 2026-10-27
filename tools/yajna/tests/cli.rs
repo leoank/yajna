@@ -4596,3 +4596,202 @@ fn review_approve_request_changes_merge_and_todo() {
         .stderr
         .contains("only a branch review is merged"));
 }
+
+/// One HTTP/1.1 request to the server at `addr`: (status, body).
+fn http(
+    addr: &str,
+    method: &str,
+    path: &str,
+    headers: &[(&str, &str)],
+    body: &str,
+) -> (u16, String) {
+    use std::io::Read;
+    let mut s = std::net::TcpStream::connect(addr).unwrap();
+    let mut req = format!(
+        "{method} {path} HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\nContent-Length: {}\r\n",
+        body.len()
+    );
+    for (k, v) in headers {
+        req.push_str(&format!("{k}: {v}\r\n"));
+    }
+    req.push_str("\r\n");
+    req.push_str(body);
+    s.write_all(req.as_bytes()).unwrap();
+    let mut out = String::new();
+    s.read_to_string(&mut out).unwrap();
+    let status = out[9..12].parse().unwrap();
+    let body = out.split_once("\r\n\r\n").map_or("", |(_, b)| b);
+    // a chunked body: the JSON is on the line after the first size
+    let body = match body.split_once("\r\n") {
+        Some((size, rest)) if u64::from_str_radix(size.trim(), 16).is_ok() => {
+            rest.rsplit_once("\r\n0").map_or(rest, |(b, _)| b)
+        }
+        _ => body,
+    };
+    (status, body.to_string())
+}
+
+#[test]
+fn serve_review_writes_only_with_the_token_and_never_over_a_change() {
+    use std::io::BufRead;
+    let lab = vault();
+    let root = lab.root.canonicalize().unwrap();
+    fs::create_dir_all(root.join("code")).unwrap();
+    fs::write(root.join("code/x.py"), "a = 1\n").unwrap();
+    git(&root, &["init", "-q", "-b", "main"]);
+    git(&root, &["add", "-A"]);
+    git(&root, &["commit", "-q", "-m", "one"]);
+    fs::write(root.join("code/x.py"), "a = 1\nb = 2\n").unwrap();
+    git(&root, &["commit", "-q", "-am", "two"]);
+    let out = lab.run(&["review", "open", "HEAD~1..HEAD"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let page = lab.path(&out);
+    let id = page.file_name().unwrap().to_string_lossy()[..19].to_string();
+    assert_eq!(
+        lab.run(&["review", "comment", &id, "--at", "code/x.py:2", "why b?"])
+            .code,
+        0
+    );
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_yajna"))
+        .arg("--root")
+        .arg(&root)
+        .args(["serve", "--review", "--port", "0"])
+        .env("YAJNA_CACHE", root.join(".cache"))
+        .env("XDG_STATE_HOME", root.join(".cache/state"))
+        .env("XDG_CONFIG_HOME", root.join(".cache/config"))
+        .env_remove("YAJNA_AUTHOR")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    let mut lines = std::io::BufReader::new(child.stdout.take().unwrap()).lines();
+    let url = lines
+        .by_ref()
+        .map(|l| l.unwrap())
+        .find_map(|l| l.strip_prefix("reviews, writable: ").map(str::to_string))
+        .unwrap();
+    let (addr, token) = {
+        let rest = url.strip_prefix("http://").unwrap();
+        let (addr, q) = rest.split_once("/files/?token=").unwrap();
+        (addr.to_string(), q.to_string())
+    };
+    let origin = format!("http://{addr}");
+    let version = |body: &str| {
+        let v: serde_json::Value = serde_json::from_str(body).unwrap();
+        v["version"].as_str().unwrap().to_string()
+    };
+    let (status, body) = http(&addr, "GET", "/api/info", &[], "");
+    assert!(
+        status == 200 && body.contains("\"review\":true"),
+        "{status} {body}"
+    );
+    let (status, body) = http(&addr, "GET", "/api/reviews", &[], "");
+    assert!(status == 200 && body.contains(&id), "{status} {body}");
+    let (_, body) = http(&addr, "GET", &format!("/api/reviews/{id}"), &[], "");
+    assert!(body.contains("\"quote\":[\"b = 2\"]"), "{body}");
+    let v = version(&body);
+    let reply =
+        |v: &str| format!("{{\"version\":\"{v}\",\"thread\":\"T1\",\"text\":\"from the viewer\"}}");
+    let post = |headers: &[(&str, &str)], body: &str| {
+        let mut h = vec![("Content-Type", "application/json")];
+        h.extend_from_slice(headers);
+        http(&addr, "POST", &format!("/api/reviews/{id}/reply"), &h, body)
+    };
+    // no token, a wrong one, another origin
+    assert_eq!(post(&[("Origin", &origin)], &reply(&v)).0, 403);
+    assert_eq!(
+        post(&[("Origin", &origin), ("X-Yajna-Token", "0")], &reply(&v)).0,
+        403
+    );
+    assert_eq!(
+        post(
+            &[("Origin", "http://evil.example"), ("X-Yajna-Token", &token)],
+            &reply(&v)
+        )
+        .0,
+        403
+    );
+    // an agent replies from the CLI meanwhile: the viewer's write is refused, not lost
+    assert_eq!(
+        lab.run(&[
+            "review",
+            "reply",
+            &id,
+            "T1",
+            "--author",
+            "agent:claude",
+            "b is new"
+        ])
+        .code,
+        0
+    );
+    let (status, body) = post(
+        &[("Origin", &origin), ("X-Yajna-Token", &token)],
+        &reply(&v),
+    );
+    assert!(
+        status == 409 && body.contains("changed since you read it"),
+        "{status} {body}"
+    );
+    let (_, body) = http(&addr, "GET", &format!("/api/reviews/{id}"), &[], "");
+    let (status, body) = post(
+        &[("Origin", &origin), ("X-Yajna-Token", &token)],
+        &reply(&version(&body)),
+    );
+    assert!(
+        status == 200 && body.contains("from the viewer"),
+        "{status} {body}"
+    );
+    // what is not in the review yet: a change in the working tree and a new file, but not
+    // the review page, which is not committed either
+    fs::write(root.join("code/x.py"), "a = 1\nb = 3\n").unwrap();
+    fs::write(root.join("code/y.py"), "c = 1\n").unwrap();
+    let (_, body) = http(&addr, "GET", &format!("/api/reviews/{id}"), &[], "");
+    let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+    let later: Vec<String> = v["unreviewed"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|f| {
+            format!(
+                "{} {}",
+                f["status"].as_str().unwrap(),
+                f["path"].as_str().unwrap()
+            )
+        })
+        .collect();
+    assert!(
+        later.contains(&"M code/x.py".to_string()) && later.contains(&"? code/y.py".to_string()),
+        "{later:?}"
+    );
+    assert!(!later.iter().any(|f| f.ends_with(".md")), "{later:?}");
+    let (status, body) = http(
+        &addr,
+        "GET",
+        &format!("/api/reviews/{id}/file?path=code/x.py&work=true"),
+        &[],
+        "",
+    );
+    let sides: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert!(
+        status == 200 && sides["base"] == "a = 1\nb = 2\n" && sides["head"] == "a = 1\nb = 3\n",
+        "{status} {body}"
+    );
+    let (status, _) = http(
+        &addr,
+        "GET",
+        &format!("/api/reviews/{id}/file?path=../x.py&work=true"),
+        &[],
+        "",
+    );
+    assert_eq!(status, 404);
+    child.kill().unwrap();
+    let _ = child.wait();
+    let text = lab.read(&page);
+    assert!(
+        text.contains(" agent:claude: b is new\n- ") && text.contains(" tester: from the viewer\n"),
+        "{text}"
+    );
+    assert_eq!(lab.run(&["validate"]).code, 0);
+}

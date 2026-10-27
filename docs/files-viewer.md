@@ -142,8 +142,10 @@ binary.
 | `GET /api/files/raw?path=` | the bytes, with `Range`, `ETag` (size and mtime) and `If-None-Match` |
 | `GET /api/files/render?path=` | rendered HTML for a markdown file |
 | `GET /api/events?watch=<path>&watch=…` | SSE: `changed {path, size, mtime}`, `created`, `removed`, `listing {path}` |
+| `GET /api/reviews`, `GET /api/reviews/<ID>`, `GET /api/reviews/<ID>/file?path=&old=` | reviews, one review with its threads, changed files and `version`, a changed file at base and head (`docs/review.md` 7.2) |
+| `POST /api/reviews/<ID>/<action>` | with `yajna serve --review` only: a token, a matching `Origin` and the page's `version` |
 
-Everything is `GET`; there is no route that writes. The client opens a new event stream
+Everything is `GET` except the review writes, which exist only behind `--review`. The client opens a new event stream
 when the set of open files and expanded directories changes, which is rare and cheap, so
 there is no subscription protocol.
 

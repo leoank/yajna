@@ -81,12 +81,23 @@ pub fn files_problems(vault: &Vault) -> Vec<String> {
     }
 }
 
+/// A token for writing to reviews: 128 bits from the system's random source, in hex.
+fn token() -> String {
+    use std::io::Read;
+    let mut bytes = [0u8; 16];
+    std::fs::File::open("/dev/urandom")
+        .and_then(|mut f| f.read_exact(&mut bytes))
+        .expect("/dev/urandom");
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
 pub fn cmd_serve(
     vault: &Vault,
     out: Option<&Path>,
     port: u16,
     open: bool,
     hosts: &[String],
+    review: bool,
 ) -> Res<i32> {
     let out = out
         .map(Path::to_path_buf)
@@ -138,10 +149,17 @@ pub fn cmd_serve(
         render: Arc::new(render),
         notebook: vault.namespace().unwrap_or("notebook").to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
+        reviews: Some(Arc::new(crate::review::Served::new(vault.root.clone()))),
+        token: review.then(token),
     };
+    let written = cfg.token.clone();
     yajna_serve::run(cfg, |addr| {
         let url = format!("http://{addr}/");
         println!("serving {url} (Ctrl-C stops)");
+        if let Some(t) = &written {
+            // anyone with this URL can comment as the notebook's author until the server stops
+            println!("reviews, writable: {url}files/?token={t}");
+        }
         if open {
             let opener = if cfg!(target_os = "macos") {
                 "open"

@@ -60,49 +60,82 @@ pub fn run(vault: &Vault, action: &ReviewAction) -> Res<i32> {
             at,
             text,
             author,
-        } => comment(vault, review, at.as_deref(), text, author.as_deref()),
+        } => said(comment(
+            vault,
+            review,
+            at.as_deref(),
+            text,
+            author.as_deref(),
+        )),
         ReviewAction::Reply {
             review,
             thread,
             text,
             author,
-        } => act(vault, review, thread, Act::Reply, text, author.as_deref()),
+        } => said(act(
+            vault,
+            review,
+            thread,
+            Act::Reply,
+            text,
+            author.as_deref(),
+        )),
         ReviewAction::Address {
             review,
             thread,
             commit,
             text,
             author,
-        } => act(
+        } => said(act(
             vault,
             review,
             thread,
             Act::Address(commit.clone()),
             text,
             author.as_deref(),
-        ),
+        )),
         ReviewAction::Resolve {
             review,
             thread,
             text,
             author,
-        } => act(vault, review, thread, Act::Resolve, text, author.as_deref()),
+        } => said(act(
+            vault,
+            review,
+            thread,
+            Act::Resolve,
+            text,
+            author.as_deref(),
+        )),
         ReviewAction::Reopen {
             review,
             thread,
             text,
             author,
-        } => act(vault, review, thread, Act::Reopen, text, author.as_deref()),
+        } => said(act(
+            vault,
+            review,
+            thread,
+            Act::Reopen,
+            text,
+            author.as_deref(),
+        )),
         ReviewAction::Approve {
             review,
             text,
             author,
-        } => verdict(vault, review, "approved", text, author.as_deref()),
+        } => said(verdict(vault, review, "approved", text, author.as_deref())),
         ReviewAction::RequestChanges {
             review,
             text,
             author,
-        } => verdict(vault, review, "changes_requested", text, author.as_deref()),
+        } => said(verdict(
+            vault,
+            review,
+            "changes_requested",
+            text,
+            author.as_deref(),
+        )),
         ReviewAction::Merge {
             review,
             force,
@@ -110,6 +143,12 @@ pub fn run(vault: &Vault, action: &ReviewAction) -> Res<i32> {
         } => merge(vault, review, *force, author.as_deref()),
         ReviewAction::Todo => todo(vault),
     }
+}
+
+/// Print what a write did.
+fn said(done: Res<String>) -> Res<i32> {
+    println!("{}", done?);
+    Ok(0)
 }
 
 // --- the page --------------------------------------------------------------------------
@@ -1405,7 +1444,7 @@ fn comment(
     at: Option<&str>,
     words: &[String],
     author: Option<&str>,
-) -> Res<i32> {
+) -> Res<String> {
     let text = one_line(words);
     if text.is_empty() {
         return Err("nothing to say".to_string());
@@ -1497,12 +1536,11 @@ fn comment(
         lines.splice(at..at, new);
         Ok(())
     })?;
-    println!(
+    Ok(format!(
         "{id} T{n} ({}) {}",
         anchor.render(),
         shown(vault, &home, &page.path)
-    );
-    Ok(0)
+    ))
 }
 
 /// Lines in the file before the page body (frontmatter).
@@ -1525,7 +1563,7 @@ fn act(
     what: Act,
     words: &[String],
     author: Option<&str>,
-) -> Res<i32> {
+) -> Res<String> {
     let author = author_of(vault, author)?;
     let (home, page) = find(vault, id)?;
     let n: usize = thread
@@ -1553,8 +1591,10 @@ fn act(
             if text.is_empty() {
                 return Err("say what changed".to_string());
             }
-            let sha = rev(&vault.root, commit.as_deref().unwrap_or("HEAD"))?;
             let (kind, reference) = target_of(&page);
+            // a branch's fix is on the branch, whichever checkout this runs in
+            let default = if kind == "branch" { &reference } else { "HEAD" };
+            let sha = rev(&vault.root, commit.as_deref().unwrap_or(default))?;
             if kind == "branch"
                 && git(
                     &home.root,
@@ -1611,8 +1651,10 @@ fn act(
         lines.insert(at, format!("- {} {line}", stamp(vault)));
         Ok(())
     })?;
-    println!("{id} T{n} ({state}) {}", shown(vault, &home, &page.path));
-    Ok(0)
+    Ok(format!(
+        "{id} T{n} ({state}) {}",
+        shown(vault, &home, &page.path)
+    ))
 }
 
 // --- verdicts and merging --------------------------------------------------------------
@@ -1674,7 +1716,7 @@ fn verdict(
     status: &str,
     words: &[String],
     author: Option<&str>,
-) -> Res<i32> {
+) -> Res<String> {
     let author = author_of(vault, author)?;
     let (home, page) = find(vault, id)?;
     if matches!(page.field("status"), Some("merged" | "closed")) {
@@ -1707,7 +1749,7 @@ fn verdict(
     };
     let old = fs::read_to_string(&page.path).map_err(|e| e.to_string())?;
     fs::write(&page.path, with_verdict(&old, status, &line, None)?).map_err(|e| e.to_string())?;
-    println!("{id} {status} {}", shown(vault, &home, &page.path));
+    let mut out = format!("{id} {status} {}", shown(vault, &home, &page.path));
     // approving a page, run or experiment signs its page, as a human removing
     // `review: pending` would
     let (kind, reference) = target_of(&page);
@@ -1719,11 +1761,11 @@ fn verdict(
                     fm.retain(|l| l.split('#').next().unwrap_or("").trim() != "review: pending")
                 });
                 fs::write(&target.path, text).map_err(|e| e.to_string())?;
-                println!("{reference}: review: pending cleared");
+                out.push_str(&format!("\n{reference}: review: pending cleared"));
             }
         }
     }
-    Ok(0)
+    Ok(out)
 }
 
 fn merge(vault: &Vault, id: &str, force: bool, author: Option<&str>) -> Res<i32> {
@@ -1908,6 +1950,301 @@ fn todo(vault: &Vault) -> Res<i32> {
         println!("no open threads");
     }
     Ok(0)
+}
+
+// --- the viewer (serve --review) -------------------------------------------------------
+
+/// Reviews for `yajna serve` (`docs/review.md` 7.2): the same reading and writing as the CLI,
+/// as JSON, for the `yajna-serve` routes.
+pub struct Served {
+    root: PathBuf,
+    /// one write at a time from the viewer
+    lock: std::sync::Mutex<()>,
+}
+
+impl Served {
+    pub fn new(root: PathBuf) -> Served {
+        Served {
+            root,
+            lock: std::sync::Mutex::new(()),
+        }
+    }
+}
+
+/// What a page's text is now, to refuse a write over a change the viewer has not seen.
+fn version(text: &str) -> String {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    text.hash(&mut h);
+    format!("{:016x}", h.finish())
+}
+
+fn thread_json(lines: &[&str], t: &Thread) -> serde_json::Value {
+    let first_reply = t.replies.first().map_or(t.end, |r| r.line);
+    // the quoted lines, between their fences
+    let block = &lines[t.start + 1..first_reply];
+    let quote: Vec<&str> = block
+        .iter()
+        .position(|l| l.starts_with("```") || l.starts_with("~~~"))
+        .and_then(|open| {
+            let fence = &block[open][..3];
+            let close = block[open + 1..]
+                .iter()
+                .position(|l| l.starts_with(fence))?;
+            Some(block[open + 1..open + 1 + close].to_vec())
+        })
+        .unwrap_or_default();
+    let mut anchor = serde_json::json!({ "raw": t.raw_anchor });
+    match &t.anchor {
+        Some(Anchor::Lines {
+            path,
+            from,
+            to,
+            commit,
+        }) => {
+            anchor = serde_json::json!({ "raw": t.raw_anchor, "path": path, "from": from, "to": to, "commit": commit })
+        }
+        Some(Anchor::Heading {
+            path,
+            heading,
+            commit,
+        }) => {
+            anchor = serde_json::json!({ "raw": t.raw_anchor, "path": path, "heading": heading, "commit": commit })
+        }
+        _ => {}
+    }
+    let replies: Vec<serde_json::Value> = t
+        .replies
+        .iter()
+        .map(|r| {
+            let (action, commit) = match &r.action {
+                Some(Action::Addressed(c)) => (Some("addressed"), Some(c.as_str())),
+                Some(Action::Resolved) => (Some("resolved"), None),
+                Some(Action::Reopened) => (Some("reopened"), None),
+                None => (None, None),
+            };
+            serde_json::json!({ "when": r.when, "author": r.author, "action": action, "commit": commit, "text": r.text })
+        })
+        .collect();
+    serde_json::json!({ "n": t.n, "state": t.state, "anchor": anchor, "quote": quote, "replies": replies })
+}
+
+impl yajna_serve::reviews::Reviews for Served {
+    fn list(&self) -> Result<serde_json::Value, String> {
+        let vault = Vault::open(self.root.clone())?;
+        let here = vault.root.canonicalize().ok();
+        let out: Vec<serde_json::Value> = all_reviews(&vault)
+            .into_iter()
+            .map(|(root, page)| {
+                let (kind, reference) = target_of(&page);
+                let threads = parse(&page.body).0;
+                serde_json::json!({
+                    "id": page.id(),
+                    "title": page.field("title"),
+                    "status": page.field("status"),
+                    "kind": kind,
+                    "ref": reference,
+                    "open": threads.iter().filter(|t| matches!(t.state.as_str(), "open" | "addressed")).count(),
+                    "threads": threads.len(),
+                    "elsewhere": (root.canonicalize().ok() != here).then(|| root.display().to_string()),
+                })
+            })
+            .collect();
+        Ok(serde_json::Value::Array(out))
+    }
+
+    fn get(&self, id: &str) -> Result<serde_json::Value, String> {
+        let vault = Vault::open(self.root.clone())?;
+        let (home, page) = find(&vault, id)?;
+        let text = fs::read_to_string(&page.path).map_err(|e| e.to_string())?;
+        let (kind, reference) = target_of(&page);
+        let base = page.field("base").unwrap_or("").to_string();
+        let head = page.field("head").unwrap_or("").to_string();
+        let paths: Vec<String> = page
+            .meta
+            .as_ref()
+            .and_then(|m| m.get("paths"))
+            .and_then(|p| p.as_array())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str().map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let mut args = vec![
+            "diff",
+            "--name-status",
+            "-M",
+            "--relative",
+            &base,
+            &head,
+            "--",
+        ];
+        args.extend(paths.iter().map(String::as_str));
+        let files: Vec<serde_json::Value> = git(&home.root, &args)
+            .unwrap_or_default()
+            .lines()
+            .filter_map(|l| {
+                let f: Vec<&str> = l.split('\t').collect();
+                match f.as_slice() {
+                    [s, old, new] => {
+                        Some(serde_json::json!({ "status": &s[..1], "path": new, "old": old }))
+                    }
+                    [s, path] => Some(serde_json::json!({ "status": &s[..1], "path": path })),
+                    _ => None,
+                }
+            })
+            .collect();
+        // what is not in the review yet: commits after its head and the working tree, in
+        // the same paths, but not the review page itself
+        let own = page
+            .path
+            .strip_prefix(&home.root)
+            .ok()
+            .map(Path::to_path_buf);
+        let mut unreviewed: Vec<serde_json::Value> = Vec::new();
+        if !head.is_empty() {
+            let mut args = vec![
+                "diff",
+                "--name-status",
+                "--no-renames",
+                "--relative",
+                &head,
+                "--",
+            ];
+            args.extend(paths.iter().map(String::as_str));
+            let mut untracked = vec!["ls-files", "--others", "--exclude-standard", "--"];
+            untracked.extend(paths.iter().map(String::as_str));
+            let changed = git(&home.root, &args).unwrap_or_default();
+            let new = git(&home.root, &untracked).unwrap_or_default();
+            let all = changed
+                .lines()
+                .filter_map(|l| l.split_once('\t'))
+                .map(|(s, p)| (&s[..1], p))
+                .chain(new.lines().map(|p| ("?", p)));
+            for (status, path) in all {
+                if own.as_deref() != Some(Path::new(path)) {
+                    unreviewed.push(serde_json::json!({ "status": status, "path": path }));
+                }
+            }
+        }
+        let lines: Vec<&str> = page.body.lines().collect();
+        let (threads, problems) = parse(&page.body);
+        let summary = lines
+            .iter()
+            .position(|l| l.trim_end() == "## Summary")
+            .map(|s| {
+                lines[s + 1..section_end(&lines, s)]
+                    .join("\n")
+                    .trim()
+                    .to_string()
+            })
+            .unwrap_or_default();
+        Ok(serde_json::json!({
+            "id": id,
+            "title": page.field("title"),
+            "status": page.field("status"),
+            "kind": kind,
+            "ref": reference,
+            "base": base,
+            "head": head,
+            "paths": paths,
+            "page": page.path.display().to_string(),
+            "author": vault.default_author(),
+            "summary": summary,
+            "files": files,
+            "unreviewed": unreviewed,
+            "threads": threads.iter().map(|t| thread_json(&lines, t)).collect::<Vec<_>>(),
+            "problems": problems,
+            "version": version(&text),
+        }))
+    }
+
+    fn file(
+        &self,
+        id: &str,
+        path: &str,
+        old: Option<&str>,
+        work: bool,
+    ) -> Result<serde_json::Value, String> {
+        const MAX: usize = 4 << 20;
+        let vault = Vault::open(self.root.clone())?;
+        let (home, page) = find(&vault, id)?;
+        let readable = |t: String| Some(t).filter(|t| t.len() <= MAX && !t.contains('\0'));
+        // as stored, with its last newline: what is on disk is compared with it
+        let at = |commit: &str, p: &str| {
+            std::process::Command::new("git")
+                .arg("-C")
+                .arg(&home.root)
+                .args(["show", &format!("{commit}:./{p}")])
+                .output()
+                .ok()
+                .filter(|o| o.status.success())
+                .and_then(|o| String::from_utf8(o.stdout).ok())
+                .and_then(readable)
+        };
+        let base = page.field("base").unwrap_or("");
+        let head = page.field("head").unwrap_or("");
+        if work {
+            // only paths inside the checkout
+            let inside = Path::new(path)
+                .components()
+                .all(|c| matches!(c, std::path::Component::Normal(_)));
+            if !inside {
+                return Err(format!("{path}: not a path in the checkout"));
+            }
+            let disk = fs::read(home.root.join(path))
+                .ok()
+                .and_then(|b| String::from_utf8(b).ok())
+                .and_then(readable);
+            return Ok(serde_json::json!({ "path": path, "base": at(head, path), "head": disk }));
+        }
+        Ok(serde_json::json!({
+            "path": path,
+            "base": at(base, old.unwrap_or(path)),
+            "head": at(head, path),
+        }))
+    }
+
+    fn write(
+        &self,
+        id: &str,
+        action: &str,
+        body: &serde_json::Value,
+    ) -> Result<serde_json::Value, yajna_serve::reviews::WriteError> {
+        use yajna_serve::reviews::WriteError::{Conflict, Refused};
+        let _one = self.lock.lock().map_err(|e| Refused(e.to_string()))?;
+        let vault = Vault::open(self.root.clone()).map_err(Refused)?;
+        let (_, page) = find(&vault, id).map_err(Refused)?;
+        let text = fs::read_to_string(&page.path).map_err(|e| Refused(e.to_string()))?;
+        if body["version"].as_str() != Some(version(&text).as_str()) {
+            return Err(Conflict(format!(
+                "{id} changed since you read it; it has been reloaded"
+            )));
+        }
+        let field = |k: &str| body[k].as_str().filter(|s| !s.is_empty());
+        let words: Vec<String> = field("text").map(str::to_string).into_iter().collect();
+        let thread = field("thread").unwrap_or("");
+        let done = match action {
+            "comment" => comment(&vault, id, field("at"), &words, None),
+            "reply" => act(&vault, id, thread, Act::Reply, &words, None),
+            "address" => act(
+                &vault,
+                id,
+                thread,
+                Act::Address(field("commit").map(str::to_string)),
+                &words,
+                None,
+            ),
+            "resolve" => act(&vault, id, thread, Act::Resolve, &words, None),
+            "reopen" => act(&vault, id, thread, Act::Reopen, &words, None),
+            "approve" => verdict(&vault, id, "approved", &words, None),
+            "request-changes" => verdict(&vault, id, "changes_requested", &words, None),
+            other => Err(format!("{other}: not something a review does")),
+        };
+        done.map_err(Refused)?;
+        self.get(id).map_err(Refused)
+    }
 }
 
 #[cfg(test)]

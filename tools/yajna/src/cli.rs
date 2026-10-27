@@ -348,6 +348,9 @@ pub enum Cmd {
         /// forwards for; repeatable
         #[arg(long = "host", value_name = "NAME")]
         hosts: Vec<String>,
+        /// let the files viewer write to reviews: prints a URL carrying a one-time token
+        #[arg(long)]
+        review: bool,
     },
     /// move a code-bearing project into its own repo, notebook included (ADR-0018)
     Graduate {

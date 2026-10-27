@@ -37,7 +37,7 @@ type Lang = Promise<Extension | null>;
 const legacy = (load: () => Promise<StreamParser<unknown>>): Lang => load().then((m) => StreamLanguage.define(m));
 
 /** The language of a file, loaded when first needed so the bundle stays small. */
-function language(name: string): Lang {
+export function language(name: string): Lang {
   const lower = name.toLowerCase();
   if (lower === 'dockerfile') return legacy(() => import('@codemirror/legacy-modes/mode/dockerfile').then((m) => m.dockerFile));
   if (lower === 'makefile' || lower === 'justfile') return legacy(() => import('@codemirror/legacy-modes/mode/shell').then((m) => m.shell));
@@ -70,7 +70,7 @@ function language(name: string): Lang {
 }
 
 const dark = window.matchMedia('(prefers-color-scheme: dark)');
-const theme = (): Extension => (dark.matches ? oneDark : syntaxHighlighting(defaultHighlightStyle, { fallback: true }));
+export const theme = (): Extension => (dark.matches ? oneDark : syntaxHighlighting(defaultHighlightStyle, { fallback: true }));
 
 export const textKind = {
   name: 'text',

@@ -40,6 +40,7 @@ yajna show <ID> | timeline <ID> | tree PRJ-xxxx | runs EXP-xxxx --by <metric>
 yajna todo "<text>" [--due fri] [-p 1]                     # a loose todo in notes/tasks.md
 yajna tasks                                                # open checkboxes across the vault, numbered
 yajna log|todo|tasks --in <notebook>[/<project>] …         # another notebook on the machine (yajna repos)
+yajna review open HEAD..HEAD --title "<the work>"          # the review your changes go under (once per piece of work)
 yajna review todo                                          # the review threads you owe on this branch
 yajna review list --open | show REV-… [--diff]             # reviews of your branch and what they ask
 yajna review reply|address REV-… T<n> "<text>" [--commit <sha>]   # answer; address with the fixing commit
@@ -90,6 +91,16 @@ one-line instructions under headings such as *Runs*.
   `review: pending` in its frontmatter; only a human removes it. Rewrite *Current belief*;
   append everywhere else. The *Conclusion* of an experiment is written
   once, by a human: propose it in the log or the `AGS` page instead.
+- **Your changes go under a review.** Keep one `REV` page for the piece of work you are
+  doing and add to it rather than opening one per change. Look first: `yajna review list
+  --open` and `yajna review todo`; continue the unfinished review of your work when there
+  is one. Otherwise, before you change anything, open one: `yajna review open HEAD..HEAD
+  --title "<the work>"` (on a worktree branch, `yajna review open <branch>`). After each
+  commit, `yajna review update REV-…` takes the new commits in; what is not committed yet
+  shows in `yajna serve --review` as not in the review. Write in its `## Summary` what the
+  work serves (`[[EXP-…]]`, `[[RUN-…]]`, the *Progress* item) and link the review from
+  your `AGS` page and log. Before starting the next major piece of work, ask the human to
+  finish the current review (approve it, or say it is done); open a new one only then.
 - **Reviews are answered, not resolved, by agents.** When a `REV` page reviews your
   branch, answer each thread with `yajna review reply`, or fix it, commit, and run
   `yajna review address REV-… T<n> --commit <sha> "<what changed>"`. Run `yajna review

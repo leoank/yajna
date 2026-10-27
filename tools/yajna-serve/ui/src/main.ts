@@ -5,7 +5,9 @@ import './viewers/text';
 import './viewers/markdown';
 import './viewers/image';
 import './viewers/binary';
-import { api } from './api';
+import './viewers/review';
+import { api, setToken } from './api';
+import { ReviewList } from './reviews';
 import { Tree } from './tree';
 import { Workbench, parseHash, type Status } from './workbench';
 import { Live } from './live';
@@ -13,6 +15,12 @@ import { Live } from './live';
 const WIDTH_KEY = 'yajna-files:sidebar';
 
 async function main() {
+  // the token of `yajna serve --review`, kept in memory and out of the address bar
+  const token = new URLSearchParams(location.search).get('token');
+  if (token) {
+    setToken(token);
+    history.replaceState(null, '', location.pathname + location.hash);
+  }
   const [info, roots] = await Promise.all([api.info(), api.roots()]);
   document.title = `${info.notebook} · files`;
   document.querySelector('#notebook')!.textContent = info.notebook;
@@ -54,9 +62,11 @@ async function main() {
     (c) => (c.kind === 'dir' ? tree.dirChanged(c) : bench.fileChanged(c)),
     (s) => ((stream = s), showLive()),
   );
-  const watch = () => live.set([...bench.paths(), ...tree.expanded()]);
+  // review tabs read their review themselves; only files are watched
+  const watch = () => live.set([...bench.paths().filter((p) => !p.startsWith('review:')), ...tree.expanded()]);
   const tree = new Tree(roots, (path, pin) => bench.open(path, { pin }), () => watch());
-  document.querySelector('#sidebar')!.append(tree.element);
+  const list = new ReviewList((id) => bench.open(`review:${id}`, { pin: true }));
+  document.querySelector('#sidebar')!.append(list.element, tree.element);
 
   bench = new Workbench(
     document.querySelector('#editor')!,

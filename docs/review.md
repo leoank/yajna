@@ -1,6 +1,6 @@
 # Code review in the notebook
 
-Status: design v0.4, 2026-10-27; steps 1 to 3 built (yajna 0.10.0 to 0.12.0). Companion to `architecture.md` (section 11,
+Status: design v0.6, 2026-10-27; steps 1 to 4 built (yajna 0.10.0 to 0.13.0). Companion to `architecture.md` (section 11,
 Phase 1d) and `reproduce.md`, which shares its commit resolution. Decision: ADR-0030.
 
 ## 1. What it is for
@@ -179,6 +179,13 @@ like any other. `update` moves a branch review's head to the branch tip, a range
   reviews of the branch they are on, and on the other unfinished reviews in their checkout,
   oldest first, each with its last reply. The skill tells them to run it when they start
   and before they report a branch as done.
+- **Agents put their changes under a review** (v0.6, from ank's first pass in the
+  browser): one REV page per piece of work, opened before the first change
+  (`review open HEAD..HEAD`, whose base stays where it was opened and whose head
+  `review update` moves to each new commit, or the branch in a worktree), continued
+  rather than duplicated, naming in its Summary the experiment, run or *Progress* item it
+  serves. ank decides when a review is finished; the agent asks before it starts the next
+  major piece of work under a new one.
 
 ## 7. Interfaces
 
@@ -202,18 +209,39 @@ yajna phase start PRJ-… "<item>"
 
 ### 7.2 The diff view in `yajna serve --review`
 
-- `files/` gains a *reviews* list and a diff tab per review: the changed files on the
-  left, each file as a side-by-side or unified diff (`@codemirror/merge`), threads drawn
-  inline at their anchors, and a comment box on a selected range. Reply, address, resolve,
-  approve and request-changes are buttons that do what the CLI commands do.
-- Writing is on only with `--review`. The server then prints its URL with a one-time
-  token; the page keeps it in memory and sends it with every `POST`, which must also carry
-  a matching `Origin`. The rest of the server stays read-only (ADR-0028).
+- `files/` gains a *reviews* list above the tree and a tab per review (`review:<ID>`): an
+  overview (summary, verdict, every thread grouped by file, a general comment), then
+  the changed files, each a side-by-side diff (`@codemirror/merge`, unchanged stretches
+  collapsed) with its threads drawn under their lines. Reply, address, resolve, reopen,
+  approve and request-changes are buttons that call the same code as the CLI commands.
+- A new thread is started two ways: select lines on the right (or click a line number,
+  shift-click for a range) and press the button that floats over them, which opens a box
+  under those lines; or type in the comment box that stays at the top of the diff while it
+  scrolls and applies to the lines picked. Toggles in the review's header hide the file
+  list, the comment box and (Focus, Esc leaves) the viewer's top bar, sidebar and status
+  line, and wrap long lines; they are remembered per browser.
+- *Not in the review yet* lists, under the files, what differs between the review's head
+  and the working tree of its checkout in the review's paths: later commits, uncommitted
+  changes and untracked files, but not the page itself. Each opens as a read-only diff,
+  head against the file on disk, re-read while it is open. Threads anchor to commits, so
+  these lines cannot be commented on until they are committed and `review update` brings
+  them in.
+- Reading reviews is always on; writing only with `--review`. The server then prints
+  `…/files/?token=<128 random bits>`; the page takes the token out of the address bar,
+  keeps it in memory (a reload needs the printed URL again) and sends it as
+  `X-Yajna-Token` with every `POST`, which must also carry an `Origin` naming the host it
+  was sent to. The rest of the server stays read-only (ADR-0028). The viewer writes as
+  the notebook's author (`$YAJNA_AUTHOR`, else `yajna.toml`).
 - A write edits the REV page in the working tree of the right worktree and commits
-  nothing. The page is re-read before each write and the write refused if it changed in
-  between, so a reply from an agent at the same moment is not lost; the view reloads.
-- Changes to REV pages reach open views over the existing SSE stream, so an agent's reply
-  appears while ank reads.
+  nothing. Each write carries the version of the page the viewer read; a page that changed
+  since is refused with 409, the view reloads and keeps the unsent text. Writes from the
+  viewer are serialised.
+- An open review tab reads its review again every two seconds and redraws when the page
+  changed, keeping what is being typed, so an agent's reply appears while ank reads.
+  (v0.4 said over the SSE stream; a branch review lives in another worktree, outside the
+  roots that stream watches.)
+- `address` without a commit takes the branch's tip for a branch review, from the CLI and
+  the viewer alike, and `HEAD` otherwise.
 - `yajna-serve` knows HTTP and files, not the notebook (ADR-0027): the review routes take
   their handlers from the CLI crate through a trait, as the site renderer already does.
 - The static site renders REV pages as pages, with the quoted lines but no diff.

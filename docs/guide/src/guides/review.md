@@ -92,6 +92,31 @@ review page is not committed there, and when the branch does not validate agains
 branch it goes into. Then it merges with `--no-ff`, and the merge commit carries the page
 with `status: merged`, `merge: <the tip merged>` and a line in the summary.
 
+## In the browser
+
+```sh
+yajna serve --review
+# reviews, writable: http://127.0.0.1:8765/files/?token=…
+```
+
+The files viewer lists the reviews above the tree. A review opens as a tab: an overview
+with the summary, the verdict buttons and every thread, then each changed file as a
+side-by-side diff with its threads under their lines. To comment, select lines on the
+right (or click a line number, shift-click for a range) and press *Comment on lines…*
+over them, or type in the comment box at the top of the diff, which stays while you
+scroll. Reply, address, resolve and reopen from the thread; Ctrl-Enter sends. The header's
+toggles hide the file list or the comment box, wrap long lines, and *Focus* hides the rest
+of the viewer (Esc brings it back). The tab reads the review again every two seconds, so
+an agent's reply appears while you read.
+
+*Not in the review yet*, under the files, shows what has changed since the review's head:
+later commits, uncommitted edits and new files, each as a read-only diff against the file
+on disk. Commit them and run `yajna review update` to comment on them.
+
+Writing needs the printed URL: it carries a token the page keeps in memory, so a reload,
+or `yajna serve` without `--review`, is read-only. A write made after someone else changed
+the page is refused and the tab reloads with your text kept. Nothing is committed for you.
+
 ## What an agent owes
 
 ```sh

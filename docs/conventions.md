@@ -339,6 +339,13 @@ with `--no-ff` once the branch is committed and validates against it, and record
 open threads an agent owes on its branch; `validate --against` notes unfinished reviews of
 the branch.
 
+An agent's changes go under a review: one `REV` page per piece of work, opened before the
+first change (`yajna review open HEAD..HEAD --title "<the work>"`, or the branch in a
+worktree), continued rather than duplicated, and brought up to date with `review update`
+after each commit. Its `## Summary` names what the work serves (`[[EXP-…]]`, `[[RUN-…]]`, a
+*Progress* item). The human finishes it (approves) before the agent opens the next one for
+a new major piece of work.
+
 ## From anywhere
 
 `yajna log`, `todo` and `tasks` take `--in <notebook>[/<project>]` from any directory
@@ -378,6 +385,7 @@ yajna site [--out dir]       # one HTML page per entity, the log, tasks, and on 
 yajna serve [--open]         # the same at http://127.0.0.1:8765/, re-rendered whenever a
                              #   page changes (--port picks another port; `site --serve`
                              #   is the same command)
+yajna serve --review         # also lets files/ write to reviews, through the URL it prints
 yajna index                  # force a rebuild and print the table sizes
 ```
 

@@ -5,11 +5,12 @@
 //!
 //! The crate knows HTTP and files, not the notebook: the CLI hands it the site directory,
 //! a callback that re-renders the site when a page changed, one that renders markdown the
-//! way the site does, and the roots. The viewer's frontend (`ui/`, ADR-0029) is built
+//! way the site does, the roots, and what reads and writes reviews (`reviews`). The viewer's frontend (`ui/`, ADR-0029) is built
 //! into `ui/dist` by `nix run .#ui` and embedded here.
 
 pub mod files;
 pub mod live;
+pub mod reviews;
 
 use std::net::{Ipv4Addr, SocketAddr};
 use std::path::PathBuf;
@@ -20,7 +21,7 @@ use axum::extract::{Path, Request, State};
 use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
-use axum::routing::get;
+use axum::routing::{get, post};
 use axum::Router;
 
 /// Re-renders the site if a page changed since the last render; called before every page
@@ -60,6 +61,10 @@ pub struct Config {
     pub notebook: String,
     /// the version of yajna serving it, shown in the viewer
     pub version: String,
+    /// the notebook's reviews (ADR-0030)
+    pub reviews: Option<Arc<dyn reviews::Reviews>>,
+    /// what a write to a review must carry; `None` keeps the server read-only
+    pub token: Option<String>,
 }
 
 #[derive(Clone)]
@@ -72,6 +77,8 @@ pub(crate) struct App {
     render: Render,
     notebook: Arc<String>,
     version: Arc<String>,
+    reviews: Option<Arc<dyn reviews::Reviews>>,
+    token: Arc<Option<String>>,
 }
 
 /// Serve until the process is killed. `ready` gets the bound address once the server
@@ -96,6 +103,8 @@ pub fn run(cfg: Config, ready: impl FnOnce(SocketAddr)) -> Result<(), String> {
             render: cfg.render,
             notebook: Arc::new(cfg.notebook),
             version: Arc::new(cfg.version),
+            reviews: cfg.reviews,
+            token: Arc::new(cfg.token),
         };
         axum::serve(listener, router(app))
             .await
@@ -117,6 +126,10 @@ fn router(app: App) -> Router {
         .route("/api/files/render", get(files::render_handler))
         .route("/api/events", get(live::events_handler))
         .route("/api/info", get(info))
+        .route("/api/reviews", get(reviews::list_handler))
+        .route("/api/reviews/{id}", get(reviews::get_handler))
+        .route("/api/reviews/{id}/file", get(reviews::file_handler))
+        .route("/api/reviews/{id}/{action}", post(reviews::write_handler))
         .route(
             "/files",
             get(|| async { axum::response::Redirect::permanent("/files/") }),
@@ -131,6 +144,7 @@ async fn info(State(app): State<App>) -> Response {
     axum::Json(serde_json::json!({
         "notebook": *app.notebook,
         "version": *app.version,
+        "review": app.token.is_some(),
     }))
     .into_response()
 }

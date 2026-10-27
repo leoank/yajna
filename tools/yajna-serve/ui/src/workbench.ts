@@ -5,6 +5,7 @@
 
 import { dv, type DockviewApi, type IDockviewPanel, type GroupPanelPartInitParameters, type TabPartInitParameters, type IContentRenderer, type ITabRenderer, type PanelUpdateEvent, type Parameters, type IWatermarkRenderer, type IHeaderActionsRenderer, type DockviewGroupPanel } from './dockview';
 import { api, basename, formatSize, formatTime, ApiError, type Stat } from './api';
+import { reviewKind } from './viewers/review';
 import { pick, byName, message, type Context, type Viewer } from './viewers/registry';
 import type { Change } from './live';
 
@@ -152,9 +153,11 @@ class Panel implements IContentRenderer {
     this.element.replaceChildren(box);
     const path = this.params.path;
     try {
-      this.stat = await api.stat(path);
+      // a review tab, `review:<ID>`, is not a file
+      const review = path.startsWith('review:');
+      this.stat = review ? { path, kind: 'review', mime: 'review', text: false } : await api.stat(path);
       if (token !== this.loads) return;
-      const kind = (this.params.kind && byName(this.params.kind)) || pick(this.stat);
+      const kind = review ? reviewKind : (this.params.kind && byName(this.params.kind)) || pick(this.stat);
       const ctx: Context = {
         path,
         stat: this.stat,
