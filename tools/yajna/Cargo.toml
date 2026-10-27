@@ -1,8 +1,8 @@
 [package]
 name = "yajna"
-version = "0.9.0"
+version = "0.10.0"
 edition = "2021"
-description = "The yajna lab-notebook command: new, log, todo, result, tasks, ref, validate, index, timeline, tree, site, serve"
+description = "The yajna lab-notebook command: new, log, todo, review, result, tasks, ref, validate, index, timeline, tree, site, serve"
 license = "MIT"
 default-run = "yajna"
 
