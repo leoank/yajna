@@ -1,12 +1,11 @@
-//! The commands behind the CLI: new, log, result, tasks, ref, validate.
+//! The commands behind the CLI: new, result, ref, validate. `log`, `todo` and `tasks` are
+//! in `anywhere`.
 
 use std::fs;
-use std::io::{IsTerminal, Read};
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::LazyLock;
 
-use regex::Regex;
 use serde_json::Value;
 
 use crate::cli::Cmd;
@@ -17,9 +16,6 @@ use crate::vault::{
     canonical_type, date_of, entity, iso_minutes, rel, slugify, Res, Vault, PROJECT_SCOPED,
 };
 use crate::yamlfmt::title_scalar;
-
-static TASK_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^\s*- \[( |x|X)\] (.+?)\s*$").unwrap());
 
 pub const RESULT_MARK: &str = "===RESULT===";
 pub const PROJECTS_MARK: &str = "# projects: registered by yajna new project --code\n";
@@ -83,19 +79,9 @@ pub fn run(vault: &Vault, cmd: &Cmd, prompter: &mut dyn Prompter) -> Res<i32> {
                 dry_run: *dry_run,
             },
         ),
-        Cmd::Log {
-            text,
-            date,
-            time,
-            author,
-        } => cmd_log(
-            vault,
-            text,
-            date.as_deref(),
-            time.as_deref(),
-            author.as_deref(),
-            prompter,
-        ),
+        Cmd::Log { .. } | Cmd::Todo { .. } | Cmd::Tasks { .. } | Cmd::Repos { .. } => {
+            crate::anywhere::run(Some(&vault.root), cmd, prompter)
+        }
         Cmd::ResultCmd {
             experiment,
             file,
@@ -112,7 +98,6 @@ pub fn run(vault: &Vault, cmd: &Cmd, prompter: &mut dyn Prompter) -> Res<i32> {
             note.as_deref(),
             script.as_deref(),
         ),
-        Cmd::Tasks { done } => cmd_tasks(vault, *done),
         Cmd::Ref { key, note } => cmd_ref(vault, key, *note),
         Cmd::Validate { against } => cmd_validate(vault, against.as_deref()),
         Cmd::Export {
@@ -560,57 +545,6 @@ pub fn scaffold_code(vault: &Vault, slug: &str, id: &str, title: &str) -> Res<Pa
     Ok(code_dir)
 }
 
-// --- log -----------------------------------------------------------------------------
-
-fn cmd_log(
-    vault: &Vault,
-    words: &[String],
-    date: Option<&str>,
-    time: Option<&str>,
-    author: Option<&str>,
-    prompter: &mut dyn Prompter,
-) -> Res<i32> {
-    let now = vault.now();
-    let date = date.map(str::to_string).unwrap_or_else(|| date_of(&now));
-    let time = time
-        .map(str::to_string)
-        .unwrap_or_else(|| now.strftime("%H:%M").to_string());
-    let author = author
-        .map(str::to_string)
-        .unwrap_or_else(|| vault.default_author());
-    let path = vault.log_path(&date, Some(&author));
-    if !path.exists() {
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-        }
-        fs::write(
-            &path,
-            vault.render("log", &[("date", &date), ("author", &author)])?,
-        )
-        .map_err(|e| e.to_string())?;
-    }
-    let mut text = words.join(" ").trim().to_string();
-    if text.is_empty() {
-        if std::io::stdin().is_terminal() {
-            text = tui::log_entry(vault, prompter)?;
-        } else {
-            let mut buf = String::new();
-            std::io::stdin()
-                .read_to_string(&mut buf)
-                .map_err(|e| e.to_string())?;
-            text = buf.trim().to_string();
-        }
-    }
-    if text.is_empty() {
-        return Err("nothing to log".to_string());
-    }
-    let mut content = fs::read_to_string(&path).map_err(|e| e.to_string())?;
-    content.push_str(&format!("- {time} {text}\n"));
-    fs::write(&path, content).map_err(|e| e.to_string())?;
-    println!("{}: {time} {text}", rel(&path, &vault.root));
-    Ok(0)
-}
-
 // --- result --------------------------------------------------------------------------
 
 fn git_commit(root: &Path) -> Option<String> {
@@ -851,42 +785,6 @@ pub fn py_json(v: &Value) -> String {
                 .join(", ")
         ),
     }
-}
-
-// --- tasks ---------------------------------------------------------------------------
-
-fn cmd_tasks(vault: &Vault, done: bool) -> Res<i32> {
-    let mut n = 0;
-    for page in vault.pages()? {
-        let text = fs::read_to_string(&page.path).map_err(|e| e.to_string())?;
-        let mut section = String::new();
-        for (i, line) in text.lines().enumerate() {
-            if line.starts_with('#') {
-                section = line.trim_start_matches('#').trim().to_string();
-                continue;
-            }
-            let Some(m) = TASK_RE.captures(line) else {
-                continue;
-            };
-            let is_done = m[1].eq_ignore_ascii_case("x");
-            if is_done && !done {
-                continue;
-            }
-            n += 1;
-            let where_ = format!("{}:{}", rel(&page.path, &vault.root), i + 1);
-            let label = page.id().map(|id| format!("[{id}] ")).unwrap_or_default();
-            let sect = if section.is_empty() {
-                String::new()
-            } else {
-                format!("{section}: ")
-            };
-            println!("{where_:<60} {label}{sect}{}", &m[2]);
-        }
-    }
-    if n == 0 {
-        println!("{}", if done { "no tasks" } else { "no open tasks" });
-    }
-    Ok(0)
 }
 
 // --- ref -----------------------------------------------------------------------------

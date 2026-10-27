@@ -160,6 +160,9 @@ pub fn validate(vault: &Vault) -> Res<(Vec<String>, usize)> {
     for msg in crate::serve::files_problems(vault) {
         problems.items.push(msg);
     }
+    problems
+        .items
+        .extend(crate::anywhere::tasks_problems(vault));
     let validators = validators()?;
     let pages: Vec<Page> = vault.pages()?;
     let mut ids: BTreeMap<String, PathBuf> = BTreeMap::new();

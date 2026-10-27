@@ -37,7 +37,9 @@ yajna result --experiment EXP-xxxx run.log --script <path>   # metric runs: ===R
 yajna log "<what you did and learned, with [[IDs]]>"       # your own file for the day
 yajna new agent "<task>"                                   # the AGS page for this session
 yajna show <ID> | timeline <ID> | tree PRJ-xxxx | runs EXP-xxxx --by <metric>
-yajna tasks                                                # open checkboxes across the vault
+yajna todo "<text>" [--due fri] [-p 1]                     # a loose todo in notes/tasks.md
+yajna tasks                                                # open checkboxes across the vault, numbered
+yajna log|todo|tasks --in <notebook>[/<project>] …         # another notebook on the machine (yajna repos)
 yajna validate                                             # run before you report anything as done
 ```
 

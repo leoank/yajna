@@ -551,8 +551,12 @@ pub fn graduate(
         remote_url(&vault.root),
     )?;
 
-    // 3. The lab page points onward and is frozen.
+    // 3. The lab page points onward and is frozen; its loose todos go along.
     let continued = format!("{ns}/{SOLE_PROJECT}");
+    crate::anywhere::move_todos(vault, prj, &into, &continued)?;
+    if let Ok(new) = Vault::open(into.clone()) {
+        crate::anywhere::remember(&new);
+    }
     let text = fs::read_to_string(&page.path).map_err(|e| e.to_string())?;
     let text = edit_frontmatter(&text, |lines| {
         set_field(lines, "status", "moved");

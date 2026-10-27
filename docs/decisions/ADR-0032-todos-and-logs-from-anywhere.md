@@ -17,7 +17,8 @@ no per-user configuration, so nothing on a machine knows which notebooks it hold
 - **A registry in two files**: `~/.config/yajna/config.toml` for what ank pins (author,
   default target, editor, repos), never written by yajna so neusis can manage it; and
   `~/.local/state/yajna/repos.toml`, where yajna records every repo it runs in by its
-  namespace. The config wins.
+  namespace. The config wins; between two recorded checkouts of one namespace, the first
+  recorded, with a note naming the other.
 - **`--in <repo>[/<project>]`** on `log`, `todo` and `tasks`; projects by ID or slug
   prefix; moved projects followed to where they continue. Without it, the current repo,
   else `default`, else a picker; `--pick` always asks.

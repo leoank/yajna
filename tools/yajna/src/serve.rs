@@ -11,7 +11,7 @@ use crate::vault::{Res, Vault, CONFIG_NAME};
 
 /// `~` at the start and `$VAR` or `${VAR}` anywhere, from the environment. An unset
 /// variable stays as written, so the root shows as missing rather than pointing elsewhere.
-fn expand(path: &str) -> String {
+pub(crate) fn expand(path: &str) -> String {
     let path = match (path.strip_prefix('~'), std::env::var("HOME")) {
         (Some(rest), Ok(home)) if rest.is_empty() || rest.starts_with('/') => {
             format!("{home}{rest}")

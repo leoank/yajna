@@ -1,6 +1,6 @@
 # Todos and log lines from anywhere
 
-Status: design v0.1, 2026-10-27; nothing built. Decision: ADR-0032.
+Status: design v0.2, 2026-10-27; built in yajna 0.9.0. Decision: ADR-0032.
 
 ## 1. What it is for
 
@@ -59,11 +59,12 @@ seen = 2026-10-27T09:12:00Z
 - **The config is never written by yajna**, so it can be a read-only file from neusis.
   Everything yajna learns goes in the state file.
 - **A repo is recorded** under its `namespace` from `yajna.toml` whenever yajna runs in it
-  (once per new or moved path, so it costs nothing), and by `init`, `graduate` (both
-  repos) and `worktree`. A worktree records the lab's main checkout, not itself.
+  (written only for a new or moved path), and by `init` and `graduate` (both repos). A
+  worktree records the lab's main checkout, not itself.
 - **A recorded path that no longer has a `yajna.toml`** is dropped at lookup, with a note.
-  Two paths with one namespace (two clones): the config's wins, else the one seen last,
-  and the other is named in a warning.
+  Two paths with one namespace (two clones): the config's wins, else the one recorded
+  first, and the other is named in a note until one is pinned. (v0.1 said the one seen
+  last; a scratch clone would then have taken over the name.)
 - `yajna repos` lists the merged registry with the source of each entry; `yajna repos
   forget <name>` removes a state entry.
 

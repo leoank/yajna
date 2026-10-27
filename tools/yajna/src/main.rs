@@ -1,4 +1,5 @@
 mod adopt;
+mod anywhere;
 mod cli;
 mod commands;
 mod export;
@@ -30,16 +31,39 @@ fn run() -> Result<i32, String> {
             Some(r) => r.clone(),
             None => std::env::current_dir().map_err(|e| e.to_string())?,
         };
-        return init::run(&here, shape);
+        let code = init::run(&here, shape)?;
+        let made = match shape {
+            cli::InitShape::Lab {
+                path: Some(path), ..
+            } => here.join(path),
+            _ => here,
+        };
+        if let Ok(vault) = Vault::open(made) {
+            anywhere::remember(&vault);
+        }
+        return Ok(code);
     }
-    let root = match args.root {
-        Some(r) => r
-            .canonicalize()
-            .map_err(|e| format!("{}: {e}", r.display()))?,
+    let root = match &args.root {
+        Some(r) => Some(
+            r.canonicalize()
+                .map_err(|e| format!("{}: {e}", r.display()))?,
+        ),
+        None => find_root().ok(),
+    };
+    let mut prompter = tui::prompter();
+    // log, todo, tasks and repos also run outside any notebook (ADR-0032)
+    if let Some(cmd) = args.cmd.as_ref().filter(|c| anywhere::handles(c)) {
+        if let Some(vault) = root.clone().and_then(|r| Vault::open(r).ok()) {
+            anywhere::remember(&vault);
+        }
+        return anywhere::run(root.as_deref(), cmd, prompter.as_mut());
+    }
+    let root = match root {
+        Some(r) => r,
         None => find_root()?,
     };
     let vault = Vault::open(root)?;
-    let mut prompter = tui::prompter();
+    anywhere::remember(&vault);
     match args.cmd {
         None => tui::menu(&vault, prompter.as_mut()),
         Some(cmd) => commands::run(&vault, &cmd, prompter.as_mut()),

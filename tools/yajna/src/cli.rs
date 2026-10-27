@@ -93,10 +93,20 @@ pub enum Cmd {
         #[arg(long)]
         dry_run: bool,
     },
-    /// append a timestamped line to today's log
+    /// append a timestamped line to today's log, here or in any notebook on the machine
     Log {
         /// the entry; read from stdin when empty
         text: Vec<String>,
+        /// the notebook: a repo by namespace, a project as <repo>/<PRJ-xxxx or slug>, or a
+        /// project of this repo (default: this repo, else `default` in the user config)
+        #[arg(long = "in", value_name = "TARGET")]
+        target: Option<String>,
+        /// choose the notebook from a list
+        #[arg(long, conflicts_with = "target")]
+        pick: bool,
+        /// write the entries in $VISUAL/$EDITOR, one per paragraph
+        #[arg(short = 'e', long)]
+        edit: bool,
         /// YYYY-MM-DD (default today)
         #[arg(long)]
         date: Option<String>,
@@ -128,11 +138,47 @@ pub enum Cmd {
         #[arg(long)]
         script: Option<String>,
     },
-    /// list open checkboxes across the vault
+    /// list open checkboxes across the vault, numbered for `yajna todo done`; overdue first,
+    /// then by priority (p:1-3) and due date (due:YYYY-MM-DD)
     Tasks {
         /// include completed tasks
         #[arg(long)]
         done: bool,
+        /// one notebook or project, as for `yajna log --in`
+        #[arg(long = "in", value_name = "TARGET")]
+        target: Option<String>,
+        /// every notebook in the user registry (`yajna repos`)
+        #[arg(long, conflicts_with = "target")]
+        all: bool,
+    },
+    /// add a loose todo to a notebook's tasks.md, here or anywhere on the machine
+    #[command(args_conflicts_with_subcommands = true)]
+    Todo {
+        #[command(subcommand)]
+        action: Option<TodoAction>,
+        /// the todo
+        text: Vec<String>,
+        /// the notebook, as for `yajna log --in`
+        #[arg(long = "in", value_name = "TARGET")]
+        target: Option<String>,
+        /// choose the notebook from a list
+        #[arg(long, conflicts_with = "target")]
+        pick: bool,
+        /// write the todos in $VISUAL/$EDITOR, one per paragraph
+        #[arg(short = 'e', long)]
+        edit: bool,
+        /// due date: YYYY-MM-DD, today, tomorrow, a weekday, +3d, +2w
+        #[arg(long)]
+        due: Option<String>,
+        /// priority, 1 (highest) to 3
+        #[arg(short = 'p', long, value_parser = clap::value_parser!(u8).range(1..=3))]
+        priority: Option<u8>,
+    },
+    /// the labs and projects this machine knows: ~/.config/yajna/config.toml, and every
+    /// repo yajna has run in
+    Repos {
+        #[command(subcommand)]
+        action: Option<ReposAction>,
     },
     /// show a reference by citation key; --note creates its reading note
     Ref {
@@ -346,6 +392,24 @@ pub enum ImportSource {
         #[arg(long)]
         dry_run: bool,
     },
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum TodoAction {
+    /// tick a todo: item <n> of the last `yajna tasks`, or the one matching the words
+    Done {
+        /// a number from the last `yajna tasks`, or words of the todo; nothing for a list
+        what: Vec<String>,
+        /// the notebook to look in, as for `yajna log --in`
+        #[arg(long = "in", value_name = "TARGET")]
+        target: Option<String>,
+    },
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum ReposAction {
+    /// drop a repo yajna recorded (repos in the user config stay)
+    Forget { name: String },
 }
 
 #[derive(Subcommand, Debug, Clone)]

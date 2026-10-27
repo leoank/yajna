@@ -102,3 +102,26 @@ checked, because they differ per machine.
 | `.claude/skills/yajna/SKILL.md` | The agent skill, written by `yajna init` and `yajna skill`. |
 | `~/.cache/yajna/` | The index, the site and ELN bundles. Safe to delete. |
 | `~/.config/yajna/gdoc.json` | The Google refresh token from `yajna sync login`. A secret. |
+| `~/.config/yajna/config.toml` | The user config, below. Never written by yajna. |
+| `~/.local/state/yajna/repos.toml` | Every notebook yajna has run in, by namespace and main checkout. `yajna repos forget <name>` drops one. |
+| `~/.local/state/yajna/tasks.json` | The last `yajna tasks` listing, for `yajna todo done <n>`. |
+
+## The user config
+
+`~/.config/yajna/config.toml` (`$XDG_CONFIG_HOME/yajna/config.toml`) is per user, not per
+repo, and lets `yajna log`, `todo` and `tasks` reach any notebook with `--in` (ADR-0032).
+yajna only reads it, so it can come from a home-manager module.
+
+```toml
+author = "ank"          # the human handle when a notebook names none
+default = "manthan"     # where entries go outside any notebook
+editor = "nvim"         # for -e, after $VISUAL and $EDITOR
+
+[repos]                 # pinned notebooks; they win over the ones yajna recorded
+manthan = "~/workspace/chaos/manthan/main"
+rc2s2 = { path = "~/workspace/hub/leoank/rc2s2" }
+```
+
+Every notebook yajna runs in is also recorded by namespace in the state file above; when
+two checkouts share a namespace, the first recorded is used and the other named in a note
+until one is pinned here.

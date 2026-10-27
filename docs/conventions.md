@@ -121,6 +121,11 @@ Lines are `- HH:MM text`, appended, never reordered. Link anything you mention. 
 is created with its frontmatter on first use. An agent logs with `--author agent:<name>`,
 which goes to a separate file for the same day so that merges stay trivial.
 
+From anywhere on the machine, `--in` names the notebook: `yajna log --in manthan "…"`, or
+`--in manthan/vesicle` for a project of a lab, whose line then starts with `[[PRJ-0005]]`
+in the lab's log. `-e` opens the editor, one line per paragraph. Written from outside its
+checkout, the log file is committed there on its own (section *From anywhere*).
+
 Photos and audio that document the process go in `notes/log/<year>/<date>/` and are embedded
 from the entry. If they are a result of a run they become an `ART` page instead (ADR-0012).
 
@@ -298,8 +303,27 @@ and under a topic; tag it `to-read`, `skimmed` or `read` and by role.
 ## Tasks
 
 Any `- [ ]` on any page is a task. Put it next to the thing it is about. Loose ones go in
-`notes/tasks.md`. `yajna tasks` lists every open one with its page and section; `--done`
-includes ticked ones.
+`notes/tasks.md`, through `yajna todo "<text>"` or by hand; a lab project's loose ones sit
+under a `## PRJ-0005 <title>` heading there (`yajna todo --in manthan/vesicle …` writes
+it). A todo may end in `due:YYYY-MM-DD` and `p:1` (highest) to `p:3`; `--due fri` and
+`-p 1` write them, and `yajna validate` checks them.
+
+`yajna tasks` lists every open one with its page and section, numbered, overdue first, then
+by priority and due date; `--done` includes ticked ones, `--in` narrows to one notebook or
+project, `--all` covers every notebook on the machine. `yajna todo done 3` ticks item 3 of
+the last listing (refused if the line changed since), adding `done:<date>`; `yajna todo
+done <words>` ticks the one that matches.
+
+## From anywhere
+
+`yajna log`, `todo` and `tasks` take `--in <notebook>[/<project>]` from any directory
+(ADR-0032). Notebooks are known by namespace: those pinned in `~/.config/yajna/config.toml`,
+and every one yajna has run in, recorded in `~/.local/state/yajna/repos.toml`; `yajna
+repos` lists them. Without `--in`, the notebook around you, else `default` from the config,
+else a picker (`--pick` always asks). Entries go to the main checkout, never a branch's
+worktree, and a file written from outside its checkout is committed there alone
+(`docs(notes): log`, `todo`, `todo done`), unless it already had changes of its own.
+Nothing is pushed.
 
 ## Search
 

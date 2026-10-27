@@ -87,8 +87,12 @@ impl Vault {
             .arg(&self.root)
             .args(args)
             .env_remove("EDITOR")
+            .env_remove("VISUAL")
             .env_remove("YAJNA_ANSWERS")
             .env("YAJNA_CACHE", self.root.join(".cache"))
+            // the user registry (ADR-0032) stays out of the real home
+            .env("XDG_STATE_HOME", self.root.join(".cache/state"))
+            .env("XDG_CONFIG_HOME", self.root.join(".cache/config"))
             // reproducible date IDs: EXP-20261021-000001 of the counter days is EXP-20261021-000001 here
             .env("YAJNA_FIXED_TIME", "2026-10-21T00:00:00Z");
         for (k, v) in env {
@@ -827,6 +831,9 @@ fn graduate_moves_code_and_notebook() {
         .open(lab.root.join(script))
         .unwrap();
     writeln!(sh, "cargo run --manifest-path code/toy-model/Cargo.toml").unwrap();
+    // a loose todo of the project, which goes along
+    let out = lab.run(&["todo", "--in", "PRJ-0002", "tune the model"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
     git(&lab.root, &["init", "-q", "-b", "main"]);
     git(&lab.root, &["add", "-A"]);
     git(&lab.root, &["commit", "-q", "-m", "lab"]);
@@ -907,6 +914,16 @@ fn graduate_moves_code_and_notebook() {
     assert!(
         cfg.contains("\n[repos]\ntoy = { url = \"github:leoank/toy\", path = \""),
         "{cfg}"
+    );
+
+    assert!(into
+        .read(&into.root.join("notes/tasks.md"))
+        .contains("- [ ] tune the model\n"));
+    let tasks = lab.read(&lab.root.join("notes/tasks.md"));
+    assert!(
+        tasks.contains("## PRJ-0002 Toy model\n\nMoved to `notes/tasks.md` in [[toy/PRJ-0001]]")
+            && !tasks.contains("tune the model"),
+        "{tasks}"
     );
 
     let out = lab.run(&["validate"]);
@@ -3781,4 +3798,253 @@ fn walk(dir: &Path) -> Vec<PathBuf> {
 
 fn regex_lite(text: &str, needle: &str) -> bool {
     text.contains(needle) && text.trim().ends_with(".md")
+}
+
+/// A home for the user registry, and yajna run from any directory with it (ADR-0032).
+struct Home {
+    dir: tempfile::TempDir,
+}
+
+impl Home {
+    fn new() -> Home {
+        Home {
+            dir: tempfile::tempdir().unwrap(),
+        }
+    }
+
+    fn config(&self, text: &str) {
+        let p = self.dir.path().join("config/yajna/config.toml");
+        fs::create_dir_all(p.parent().unwrap()).unwrap();
+        fs::write(p, text).unwrap();
+    }
+
+    fn run(&self, cwd: &Path, args: &[&str], env: &[(&str, &str)]) -> Out {
+        let mut cmd = Command::new(env!("CARGO_BIN_EXE_yajna"));
+        cmd.current_dir(cwd)
+            .args(args)
+            .env_remove("EDITOR")
+            .env_remove("VISUAL")
+            .env_remove("YAJNA_ANSWERS")
+            .env_remove("YAJNA_AUTHOR")
+            .env("YAJNA_CACHE", self.dir.path().join("cache"))
+            .env("XDG_STATE_HOME", self.dir.path().join("state"))
+            .env("XDG_CONFIG_HOME", self.dir.path().join("config"))
+            .env("GIT_AUTHOR_NAME", "t")
+            .env("GIT_AUTHOR_EMAIL", "t@example.com")
+            .env("GIT_COMMITTER_NAME", "t")
+            .env("GIT_COMMITTER_EMAIL", "t@example.com")
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .stdin(Stdio::null());
+        for (k, v) in env {
+            cmd.env(k, v);
+        }
+        let out = cmd.output().unwrap();
+        Out {
+            code: out.status.code().unwrap_or(-1),
+            stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
+            stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
+        }
+    }
+}
+
+#[test]
+fn todos_and_log_lines_from_anywhere() {
+    let home = Home::new();
+    let lab = vault();
+    let lab_root = lab.root.canonicalize().unwrap();
+    assert_eq!(lab.run(&["new", "project", "Vesicle imaging"]).code, 0);
+    git(&lab_root, &["init", "-q", "-b", "main"]);
+    git(&lab_root, &["add", "-A"]);
+    git(&lab_root, &["commit", "-q", "-m", "lab"]);
+    let elsewhere = empty();
+    let away = elsewhere.root.as_path();
+
+    // outside any notebook, nothing is known yet
+    let out = home.run(away, &["log", "x"], &[]);
+    assert_eq!(out.code, 1);
+    assert!(out.stderr.contains("--in"), "{}", out.stderr);
+    // running yajna in the lab records it
+    assert_eq!(home.run(&lab_root, &["validate"], &[]).code, 0);
+    let out = home.run(away, &["repos"], &[]);
+    assert!(
+        out.stdout.contains("yajna") && out.stdout.contains(lab_root.to_str().unwrap()),
+        "{}",
+        out.stdout
+    );
+
+    // a log line into a project of the lab, committed alone
+    fs::write(lab_root.join("notes/scratch.md"), "not mine\n").unwrap();
+    let out = home.run(
+        away,
+        &["log", "--in", "yajna/vesicle", "re-imaged scene 3"],
+        &[],
+    );
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let log = lab.read(
+        &lab_root.join("notes/log/2026").join(
+            fs::read_dir(lab_root.join("notes/log/2026"))
+                .unwrap()
+                .next()
+                .unwrap()
+                .unwrap()
+                .file_name(),
+        ),
+    );
+    assert!(log.contains(" [[PRJ-0001]] re-imaged scene 3\n"), "{log}");
+    assert_eq!(
+        git(&lab_root, &["log", "-1", "--format=%s"]).trim(),
+        "docs(notes): log"
+    );
+    assert_eq!(
+        git(&lab_root, &["status", "--porcelain"]).trim(),
+        "?? notes/scratch.md"
+    );
+
+    // todos: the lab's list, a project's section, tokens
+    let out = home.run(
+        away,
+        &[
+            "todo",
+            "--in",
+            "yajna",
+            "order agarose",
+            "--due",
+            "2020-01-01",
+            "-p",
+            "2",
+        ],
+        &[],
+    );
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let out = home.run(
+        away,
+        &["todo", "--in", "yajna/PRJ-0001", "image scene 4", "-p", "1"],
+        &[],
+    );
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let out = home.run(away, &["todo", "--in", "yajna", "clean the bench"], &[]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let tasks = lab.read(&lab_root.join("notes/tasks.md"));
+    assert!(
+        tasks.ends_with(
+            "- [ ] order agarose due:2020-01-01 p:2\n- [ ] clean the bench\n\n## PRJ-0001 Vesicle imaging\n\n- [ ] image scene 4 p:1\n"
+        ),
+        "{tasks}"
+    );
+    assert_eq!(
+        git(&lab_root, &["log", "-1", "--format=%s"]).trim(),
+        "docs(notes): todo"
+    );
+    assert_eq!(home.run(&lab_root, &["validate"], &[]).code, 0);
+
+    // a project's listing, and every listing: overdue first, then priority
+    let out = home.run(away, &["tasks", "--in", "yajna/vesicle"], &[]);
+    assert!(out.stdout.contains("image scene 4"), "{}", out.stdout);
+    assert!(!out.stdout.contains("agarose"), "{}", out.stdout);
+    let out = home.run(away, &["tasks", "--all"], &[]);
+    let lines: Vec<&str> = out.stdout.lines().collect();
+    assert!(
+        lines[0].starts_with("  1! yajna:notes/tasks.md:") && lines[0].contains("order agarose"),
+        "{}",
+        out.stdout
+    );
+    assert!(lines[1].contains("image scene 4"), "{}", out.stdout);
+    assert!(lines[2].contains("clean the bench"), "{}", out.stdout);
+
+    // tick by number from that listing; a stale number is refused
+    let out = home.run(away, &["todo", "done", "2"], &[]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let tasks = lab.read(&lab_root.join("notes/tasks.md"));
+    assert!(tasks.contains("- [x] image scene 4 p:1 done:"), "{tasks}");
+    assert_eq!(
+        git(&lab_root, &["log", "-1", "--format=%s"]).trim(),
+        "docs(notes): todo done"
+    );
+    assert_eq!(home.run(away, &["todo", "done", "2"], &[]).code, 1);
+    // and by words
+    let out = home.run(away, &["todo", "done", "--in", "yajna", "bench"], &[]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(lab
+        .read(&lab_root.join("notes/tasks.md"))
+        .contains("- [x] clean the bench done:"));
+
+    // a file with changes of its own is written but not committed
+    let tasks = lab.read(&lab_root.join("notes/tasks.md"));
+    fs::write(lab_root.join("notes/tasks.md"), tasks + "- [ ] by hand\n").unwrap();
+    let out = home.run(away, &["todo", "--in", "yajna", "after the hand edit"], &[]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(out.stderr.contains("left uncommitted"), "{}", out.stderr);
+    assert!(git(&lab_root, &["status", "--porcelain"]).contains("notes/tasks.md"));
+    git(&lab_root, &["checkout", "--", "notes/tasks.md"]);
+
+    // -e: one entry per paragraph
+    let editor = "sh -c 'printf \"first\\nline\\n\\nsecond\\n\" >> \"$1\"' sh";
+    let out = home.run(
+        away,
+        &["todo", "--in", "yajna", "-e"],
+        &[("EDITOR", editor)],
+    );
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let tasks = lab.read(&lab_root.join("notes/tasks.md"));
+    assert!(
+        tasks.contains("- [ ] first line\n- [ ] second\n"),
+        "{tasks}"
+    );
+    let out = home.run(away, &["log", "--in", "yajna", "-e"], &[("EDITOR", "true")]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(out.stdout.contains("nothing added"), "{}", out.stdout);
+
+    // the default notebook, outside any
+    home.config("default = \"yajna\"\n");
+    let out = home.run(away, &["log", "from the default"], &[]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(
+        out.stdout.starts_with("yajna: notes/log/"),
+        "{}",
+        out.stdout
+    );
+
+    // from a worktree, --in writes to the main checkout; without it, to the worktree
+    let wt = elsewhere.root.join("wt");
+    git(
+        &lab_root,
+        &["worktree", "add", "-q", "-b", "side", wt.to_str().unwrap()],
+    );
+    let out = home.run(&wt, &["todo", "--in", "yajna", "from the side branch"], &[]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(lab
+        .read(&lab_root.join("notes/tasks.md"))
+        .contains("from the side branch"));
+    assert!(!fs::read_to_string(wt.join("notes/tasks.md"))
+        .unwrap()
+        .contains("from the side branch"));
+    let out = home.run(&wt, &["todo", "on the branch"], &[]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(fs::read_to_string(wt.join("notes/tasks.md"))
+        .unwrap()
+        .contains("on the branch"));
+    assert!(
+        git(&wt, &["status", "--porcelain"]).contains("notes/tasks.md"),
+        "left uncommitted where you are"
+    );
+
+    // validation: a heading that names no project, a bad token
+    fs::write(
+        lab_root.join("notes/tasks.md"),
+        "# Tasks\n\n- [ ] x p:7\n\n## PRJ-0099 Gone\n",
+    )
+    .unwrap();
+    let out = home.run(&lab_root, &["validate"], &[]);
+    assert_eq!(out.code, 1);
+    assert!(
+        out.stdout.contains("p:7: priority is 1, 2 or 3"),
+        "{}",
+        out.stdout
+    );
+    assert!(
+        out.stdout.contains("PRJ-0099 is not a project here"),
+        "{}",
+        out.stdout
+    );
 }
