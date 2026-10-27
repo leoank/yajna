@@ -214,3 +214,4 @@ body.yr-focus #top, body.yr-focus #status, body.yr-focus #sidebar, body.yr-focus
 .yr-compose .yr-form { flex: 1; min-width: 0; margin: 4px 0; display: flex; gap: 6px; align-items: flex-start; }
 .yr-compose .yr-buttons { margin-top: 0; }
 .yr-thread.yr-draft { border-left-color: #2ea043; }
+.yr-about { margin: 10px 0 0; color: var(--muted); }

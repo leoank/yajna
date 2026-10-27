@@ -423,6 +423,17 @@ export const reviewKind = {
       main.classList.remove('yr-split');
       const r = current;
       const sum = el('section', 'yr-summary');
+      if (r.about.length) {
+        // the notebook's own pages, on the site this server also serves
+        const about = el('p', 'yr-about', 'About ');
+        r.about.forEach((pid, i) => {
+          const a = el('a', '', pid);
+          a.href = `/${pid}.html`;
+          a.target = '_blank';
+          about.append(...(i ? [', ', a] : [a]));
+        });
+        sum.append(about);
+      }
       sum.append(el('h3', '', 'Summary'), el('div', 'yr-pre', r.summary || '(none yet)'));
       if (canWrite() && !['merged', 'closed'].includes(r.status)) {
         const verdicts: Action[] = [{ label: 'Request changes', action: 'request-changes', needsText: true }];

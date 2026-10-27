@@ -218,6 +218,7 @@ fn new_log_result_tasks_validate() {
     assert_eq!(out.code, 0);
     assert!(!out.stdout.contains("counters"));
 
+    fill_experiments(&v.root);
     let out = v.run(&["validate"]);
     assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
     assert!(out.stdout.contains("valid"));
@@ -297,9 +298,16 @@ fn title_with_colon_and_unfinished_agent_page() {
     ]);
     assert_eq!(out.code, 0, "{}", out.stderr);
     assert!(v.read(&v.path(&out)).contains("title: \"Ratio: a vs b\"\n"));
-    let out = v.run(&["new", "agent", "Plate layout"]);
+    let out = v.run(&["new", "agent", "Plate layout", "--author", "agent:claude"]);
     assert_eq!(out.code, 0, "{}", out.stderr);
-    assert!(v.read(&v.path(&out)).contains("finished: null"));
+    let ags = v.path(&out);
+    assert!(v.read(&ags).contains("finished: null"));
+    fs::write(
+        &ags,
+        v.read(&ags)
+            .replace("harness: \"\"", "harness: claude-code"),
+    )
+    .unwrap();
     let out = v.run(&["validate"]);
     assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
 }
@@ -422,7 +430,8 @@ fn project_code_scaffold() {
     let readme = v.read(&v.root.join("code/toy-model/README.md"));
     assert!(readme.contains("[[PRJ-0001]]"));
     assert!(readme.contains("notes/projects/PRJ-0001-toy-model/README.md"));
-    assert_eq!(v.run(&["validate"]).code, 0);
+    let out = v.run(&["validate"]);
+    assert_eq!(out.code, 0, "{}", out.stdout);
     fs::remove_dir_all(v.root.join("code/toy-model")).unwrap();
     let out = v.run(&["validate"]);
     assert_eq!(out.code, 1);
@@ -520,7 +529,8 @@ fn flags_a_type_has_no_field_for_are_errors() {
         "{}",
         out.stderr
     );
-    assert_eq!(v.run(&["validate"]).code, 0);
+    let out = v.run(&["validate"]);
+    assert_eq!(out.code, 0, "{}", out.stdout);
 }
 
 #[test]
@@ -655,6 +665,7 @@ fn init_project_in_a_code_repo() {
             "{shared} must not be created in a project repo"
         );
     }
+    fill_experiments(&v.root);
     let out = v.run(&["validate"]);
     assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
 }
@@ -705,7 +716,9 @@ fn lab_with_project() -> Vault {
         "sidecar\n",
     )
     .unwrap();
-    assert_eq!(v.run(&["validate"]).code, 0);
+    fill_experiments(&v.root);
+    let out = v.run(&["validate"]);
+    assert_eq!(out.code, 0, "{}", out.stdout);
     v
 }
 
@@ -1053,7 +1066,26 @@ fn indexed_lab() -> Vault {
         .code,
         0
     );
-    assert_eq!(v.run(&["validate"]).code, 0);
+    // the planner's session that day
+    let out = v.run(&[
+        "new",
+        "agent",
+        "Plan the timing work",
+        "--author",
+        "agent:planner",
+    ]);
+    let ags = v.path(&out);
+    let text = v.read(&ags);
+    let started = text.lines().find(|l| l.starts_with("started:")).unwrap();
+    fs::write(
+        &ags,
+        text.replace(started, "started: 2026-10-16T10:00+01:00")
+            .replace("harness: \"\"", "harness: claude-code"),
+    )
+    .unwrap();
+    fill_experiments(&v.root);
+    let out = v.run(&["validate"]);
+    assert_eq!(out.code, 0, "{}", out.stdout);
     v
 }
 
@@ -1062,7 +1094,7 @@ fn index_is_a_rebuilt_cache_of_a_valid_vault() {
     let v = indexed_lab();
     let out = v.run(&["index"]);
     assert_eq!(out.code, 0, "{}", out.stderr);
-    assert!(out.stdout.contains("10 entities"), "{}", out.stdout);
+    assert!(out.stdout.contains("11 entities"), "{}", out.stdout);
     assert!(
         out.stdout.contains("3 runs results") || out.stdout.contains("6 run results"),
         "{}",
@@ -1257,7 +1289,15 @@ fn agents_author_their_pages_and_runs_carry_a_script() {
     // --author on new, and YAJNA_AUTHOR as the session-wide default
     let out = v.run(&["new", "agent", "Plan", "--author", "agent:claude"]);
     assert_eq!(out.code, 0, "{}", out.stderr);
-    assert!(v.read(&v.path(&out)).contains("author: agent:claude\n"));
+    let ags = v.path(&out);
+    assert!(v.read(&ags).contains("author: agent:claude\n"));
+    fs::write(
+        &ags,
+        v.read(&ags)
+            .replace("harness: \"\"", "harness: claude-code"),
+    )
+    .unwrap();
+    fill_experiments(&v.root);
     let out = v.run_with(
         &[
             "new",
@@ -1328,7 +1368,8 @@ fn agents_author_their_pages_and_runs_carry_a_script() {
         &[],
     );
     assert_eq!(out.code, 1);
-    assert_eq!(v.run(&["validate"]).code, 0);
+    let out = v.run(&["validate"]);
+    assert_eq!(out.code, 0, "{}", out.stdout);
     // a script that disappears fails validation
     fs::remove_file(&script).unwrap();
     let out = v.run(&["validate"]);
@@ -1423,7 +1464,8 @@ fn listed_experiments_and_runs_need_a_description() {
         ),
     )
     .unwrap();
-    assert_eq!(v.run(&["validate"]).code, 0);
+    let out = v.run(&["validate"]);
+    assert_eq!(out.code, 0, "{}", out.stdout);
     // a bare link in prose is fine; a bare listed run is not
     let exp = walk(&v.root.join("notes/projects/PRJ-0001-p/experiments"))
         .into_iter()
@@ -1486,7 +1528,7 @@ fn validate_against_finds_ids_allocated_on_both_branches() {
     // experiments carry date IDs, so making them on both branches never collides
     assert_eq!(
         v.run_with(
-            &["new", "experiment", "Branch exp", "--project", "PRJ-0001"],
+            &["new", "experiment", "Branch exp", "--project", "PRJ-0002"],
             None,
             &real_time
         )
@@ -1570,7 +1612,7 @@ fn renumber_moves_page_sidecar_and_every_reference() {
         &exp,
         v.read(&exp)
             .replace("protocols: []", "protocols: [PRO-0001@1]")
-            + "\nUses [[PRO-0001@2|it]], not PRO-00011 or [[other/PRO-0001]].\n",
+            + "\nUses [[PRO-0001@1|it]], not PRO-00011 or [[other/PRO-0001]].\n",
     )
     .unwrap();
     assert_eq!(
@@ -1594,7 +1636,7 @@ fn renumber_moves_page_sidecar_and_every_reference() {
     let page = v.read(&exp);
     assert!(page.contains("protocols: [PRO-0007@1]"), "{page}");
     assert!(
-        page.contains("[[PRO-0007@2|it]]")
+        page.contains("[[PRO-0007@1|it]]")
             && page.contains("PRO-00011")
             && page.contains("[[other/PRO-0001]]"),
         "{page}"
@@ -1602,7 +1644,8 @@ fn renumber_moves_page_sidecar_and_every_reference() {
     assert!(v
         .read(&v.root.join("notes/counters.yaml"))
         .contains("PRO: 7\n"));
-    assert_eq!(v.run(&["validate"]).code, 0);
+    let out = v.run(&["validate"]);
+    assert_eq!(out.code, 0, "{}", out.stdout);
 
     // without a new ID the next free one is taken; projects move their directory
     let out = v.run(&["renumber", "PRJ-0001"]);
@@ -1613,7 +1656,8 @@ fn renumber_moves_page_sidecar_and_every_reference() {
         .is_file());
     let moved = first_md(&v.root.join("notes/projects/PRJ-0002-toy/experiments"));
     assert!(v.read(&moved).contains("project: PRJ-0002\n"));
-    assert_eq!(v.run(&["validate"]).code, 0);
+    let out = v.run(&["validate"]);
+    assert_eq!(out.code, 0, "{}", out.stdout);
 
     assert_eq!(
         v.run(&["renumber", "PRO-0007", "PRJ-0009"]).code,
@@ -1785,6 +1829,11 @@ fn export_bundles_what_changed_since_the_last_export() {
             .code,
         0
     );
+    // keep the project page out of this export: new listed the experiment on it
+    git(
+        &v.root,
+        &["checkout", "--", "notes/projects/PRJ-0001-toy/README.md"],
+    );
     git(&v.root, &["add", "-A"]);
     git(&v.root, &["commit", "-q", "-m", "work"]);
     let r = out(&["--dry-run"]);
@@ -1915,7 +1964,17 @@ fn import_benchling_genbank_and_entries() {
         exp.contains("| 1 | 2.7 kb |") && exp.contains("`registration_table` part is not imported"),
         "{exp}"
     );
+    // an import is the past: what Benchling does not have is still to be written, and
+    // `--since` lets the notebook pass while it is
     let out = v.run(&["validate"]);
+    assert!(
+        out.code == 1
+            && out.stdout.contains("concluded without an outcome")
+            && out.stdout.contains("concluded with no Conclusion written"),
+        "{}",
+        out.stdout
+    );
+    let out = v.run(&["validate", "--since", "2026-10-01"]);
     assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
 
     // a second import changes nothing
@@ -2483,7 +2542,8 @@ fn sync_publishes_and_pulls_comments_back() {
             + "\nPart of [[PRJ-0001|the project]]; not [[PRO-0001]].\n\n- [ ] open\n- [x] done\n",
     )
     .unwrap();
-    assert_eq!(v.run(&["validate"]).code, 0);
+    let out = v.run(&["validate"]);
+    assert_eq!(out.code, 0, "{}", out.stdout);
     let (base, drive) = fake_drive();
     let env = [("YAJNA_GDOC_API", base.as_str()), ("YAJNA_GDOC_TOKEN", "t")];
     let sync = |args: &[&str]| {
@@ -2542,7 +2602,8 @@ fn sync_publishes_and_pulls_comments_back() {
         html.contains("☐ open") && html.contains("☑ done") && !html.contains("<input"),
         "{html}"
     );
-    assert_eq!(v.run(&["validate"]).code, 0);
+    let out = v.run(&["validate"]);
+    assert_eq!(out.code, 0, "{}", out.stdout);
     // docs mirror the notebook's folders without notes/, under one root named after it
     {
         let d = drive.lock().unwrap();
@@ -2588,7 +2649,8 @@ fn sync_publishes_and_pulls_comments_back() {
         !drive.lock().unwrap().docs[&prj_doc].0.contains("The PI"),
         "Review stays out of the doc"
     );
-    assert_eq!(v.run(&["validate"]).code, 0);
+    let out = v.run(&["validate"]);
+    assert_eq!(out.code, 0, "{}", out.stdout);
     assert!(v.run(&["tasks"]).stdout.contains("Review: The PI"));
 
     // ticking it resolves the comment in the doc; editing the page republishes
@@ -2698,7 +2760,8 @@ fn migrate_ids_moves_experiments_to_date_ids_the_same_way_everywhere() {
         .code,
         0
     );
-    let out = v.run(&["validate"]);
+    // written before the conventions were checked
+    let out = v.run(&["validate", "--since", "2026-10-17"]);
     assert_eq!(out.code, 0, "the legacy notebook is valid: {}", out.stdout);
     git(&v.root, &["init", "-q", "-b", "main"]);
     git(&v.root, &["add", "-A"]);
@@ -2806,7 +2869,7 @@ fn migrate_ids_moves_experiments_to_date_ids_the_same_way_everywhere() {
         "{prj_text}"
     );
     assert!(!v.read(&v.root.join("notes/counters.yaml")).contains("EXP:"));
-    let out = v.run(&["validate"]);
+    let out = v.run(&["validate", "--since", "2026-10-17"]);
     assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
 
     // old IDs still find their pages and are written as the current ones
@@ -2818,9 +2881,10 @@ fn migrate_ids_moves_experiments_to_date_ids_the_same_way_everywhere() {
     assert!(v
         .read(&v.path(&out))
         .contains(&format!("experiment: {n2}\n")));
-    assert_eq!(v.run(&["validate"]).code, 0);
+    let out = v.run(&["validate", "--since", "2026-10-17"]);
+    assert_eq!(out.code, 0, "{}", out.stdout);
     fs::write(&prj, v.read(&prj) + "\nSee [[EXP-0001]].\n").unwrap();
-    let out = v.run(&["validate"]);
+    let out = v.run(&["validate", "--since", "2026-10-17"]);
     assert!(
         out.stdout
             .contains(&format!("link to EXP-0001, which is now {n1}")),
@@ -3366,7 +3430,8 @@ fn serve_files_api_lists_reads_and_refuses() {
         ),
     )
     .unwrap();
-    assert_eq!(v.run(&["validate"]).code, 0);
+    let out = v.run(&["validate"]);
+    assert_eq!(out.code, 0, "{}", out.stdout);
 
     let (mut child, addr) = spawn_server(&v, &["serve"]);
     let (status, roots) = api_json(&addr, "/api/files/roots");
@@ -3582,7 +3647,8 @@ fn serve_files_viewer_render_and_site_links() {
         text.replacen("status:", "code: code/archaeal-division\nstatus:", 1)
     };
     fs::write(&prj, text).unwrap();
-    assert_eq!(v.run(&["validate"]).code, 0);
+    let out = v.run(&["validate"]);
+    assert_eq!(out.code, 0, "{}", out.stdout);
 
     let (mut child, addr) = spawn_server(&v, &["serve"]);
     // the viewer itself, from the bundle in the binary
@@ -3779,6 +3845,31 @@ fn regex_like_date_id(id: &str) -> bool {
         && parts[2]
             .chars()
             .all(|c| "0123456789abcdefghjkmnpqrstvwxyz".contains(c))
+}
+
+/// Fill what `yajna new experiment` leaves for the author in every experiment under `root`
+/// (Question, Hypothesis, Plan, Success criteria), as an author does before the first run.
+fn fill_experiments(root: &Path) {
+    for p in walk(&root.join("notes")) {
+        let Ok(text) = fs::read_to_string(&p) else {
+            continue;
+        };
+        if !text.contains("\ntype: experiment\n") {
+            continue;
+        }
+        let filled = text
+            .replace("## Question\n\n", "## Question\nDoes it hold?\n\n")
+            .replace(
+                "If H1 is true we expect ... ; if false we expect ...",
+                "If it holds, the runs agree.",
+            )
+            .replace("## Plan\n1. \n", "## Plan\n1. Run it.\n")
+            .replace(
+                "## Success criteria\n\n",
+                "## Success criteria\nThe runs agree.\n\n",
+            );
+        fs::write(&p, filled).unwrap();
+    }
 }
 
 fn walk(dir: &Path) -> Vec<PathBuf> {
@@ -4441,6 +4532,7 @@ fn review_a_run_an_experiment_a_phase_and_update() {
     );
     let out = lab.run(&["review", "update", &rid]);
     assert!(out.stdout.contains("already"), "{}", out.stdout);
+    fill_experiments(&root);
     let out = lab.run(&["validate"]);
     assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
 }
@@ -4586,7 +4678,7 @@ fn review_approve_request_changes_merge_and_todo() {
     let out = lab.run(&["review", "approve", &pid]);
     assert_eq!(out.code, 0, "{}", out.stderr);
     assert!(
-        out.stdout.contains("review: pending cleared"),
+        out.stdout.contains(&format!("review: approved in {pid}")),
         "{}",
         out.stdout
     );
@@ -4793,5 +4885,251 @@ fn serve_review_writes_only_with_the_token_and_never_over_a_change() {
         text.contains(" agent:claude: b is new\n- ") && text.contains(" tester: from the viewer\n"),
         "{text}"
     );
-    assert_eq!(lab.run(&["validate"]).code, 0);
+    let out = lab.run(&["validate"]);
+    assert_eq!(out.code, 0, "{}", out.stdout);
+}
+
+#[test]
+fn conventions_are_checked_from_a_date() {
+    let v = vault();
+    let today = today();
+    assert_eq!(v.run(&["new", "project", "P"]).code, 0);
+    assert_eq!(v.run(&["new", "protocol", "Prep"]).code, 0);
+    let out = v.run(&[
+        "new",
+        "experiment",
+        "Does it hold?",
+        "--project",
+        "PRJ-0001",
+    ]);
+    let exp = v.path(&out);
+    let eid = exp.file_name().unwrap().to_string_lossy()[..19].to_string();
+    // new lists a page on its parent at once
+    let prj = v.read(&v.root.join("notes/projects/PRJ-0001-p/README.md"));
+    assert!(
+        prj.contains(&format!("- [[{eid}]] Does it hold?\n")),
+        "{prj}"
+    );
+    let agent = [("YAJNA_AUTHOR", "agent:claude")];
+    let out = v.run_with(
+        &["new", "run", "--experiment", &eid, "--kind", "compute"],
+        None,
+        &agent,
+    );
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let rid = v.path(&out).file_stem().unwrap().to_string_lossy()[..19].to_string();
+    assert!(v
+        .read(&exp)
+        .contains(&format!("- [[{rid}]] compute run, not yet described\n")));
+    assert_eq!(
+        v.run_with(&["log", "ran it", "--time", "10:00"], None, &agent)
+            .code,
+        0
+    );
+    let log = v
+        .root
+        .join(format!("notes/log/{}/{today}.agent-claude.md", &today[..4]));
+    fs::write(&log, v.read(&log) + "an unstamped line\n").unwrap();
+    fs::write(
+        &exp,
+        v.read(&exp)
+            .replace("status: planned", "status: concluded")
+            .replacen("\n---\n", "\nreview: approved\n---\n", 1)
+            .replace("## Runs\n", "## Runs\nUses [[PRO-0001@3]].\n"),
+    )
+    .unwrap();
+    fs::write(v.root.join("notes/broken.md"), "---\nid: [\n---\n\nbody\n").unwrap();
+
+    let out = v.run(&["validate"]);
+    assert_eq!(out.code, 1);
+    for expected in [
+        &format!("agent:claude logged on {today} but has no session page"),
+        "an agent's compute run has a script that re-creates it",
+        "concluded without an outcome",
+        "concluded with no Conclusion written",
+        "Question is still the template's, and the experiment has runs",
+        "review: approved without an approval record",
+        "PRO-0001@3: PRO-0001 is at version 1",
+        "not a log line (`- HH:MM text`): an unstamped line",
+        "notes/broken.md: the frontmatter does not parse",
+    ] {
+        assert!(out.stdout.contains(expected), "{expected}\n{}", out.stdout);
+    }
+    // from a later day only what is checked whatever the date is left
+    let out = v.run(&["validate", "--since", "2099-01-01"]);
+    assert!(
+        out.code == 1
+            && out.stdout.contains("PRO-0001@3")
+            && out.stdout.contains("does not parse")
+            && !out.stdout.contains("session page")
+            && !out.stdout.contains("concluded"),
+        "{}",
+        out.stdout
+    );
+    assert_eq!(v.run(&["validate", "--since", "21-10-2026"]).code, 1);
+
+    // a human signs a pending page off directly; an agent cannot
+    fs::write(
+        &exp,
+        v.read(&exp).replace("review: approved", "review: pending"),
+    )
+    .unwrap();
+    assert_eq!(v.run_with(&["approve", &eid], None, &agent).code, 1);
+    let out = v.run(&["approve", &eid]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(v.read(&exp).contains(&format!(
+        "review: approved\napproval: {{by: tester, on: {today}}}\n"
+    )));
+    let out = v.run(&["approve", &eid]);
+    assert!(
+        out.stderr.contains("does not wait for review"),
+        "{}",
+        out.stderr
+    );
+    let out = v.run(&["validate"]);
+    assert!(!out.stdout.contains("approval record"), "{}", out.stdout);
+}
+
+#[test]
+fn review_about_signs_its_pages_and_a_range_moves_on() {
+    let lab = vault();
+    let today = today();
+    let root = lab.root.canonicalize().unwrap();
+    assert_eq!(lab.run(&["new", "project", "Toy"]).code, 0);
+    let out = lab.run(&["new", "experiment", "Q", "--project", "PRJ-0001"]);
+    let exp_path = lab.path(&out);
+    let exp = exp_path.file_name().unwrap().to_string_lossy()[..19].to_string();
+    fs::write(
+        &exp_path,
+        lab.read(&exp_path)
+            .replacen("\n---\n", "\nreview: pending\n---\n", 1),
+    )
+    .unwrap();
+    let out = lab.run(&["new", "run", "--experiment", &exp]);
+    let run = lab.path(&out).file_stem().unwrap().to_string_lossy()[..19].to_string();
+    fs::create_dir_all(root.join("code")).unwrap();
+    fs::write(root.join("code/x.py"), "a = 1\n").unwrap();
+    git(&root, &["init", "-q", "-b", "main"]);
+    let commit = |msg: &str| {
+        git(&root, &["add", "notes", "code", "yajna.toml"]);
+        git(&root, &["commit", "-q", "-m", msg]);
+        git(&root, &["rev-parse", "HEAD"]).trim().to_string()
+    };
+    let c1 = commit("one");
+    fs::write(root.join("code/x.py"), "a = 2\n").unwrap();
+    let c2 = commit("two");
+
+    let range = format!("{c1}..{c2}");
+    let out = lab.run(&["review", "open", &range, "--about", "EXP-20991231-zzzzzz"]);
+    assert_eq!(out.code, 1, "an unknown page");
+    let out = lab.run(&[
+        "review",
+        "open",
+        &range,
+        "--about",
+        &exp,
+        "--title",
+        "The feature",
+    ]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let rev_path = lab.path(&out);
+    let rid = rev_path.file_name().unwrap().to_string_lossy()[..19].to_string();
+    assert!(lab.read(&rev_path).contains(&format!("about: [{exp}]")));
+    let out = lab.run(&["review", "about", &rid, &run, &exp]);
+    assert!(
+        out.stdout.contains(&format!("is about {exp}, {run}")),
+        "{}",
+        out.stdout
+    );
+    let out = lab.run(&["review", "list", "--target", &run]);
+    assert!(out.stdout.contains(&rid), "{}", out.stdout);
+
+    // a past range moves on to the commits that answer it, never back
+    fs::write(root.join("code/x.py"), "a = 3\n").unwrap();
+    let c3 = commit("three");
+    let out = lab.run(&["review", "update", &rid, "--to", &c1]);
+    assert!(out.stderr.contains("does not come after"), "{}", out.stderr);
+    let out = lab.run(&["review", "update", &rid, "--to", "HEAD"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let page = lab.read(&rev_path);
+    assert!(
+        page.contains(&format!("head: {c3}\n")) && page.contains(&format!("ref: {c1}..{c3}\n")),
+        "{page}"
+    );
+    let out = lab.run(&["review", "update", &rid]);
+    assert!(out.stdout.contains("already"), "{}", out.stdout);
+
+    // approving signs what it is about, in the review
+    let out = lab.run(&["review", "approve", &rid]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(
+        out.stdout
+            .contains(&format!("{exp}: review: approved in {rid}")),
+        "{}",
+        out.stdout
+    );
+    assert!(lab.read(&exp_path).contains(&format!(
+        "review: approved\napproval: {{by: tester, on: {today}, in: {rid}}}\n"
+    )));
+    fill_experiments(&root);
+    let out = lab.run(&["validate"]);
+    assert_eq!(out.code, 0, "{}", out.stdout);
+    // an approval naming a review that does not cover the page
+    fs::write(
+        &rev_path,
+        lab.read(&rev_path)
+            .replace(&format!("about: [{exp}, {run}]"), "about: []"),
+    )
+    .unwrap();
+    let out = lab.run(&["validate"]);
+    assert!(
+        out.stdout.contains(&format!(
+            "approved in {rid}, which neither reviews nor is about {exp}"
+        )),
+        "{}",
+        out.stdout
+    );
+}
+
+#[test]
+fn validate_against_keeps_shared_pages_on_main_and_a_branch_on_one_project() {
+    let v = git_lab();
+    assert_eq!(v.run(&["new", "protocol", "Prep"]).code, 0);
+    assert_eq!(v.run(&["new", "project", "Two"]).code, 0);
+    git(&v.root, &["add", "-A"]);
+    git(&v.root, &["commit", "-q", "-m", "shared"]);
+    git(&v.root, &["checkout", "-q", "-b", "toy/x"]);
+    let pro = v.root.join("notes/protocols/PRO-0001-prep.md");
+    fs::write(&pro, v.read(&pro) + "\nA change.\n").unwrap();
+    let out = v.run(&["validate", "--against", "main"]);
+    assert!(
+        out.code == 1
+            && out
+                .stdout
+                .contains("PRO-0001 is a shared entity edited on this branch; edit it on main"),
+        "{}{}",
+        out.stdout,
+        out.stderr
+    );
+    git(&v.root, &["checkout", "--", "notes"]);
+    for p in ["PRJ-0001-toy", "PRJ-0002-two"] {
+        let page = v.root.join(format!("notes/projects/{p}/README.md"));
+        fs::write(&page, v.read(&page) + "\nMore.\n").unwrap();
+    }
+    let out = v.run(&["validate", "--against", "main"]);
+    assert!(
+        out.stdout
+            .contains("this branch changes 2 projects (PRJ-0001, PRJ-0002)"),
+        "{}",
+        out.stdout
+    );
+}
+
+/// Today in UTC, the timezone of the scratch notebooks.
+fn today() -> String {
+    let out = Command::new("date")
+        .args(["-u", "+%Y-%m-%d"])
+        .output()
+        .unwrap();
+    String::from_utf8_lossy(&out.stdout).trim().to_string()
 }

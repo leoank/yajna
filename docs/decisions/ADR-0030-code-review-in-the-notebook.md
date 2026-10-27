@@ -50,3 +50,14 @@ know.
 - `yajna-serve` gains its first writing routes, whose handlers come from the CLI crate so
   that it still knows nothing of the notebook (ADR-0027).
 - Graduation must remap the commits reviews name (ADR-0031).
+
+## Amendment, 2026-10-27 (`docs/review.md` v0.7)
+
+- **One target, plus `about`.** A review covering several experiments, runs or a phase
+  keeps a single diff and lists those pages in `about`; disjoint work stays in separate
+  reviews, so one approval settles one diff.
+- **Signing leaves a record.** Approving no longer deletes `review: pending`: the page gets
+  `review: approved` and `approval: {by, on, in}`, and `yajna approve` signs a page without
+  a review. Validation checks the record.
+- **A past range moves forward** with `review update --to <commit>`, so the fixes to a
+  retroactive review land in the same review.

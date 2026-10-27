@@ -80,8 +80,17 @@ yajna review approve REV-20261027-k3m8vd "good"
 yajna review merge REV-20261027-k3m8vd            # from main
 ```
 
-Only a human approves, and only once every thread is resolved.
-Approving a review of a page, run or experiment also clears `review: pending` on its page.
+Only a human approves, and only once every thread is resolved. Approving signs the pages
+the review covers that wait for review (its target when that is a page, run or experiment,
+and every page in `about`): `review: pending` becomes
+
+```yaml
+review: approved
+approval: {by: ank, on: 2026-10-27, in: REV-20261027-k3m8vd}
+```
+
+A page is signed off without a review with `yajna approve EXP-20261021-0k3m9x`, which
+leaves no `in`.
 `request-changes` can come from anyone with a reason. Each verdict is a dated line under
 `## Summary`.
 
@@ -126,6 +135,29 @@ yajna review todo
 lists the `open` and `outdated` threads on reviews of the branch you are on, and on the
 other unfinished reviews of the checkout, oldest first, each with its last reply.
 `yajna validate --against main` notes reviews of the branch that are not approved yet.
+
+## What a review is about
+
+A review has one target, and so one diff. The pages the work in it served go in `about`:
+
+```sh
+yajna review open HEAD..HEAD --title "Faster loader" --about EXP-20261021-0k3m9x
+yajna review about REV-20261027-k3m8vd RUN-20261022-p4q8z1 PRJ-0002
+yajna review list --target RUN-20261022-p4q8z1    # reviews of it, and about it
+```
+
+## Reviewing the past
+
+Targets resolve from history, so work that was never reviewed can be:
+
+```sh
+yajna review open 1a2b3c4..9f8e7d6 --title "The loader rewrite" --about EXP-20261003-a7k2m1
+yajna review open PRJ-0002 --phase "loader"       # a ticked Progress item
+```
+
+When the fixes it asks for are committed, move the range on rather than opening another
+review: `yajna review update REV-… --to HEAD`. It refuses a commit that does not come after
+the review's head.
 
 ## Keeping up
 

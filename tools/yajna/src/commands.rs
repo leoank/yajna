@@ -99,7 +99,10 @@ pub fn run(vault: &Vault, cmd: &Cmd, prompter: &mut dyn Prompter) -> Res<i32> {
             script.as_deref(),
         ),
         Cmd::Ref { key, note } => cmd_ref(vault, key, *note),
-        Cmd::Validate { against } => cmd_validate(vault, against.as_deref()),
+        Cmd::Validate { against, since } => {
+            cmd_validate(vault, against.as_deref(), since.as_deref())
+        }
+        Cmd::Approve { ids, author } => crate::review::approve_pages(vault, ids, author.as_deref()),
         Cmd::Export {
             ids,
             all,
@@ -369,6 +372,19 @@ pub fn create(
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     fs::write(&path, text).map_err(|e| format!("{}: {e}", path.display()))?;
+    // listed on its parent at once, as the conventions ask; the line is rewritten when the
+    // outcome is known
+    match (etype.as_str(), project.as_deref(), experiment) {
+        ("experiment", Some(p), _) => list_on(vault, p, "Experiments", &ident, &title)?,
+        ("run", _, Some(e)) => list_on(
+            vault,
+            e,
+            "Runs",
+            &ident,
+            &format!("{kind} run, not yet described"),
+        )?,
+        _ => {}
+    }
     if code {
         scaffold_code(vault, &slug, &ident, &title)?;
     }
@@ -376,6 +392,37 @@ pub fn create(
         stub_script(vault, script, &ident, experiment.unwrap_or(""))?;
     }
     Ok(path)
+}
+
+/// Append `- [[id]] what` to the `## <section>` of the page `parent`, adding the section
+/// when it is missing.
+fn list_on(vault: &Vault, parent: &str, section: &str, id: &str, what: &str) -> Res<()> {
+    let page = vault.find(parent)?;
+    let text = fs::read_to_string(&page.path).map_err(|e| e.to_string())?;
+    let item = format!("- [[{id}]] {}", what.trim());
+    let mut lines: Vec<&str> = text.lines().collect();
+    let heading = format!("## {section}");
+    let at = match lines.iter().position(|l| l.trim_end() == heading) {
+        Some(h) => {
+            let end = lines[h + 1..]
+                .iter()
+                .position(|l| l.starts_with("## "))
+                .map_or(lines.len(), |i| h + 1 + i);
+            // after the section's last non-blank line
+            (h + 1..end)
+                .rev()
+                .find(|&i| !lines[i].trim().is_empty())
+                .map_or(h + 1, |i| i + 1)
+        }
+        None => {
+            lines.extend(["", heading.as_str()]);
+            lines.len()
+        }
+    };
+    lines.insert(at, &item);
+    let mut out = lines.join("\n");
+    out.push('\n');
+    fs::write(&page.path, out).map_err(|e| e.to_string())
 }
 
 /// Write the run-script stub at `script` (relative to the root) unless it exists.
@@ -663,6 +710,14 @@ fn cmd_result(
         .join("runs")
         .join(format!("{ident}.md"));
     vault.write_page(&path, &meta, &body)?;
+    let shown: Vec<String> = result
+        .iter()
+        .map(|(k, v)| match v {
+            Value::String(s) => format!("{k} {s}"),
+            other => format!("{k} {other}"),
+        })
+        .collect();
+    list_on(vault, experiment, "Runs", &ident, &shown.join(", "))?;
 
     let tsv = exp
         .path
@@ -831,8 +886,9 @@ fn cmd_ref(vault: &Vault, key: &str, note: bool) -> Res<i32> {
 
 // --- validate ------------------------------------------------------------------------
 
-fn cmd_validate(vault: &Vault, against: Option<&str>) -> Res<i32> {
+fn cmd_validate(vault: &Vault, against: Option<&str>, since: Option<&str>) -> Res<i32> {
     let (mut problems, counted) = validate::validate(vault)?;
+    problems.extend(crate::conventions::check(vault, since)?);
     if let Some(reference) = against {
         let (collisions, mut notes) = crate::parallel::against(vault, reference)?;
         problems.extend(collisions);

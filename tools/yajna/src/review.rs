@@ -41,6 +41,7 @@ pub fn run(vault: &Vault, action: &ReviewAction) -> Res<i32> {
             paths,
             title,
             project,
+            about,
             author,
         } => open(
             vault,
@@ -50,10 +51,12 @@ pub fn run(vault: &Vault, action: &ReviewAction) -> Res<i32> {
             paths,
             title.as_deref(),
             project.as_deref(),
+            about,
             author.as_deref(),
         ),
+        ReviewAction::About { review, ids } => said(add_about(vault, review, ids)),
         ReviewAction::List { open, target } => list(vault, *open, target.as_deref()),
-        ReviewAction::Update { review } => update(vault, review),
+        ReviewAction::Update { review, to } => update(vault, review, to.as_deref()),
         ReviewAction::Show { review, diff } => show(vault, review, *diff),
         ReviewAction::Comment {
             review,
@@ -1029,9 +1032,11 @@ fn open(
     paths: &[String],
     title: Option<&str>,
     project: Option<&str>,
+    about: &[String],
     author: Option<&str>,
 ) -> Res<i32> {
     let mut r = resolve(vault, target, phase, base_branch)?;
+    let about = known(vault, about)?;
     if !paths.is_empty() {
         r.paths = paths.to_vec();
     }
@@ -1063,6 +1068,7 @@ fn open(
             ("base", &r.base),
             ("head", &r.head),
             ("paths", &paths_field),
+            ("about", &flow_list(&about)),
             ("created", &date_of(&vault.now())),
             ("author", &author),
         ],
@@ -1116,7 +1122,7 @@ fn shown(here: &Vault, home: &Vault, path: &Path) -> String {
 
 // --- reading ---------------------------------------------------------------------------
 
-fn target_of(page: &Page) -> (String, String) {
+pub(crate) fn target_of(page: &Page) -> (String, String) {
     let t = page.meta.as_ref().and_then(|m| m.get("target"));
     let get = |k: &str| {
         t.and_then(|t| t.get(k))
@@ -1127,6 +1133,63 @@ fn target_of(page: &Page) -> (String, String) {
     (get("kind"), get("ref"))
 }
 
+/// The pages a review is about (`about:`), besides its target.
+fn about_of(page: &Page) -> Vec<String> {
+    page.meta
+        .as_ref()
+        .and_then(|m| m.get("about"))
+        .and_then(|a| a.as_array())
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// `[A, B]`, as a frontmatter list of IDs.
+fn flow_list(ids: &[String]) -> String {
+    format!("[{}]", ids.join(", "))
+}
+
+/// These IDs as the pages that have them now, refused when one is unknown.
+fn known(vault: &Vault, ids: &[String]) -> Res<Vec<String>> {
+    let mut out: Vec<String> = Vec::new();
+    for id in ids {
+        let page = vault.find(&vault.canonical_id(id))?;
+        let id = page.id().unwrap_or(id).to_string();
+        if !out.contains(&id) {
+            out.push(id);
+        }
+    }
+    Ok(out)
+}
+
+/// `yajna review about`: add pages to what a review is about.
+fn add_about(vault: &Vault, id: &str, ids: &[String]) -> Res<String> {
+    let (home, page) = find(vault, id)?;
+    let mut about = about_of(&page);
+    let before = about.len();
+    for new in known(&home, ids)? {
+        if !about.contains(&new) {
+            about.push(new);
+        }
+    }
+    if about.len() == before {
+        return Ok(format!("{id} is about {} already", about.join(", ")));
+    }
+    let text = fs::read_to_string(&page.path).map_err(|e| e.to_string())?;
+    let line = format!("about: {}", flow_list(&about));
+    let text = crate::init::edit_frontmatter(&text, |fm| {
+        match fm.iter().position(|l| l.starts_with("about:")) {
+            Some(i) => fm[i] = line,
+            None => crate::init::insert_after(fm, "paths", &line),
+        }
+    });
+    fs::write(&page.path, text).map_err(|e| e.to_string())?;
+    Ok(format!("{id} is about {}", about.join(", ")))
+}
+
 fn list(vault: &Vault, only_open: bool, target: Option<&str>) -> Res<i32> {
     let mut n = 0;
     for (root, page) in all_reviews(vault) {
@@ -1135,7 +1198,8 @@ fn list(vault: &Vault, only_open: bool, target: Option<&str>) -> Res<i32> {
             continue;
         }
         let (kind, reference) = target_of(&page);
-        if target.is_some_and(|t| t != reference) {
+        // a review of the page, or one that is about it
+        if target.is_some_and(|t| t != reference && !about_of(&page).iter().any(|a| a == t)) {
             continue;
         }
         let (threads, _) = parse(&page.body);
@@ -1327,11 +1391,37 @@ fn reanchor(root: &Path, anchor: &Anchor, head: &str) -> Option<Anchor> {
     }
 }
 
-fn update(vault: &Vault, id: &str) -> Res<i32> {
+fn update(vault: &Vault, id: &str, to: Option<&str>) -> Res<i32> {
     let (home, page) = find(vault, id)?;
     let (kind, reference) = target_of(&page);
     let old = page.field("head").unwrap_or("").to_string();
+    // a range moved on by hand keeps its new end in `ref`, so a later update stays there
+    let mut moved_ref = None;
     let head = match kind.as_str() {
+        "range" if to.is_some() => {
+            let head = rev(&home.root, to.unwrap_or_default())?;
+            let after = std::process::Command::new("git")
+                .arg("-C")
+                .arg(&home.root)
+                .args(["merge-base", "--is-ancestor", &old, &head])
+                .status()
+                .map_err(|e| e.to_string())?;
+            if !after.success() {
+                return Err(format!(
+                    "{} does not come after {id}'s head {}; --to moves a range forward",
+                    short(&head),
+                    short(&old)
+                ));
+            }
+            let (a, _) = reference.split_once("..").unwrap_or(("", &reference));
+            moved_ref = Some(format!("{a}..{head}"));
+            head
+        }
+        _ if to.is_some() => {
+            return Err(format!(
+                "{id} reviews a {kind}, whose head follows its target; --to moves a commit range"
+            ))
+        }
         "branch" => rev(&home.root, &reference)?,
         "range" => {
             let (_, b) = reference.split_once("..").unwrap_or(("", &reference));
@@ -1380,6 +1470,11 @@ fn update(vault: &Vault, id: &str) -> Res<i32> {
             .position(|l| l.starts_with("head:"))
             .ok_or("no head: in the frontmatter")?;
         lines[at] = format!("head: {head}");
+        if let Some(r) = &moved_ref {
+            if let Some(i) = lines[..offset].iter().position(|l| l.starts_with("  ref:")) {
+                lines[i] = format!("  ref: {}", title_scalar(r));
+            }
+        }
         for (start, heading) in headings {
             lines[offset + start] = heading;
         }
@@ -1660,7 +1755,7 @@ fn act(
 // --- verdicts and merging --------------------------------------------------------------
 
 /// Threads that still need an answer or a human: `open` and `addressed`.
-fn unsettled(page: &Page) -> Vec<String> {
+pub(crate) fn unsettled(page: &Page) -> Vec<String> {
     parse(&page.body)
         .0
         .iter()
@@ -1750,22 +1845,69 @@ fn verdict(
     let old = fs::read_to_string(&page.path).map_err(|e| e.to_string())?;
     fs::write(&page.path, with_verdict(&old, status, &line, None)?).map_err(|e| e.to_string())?;
     let mut out = format!("{id} {status} {}", shown(vault, &home, &page.path));
-    // approving a page, run or experiment signs its page, as a human removing
-    // `review: pending` would
+    // approving signs the pages the review covers that wait for a human: its target when
+    // that is a page, run or experiment, and the pages it is about
     let (kind, reference) = target_of(&page);
-    if status == "approved" && matches!(kind.as_str(), "page" | "run" | "experiment") {
-        if let Ok(target) = home.find(&reference) {
-            if target.field("review") == Some("pending") {
-                let text = fs::read_to_string(&target.path).map_err(|e| e.to_string())?;
-                let text = crate::init::edit_frontmatter(&text, |fm| {
-                    fm.retain(|l| l.split('#').next().unwrap_or("").trim() != "review: pending")
-                });
-                fs::write(&target.path, text).map_err(|e| e.to_string())?;
-                out.push_str(&format!("\n{reference}: review: pending cleared"));
+    if status == "approved" {
+        let mut covered = about_of(&page);
+        if matches!(kind.as_str(), "page" | "run" | "experiment") {
+            covered.insert(0, reference);
+        }
+        for pid in covered {
+            if let Ok(target) = home.find(&pid) {
+                if target.field("review") == Some("pending") {
+                    sign(vault, &target, &author, Some(id))?;
+                    out.push_str(&format!("\n{pid}: review: approved in {id}"));
+                }
             }
         }
     }
     Ok(out)
+}
+
+/// `review: pending` becomes `review: approved`, with who approved it, when, and in which
+/// review (none: on the page itself).
+fn sign(vault: &Vault, page: &Page, author: &str, review: Option<&str>) -> Res<()> {
+    let text = fs::read_to_string(&page.path).map_err(|e| e.to_string())?;
+    let record = format!(
+        "approval: {{by: {author}, on: {}{}}}",
+        date_of(&vault.now()),
+        review.map(|r| format!(", in: {r}")).unwrap_or_default()
+    );
+    let text = crate::init::edit_frontmatter(&text, |fm| {
+        if let Some(i) = fm
+            .iter()
+            .position(|l| l.split('#').next().unwrap_or("").trim() == "review: pending")
+        {
+            fm[i] = "review: approved".to_string();
+            fm.retain(|l| !l.starts_with("approval:"));
+            crate::init::insert_after(fm, "review", &record);
+        }
+    });
+    fs::write(&page.path, text).map_err(|e| e.to_string())
+}
+
+/// `yajna approve`: a human signs pages off directly, without a review.
+pub fn approve_pages(vault: &Vault, ids: &[String], author: Option<&str>) -> Res<i32> {
+    let author = author_of(vault, author)?;
+    human(&author, "approves a page")?;
+    let pages: Vec<Page> = ids
+        .iter()
+        .map(|id| vault.find(&vault.canonical_id(id)))
+        .collect::<Res<_>>()?;
+    for page in &pages {
+        let id = page.id().unwrap_or("");
+        if page.field("review") != Some("pending") {
+            return Err(format!(
+                "{id} does not wait for review (no `review: pending`)"
+            ));
+        }
+    }
+    for page in &pages {
+        sign(vault, page, &author, None)?;
+        println!("{}: review: approved", page.id().unwrap_or(""));
+    }
+    Ok(0)
 }
 
 fn merge(vault: &Vault, id: &str, force: bool, author: Option<&str>) -> Res<i32> {
@@ -2149,6 +2291,7 @@ impl yajna_serve::reviews::Reviews for Served {
             "base": base,
             "head": head,
             "paths": paths,
+            "about": about_of(&page),
             "page": page.path.display().to_string(),
             "author": vault.default_author(),
             "summary": summary,

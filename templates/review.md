@@ -10,6 +10,7 @@ target:
 base: $base
 head: $head
 paths: $paths
+about: $about             # the pages it is about: experiments, runs, a project
 status: open              # open | changes_requested | approved | merged | closed
 created: $created
 author: $author

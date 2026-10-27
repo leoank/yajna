@@ -105,6 +105,8 @@ export interface Review {
   base: string;
   head: string;
   page: string;
+  /** the pages the review is about besides its target */
+  about: string[];
   /** who the viewer writes as */
   author: string;
   summary: string;

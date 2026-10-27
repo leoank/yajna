@@ -113,6 +113,14 @@
       "type": "string",
       "pattern": "^[0-9a-f]{40}$",
       "description": "The branch commit `yajna review merge` merged; the merge commit is the one whose second parent it is"
+    },
+    "about": {
+      "type": "array",
+      "description": "The pages the review is about besides its target: experiments, runs, a project; approving it signs those that wait for review",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z]{3}-\\d{4,8}(-[0-9a-z]{4,6})?$"
+      }
     }
   },
   "additionalProperties": true

@@ -1,6 +1,6 @@
 # Code review in the notebook
 
-Status: design v0.6, 2026-10-27; steps 1 to 4 built (yajna 0.10.0 to 0.13.0). Companion to `architecture.md` (section 11,
+Status: design v0.7, 2026-10-27; steps 1 to 4 built (yajna 0.10.0 to 0.13.0), `about` and approval records in 0.14.0. Companion to `architecture.md` (section 11,
 Phase 1d) and `reproduce.md`, which shares its commit resolution. Decision: ADR-0030.
 
 ## 1. What it is for
@@ -32,7 +32,8 @@ experiment, a phase of a project.
 | Run, experiment, phase | A run: from the previous run of its experiment to its `commit`. An experiment: from the commit that created its page to its last run. A phase: from `(since <sha>)` in the Progress item, else from the commit that ticked the item before it, to the commit that ticked it |
 | Interfaces | The CLI (`yajna review …`), a diff view in `yajna serve --review`, Neovim, and the page edited by hand. All write the same format |
 | Serve writing | Only with `--review`: a one-time token in the printed URL, an Origin check, and writes to the working tree that nobody commits for you |
-| Existing review machinery | `review: pending` stays the flag on curated pages; approving a review of a page, run or experiment clears it. `## Review` from `yajna sync` stays as it is |
+| Existing review machinery | `review: pending` stays the flag on curated pages; approving a review signs the pages of its target and `about` that wait, leaving `review: approved` and an `approval` record (v0.7). `## Review` from `yajna sync` stays as it is |
+| Several things in one review | One target, one diff; `about` lists the experiments, runs and projects the review covers besides it (v0.7) |
 
 ## 3. The review page
 
@@ -132,6 +133,30 @@ is reviewed is `git diff base head -- paths`. Resolution is shared with `yajna r
 - **Commits in the notebook are full SHAs** from now on. Short ones in older pages still
   resolve; an ambiguous one is an error that lists the candidates.
 
+### 4.1 What a review is about (v0.7)
+
+A review keeps one target, so one base, one head and one diff to settle. Work done on
+main accumulates in one range (`HEAD..HEAD`, its head moved by `review update`), and that
+range covers the runs, the experiment and the phase it was for; what is missing is the
+record of them, not a second diff. `about: [EXP-…, RUN-…, PRJ-…]` is that record:
+
+- given at `review open … --about <ID>…` or added with `yajna review about REV-… <ID>…`;
+  each must be a page that exists;
+- `review list --target <ID>` finds the reviews about a page as well as those of it, and
+  the served view lists them in the overview;
+- approving signs those of them that have `review: pending` (section 6).
+
+Disjoint work (two branches, a run of last year beside today's feature) stays in separate
+reviews: one approval should settle one diff.
+
+**Reviewing the past.** Every target resolves from history, so a repo without reviews can
+review what it already did: `review open <sha>..<sha> [--paths …] --about …` for a
+feature, `PRJ-… --phase "<words>"` for a ticked phase (inferred bounds, said in the
+Summary), an experiment or a run by ID. When the agent fixes what such a review raised,
+`review update REV-… --to <commit>` moves the range's head forward to include the fixes,
+refusing a commit that does not come after the current head, and writes the new end into
+`target.ref` so a later `review update` stays there. A new review is for new work.
+
 ## 5. Anchors
 
 A thread records the commit it was opened at, its path and lines, and the quoted lines.
@@ -158,8 +183,12 @@ like any other. `update` moves a branch review's head to the branch tip, a range
   targets).
 - **Resolving and approving:** a human. The rule mirrors curated pages, which only a human
   signs (`review: pending`). `yajna review approve` refuses while a thread is `open` or
-  `addressed`, sets `status: approved`, and for a page, run or experiment target removes
-  `review: pending` from its page. `request-changes` (anyone, with a reason) sets
+  `addressed`, sets `status: approved`, and signs each page of its target (a page, run or
+  experiment) and of `about` that has `review: pending`: the flag becomes `review:
+  approved` with `approval: {by: <human>, on: <date>, in: REV-…}`. `yajna approve <ID>…`
+  signs pages without a review, with no `in`. (v0.6 deleted the flag, which left no trace
+  of who signed or how.) `yajna validate` holds `review: approved` to a record by a human,
+  whose `in`, when given, is an approved or merged review of or about the page. `request-changes` (anyone, with a reason) sets
   `changes_requested`. Both append a dated line to `## Summary`
   (`- <date> <time> ank approved: <text>`), so the verdicts read in order.
 - **Merging:** `yajna review merge REV-…`, run in the checkout of the branch it goes into

@@ -2,7 +2,7 @@
 //! behind `validate --against`, `renumber` to resolve a curated-ID collision, and
 //! `worktree` to start a branch with its own author handle.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -74,8 +74,10 @@ fn ids_here(vault: &Vault) -> Res<BTreeMap<String, String>> {
     Ok(out)
 }
 
-/// Problems (collisions, which fail validation) and notes (advice) for this branch against
-/// `reference`: a curated ID created on both sides since they diverged is a collision.
+/// Problems (which fail validation) and notes (advice) for this branch against
+/// `reference`: a curated ID created on both sides since they diverged is a collision, a
+/// shared entity created or edited on the branch belongs on `reference`, and a branch works
+/// on one project.
 pub fn against(vault: &Vault, reference: &str) -> Res<(Vec<String>, Vec<String>)> {
     git(
         &vault.root,
@@ -101,8 +103,59 @@ pub fn against(vault: &Vault, reference: &str) -> Res<(Vec<String>, Vec<String>)
         }
         let prefix = id.split('-').next().unwrap_or("");
         if SHARED.contains(&prefix) && !at_ref.contains_key(id) {
-            notes.push(format!(
-                "{path}: {id} is a shared entity created on this branch; shared pages belong on {reference}"
+            problems.push(format!(
+                "{path}: {id} is a shared entity created on this branch; create it on {reference} and merge it in"
+            ));
+        }
+    }
+    // what this branch changed since it left `reference`, committed or not
+    let vault_rel = rel(&vault.notes, &vault.root).to_string();
+    let mut changed: Vec<String> = git(
+        &vault.root,
+        &["diff", "--name-only", &base, "--", &vault_rel],
+    )?
+    .lines()
+    .map(str::to_string)
+    .collect();
+    changed.extend(
+        git(
+            &vault.root,
+            &[
+                "ls-files",
+                "--others",
+                "--exclude-standard",
+                "--",
+                &vault_rel,
+            ],
+        )?
+        .lines()
+        .map(str::to_string),
+    );
+    for (id, path) in &at_base {
+        let prefix = id.split('-').next().unwrap_or("");
+        if SHARED.contains(&prefix) && changed.contains(path) {
+            problems.push(format!(
+                "{path}: {id} is a shared entity edited on this branch; edit it on {reference}"
+            ));
+        }
+    }
+    if !vault.is_project() {
+        let under = format!("{vault_rel}/projects/");
+        let projects: BTreeSet<&str> = changed
+            .iter()
+            .filter_map(|p| p.strip_prefix(&under)?.split('/').next())
+            .filter_map(|d| {
+                CURATED_DIR_RE
+                    .captures(d)
+                    .and_then(|c| c.get(1))
+                    .map(|m| m.as_str())
+            })
+            .collect();
+        if projects.len() > 1 {
+            problems.push(format!(
+                "this branch changes {} projects ({}); a branch works on one project",
+                projects.len(),
+                projects.into_iter().collect::<Vec<_>>().join(", ")
             ));
         }
     }

@@ -2,6 +2,7 @@ mod adopt;
 mod anywhere;
 mod cli;
 mod commands;
+mod conventions;
 mod export;
 mod import;
 mod index;

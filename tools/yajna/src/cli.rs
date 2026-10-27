@@ -194,6 +194,11 @@ pub enum Cmd {
         /// sides since they diverged is a collision
         #[arg(long, value_name = "REF")]
         against: Option<String>,
+        /// check the conventions (session pages, runs, approvals, ...) only for pages
+        /// created and logs dated on or after this day, for a notebook still being
+        /// backfilled; the form of every page is checked regardless
+        #[arg(long, value_name = "YYYY-MM-DD")]
+        since: Option<String>,
     },
     /// a dated, read-only bundle of pages for an institutional ELN (ADR-0010); by default
     /// every page changed since the last export recorded in notes/exports.tsv
@@ -278,6 +283,15 @@ pub enum Cmd {
     Review {
         #[command(subcommand)]
         action: ReviewAction,
+    },
+    /// sign curated pages off by hand: `review: pending` becomes `review: approved` with
+    /// an approval record (a human only; `yajna review approve` does this for the pages a
+    /// review covers)
+    Approve {
+        #[arg(required = true)]
+        ids: Vec<String>,
+        #[arg(long)]
+        author: Option<String>,
     },
     /// a project's phases: the items of its Progress checklist
     Phase {
@@ -443,9 +457,18 @@ pub enum ReviewAction {
         /// PRJ-xxxx the review belongs to (default: the page's, or the branch's <slug>/)
         #[arg(long)]
         project: Option<String>,
+        /// the pages the review is about: experiments, runs, a project (its phase)
+        #[arg(long, num_args = 1..)]
+        about: Vec<String>,
         /// author handle (default: $YAJNA_AUTHOR, else .yajna/author, else yajna.toml)
         #[arg(long)]
         author: Option<String>,
+    },
+    /// add pages to what a review is about
+    About {
+        review: String,
+        #[arg(required = true)]
+        ids: Vec<String>,
     },
     /// the reviews in this checkout and the repo's other worktrees
     List {
@@ -457,7 +480,12 @@ pub enum ReviewAction {
         target: Option<String>,
     },
     /// move a review's head to where its target is now and re-anchor its threads
-    Update { review: String },
+    Update {
+        review: String,
+        /// a commit range's new head: a commit after its current one
+        #[arg(long, value_name = "COMMIT")]
+        to: Option<String>,
+    },
     /// a review's threads, or with --diff the changes under review
     Show {
         review: String,

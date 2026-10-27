@@ -7,7 +7,20 @@ The cheat sheet for Phase 0. The reasoning is in `docs/architecture.md` and the 
 
 Everything under `notes/` is the notebook. Pages are markdown with YAML frontmatter.
 `yajna validate` checks every page against `schema/`; run it before committing, CI runs it
-too (`nix flake check`).
+too (`nix flake check`). It also checks the conventions below that can be checked
+mechanically: every day an agent logged has its session page, a finished session has
+`finished` and a `harness`, curated pages an agent made or changed carry `review: pending`,
+`review: approved` carries its approval record, a done compute run records its `commit`
+and an agent's has an executable `script`, an experiment with runs has its Question,
+Hypothesis, Plan and Success criteria filled and a concluded one its `outcome` and
+Conclusion, runs and experiments are listed on their parents, a protocol pin
+(`PRO-0012@3`, `@3.s4`) names a version and step that exist, pages sit under their
+project, log lines are `- HH:MM text`, an approved or merged review has no unsettled
+thread, `results.tsv` is not ignored, `.yajna/author` is not committed, and no page has a
+frontmatter that does not parse. A notebook being backfilled passes with `yajna validate
+--since YYYY-MM-DD`, which holds only pages created and logs dated from that day to them.
+`yajna new experiment` and `yajna new run` add the page's line to its parent; rewrite the
+line when the outcome is known.
 
 Enter the tooling with `nix develop` at the repo root; `yajna` is then on the path.
 
@@ -330,21 +343,28 @@ An agent replies and addresses; only a human resolves, and `yajna validate` reje
 thread an agent resolved. `yajna review list` shows the reviews of every worktree, `show`
 the threads, `show --diff` the changes. `yajna review update REV-…` moves the head to where
 the target is now and re-anchors open threads, following renames; a thread whose lines
-are gone becomes `(outdated)`. A human approves (`yajna review approve REV-… [<text>]`,
-refused while a thread is open or addressed, and clearing `review: pending` on a reviewed
-page); anyone may `request-changes REV-… <reason>`; both are dated lines in `## Summary`.
+are gone becomes `(outdated)`; `--to <commit>` moves a commit range on to a later commit,
+such as the fixes to a past feature. `about: [EXP-…, RUN-…, PRJ-…]` lists the pages the
+review is about besides its target (`review open … --about <ID>…`, `yajna review about
+REV-… <ID>…`); `review list --target <ID>` finds those reviews too. A human approves
+(`yajna review approve REV-… [<text>]`, refused while a thread is open or addressed), which
+signs every page of its target and `about` that has `review: pending`: it becomes `review:
+approved` with `approval: {by: ank, on: <date>, in: REV-…}`. A page is signed off without a
+review with `yajna approve <ID>…` (no `in`); anyone may `request-changes REV-… <reason>`;
+both verdicts are dated lines in `## Summary`.
 `yajna review merge REV-…`, from the branch it goes into, merges an approved branch review
 with `--no-ff` once the branch is committed and validates against it, and records
 `status: merged` and the merged tip in the merge commit. `yajna review todo` lists the
 open threads an agent owes on its branch; `validate --against` notes unfinished reviews of
-the branch.
+the branch. A past feature, phase, experiment or run is reviewed afterwards the same way:
+`review open <sha>..<sha>`, `PRJ-… --phase`, or the ID.
 
 An agent's changes go under a review: one `REV` page per piece of work, opened before the
 first change (`yajna review open HEAD..HEAD --title "<the work>"`, or the branch in a
 worktree), continued rather than duplicated, and brought up to date with `review update`
-after each commit. Its `## Summary` names what the work serves (`[[EXP-…]]`, `[[RUN-…]]`, a
-*Progress* item). The human finishes it (approves) before the agent opens the next one for
-a new major piece of work.
+after each commit. `yajna review about` records what the work serves (experiments, runs,
+the project whose *Progress* item it is). The human finishes it (approves) before the
+agent opens the next one for a new major piece of work.
 
 ## From anywhere
 
@@ -544,8 +564,9 @@ yajna renumber PRJ-0004                     # the fix, on the branch: next free 
    merged into the branch before work starts.
 4. **Shared entities live on `main`.** Protocols, materials, equipment and builds are
    created and edited there; branches link to them.
-5. **Check before merging.** A branch that allocated a curated ID runs
-   `yajna validate --against main`; a collision fails with the command that fixes it.
+5. **Check before merging.** A branch runs `yajna validate --against main`: a curated ID
+   allocated on both sides fails with the command that fixes it, and so does a shared
+   entity created or edited on the branch, or a branch that changes more than one project.
    Renumber on the branch, commit, then merge. `yajna renumber` refuses an ID that is on
    two pages, because after a merge nobody can tell which links meant which page.
 6. **Merge `main` into the branch at least daily.** Long branches are where collisions
@@ -561,7 +582,8 @@ environment or `--author`) and record an `AGS` page per task listing what they c
 and edited, what they decided without asking, and when they finished. Without a terminal
 the CLI never prompts: a missing argument is an error, and `yajna new` prints the new
 page's path last. Curated pages (`EXP`, `PRO`, `MAT`) edited by an agent carry `review: pending`
-in frontmatter until a human removes it. Every compute run an agent records carries a
+in frontmatter until a human signs them off (`yajna approve`, or approving a review that
+covers them), which leaves `review: approved` and an `approval` record. Every compute run an agent records carries a
 `script` that re-creates it (see "Dry-lab runs").
 
 The agent skill that teaches all of this ships as the Claude Code plugin `yajna`, with
