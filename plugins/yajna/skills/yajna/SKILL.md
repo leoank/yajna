@@ -40,6 +40,7 @@ yajna show <ID> | timeline <ID> | tree PRJ-xxxx | runs EXP-xxxx --by <metric>
 yajna todo "<text>" [--due fri] [-p 1]                     # a loose todo in notes/tasks.md
 yajna tasks                                                # open checkboxes across the vault, numbered
 yajna log|todo|tasks --in <notebook>[/<project>] …         # another notebook on the machine (yajna repos)
+yajna review todo                                          # the review threads you owe on this branch
 yajna review list --open | show REV-… [--diff]             # reviews of your branch and what they ask
 yajna review reply|address REV-… T<n> "<text>" [--commit <sha>]   # answer; address with the fixing commit
 yajna review update REV-…                                  # after new commits: move the head, re-anchor threads
@@ -91,7 +92,9 @@ one-line instructions under headings such as *Runs*.
   once, by a human: propose it in the log or the `AGS` page instead.
 - **Reviews are answered, not resolved, by agents.** When a `REV` page reviews your
   branch, answer each thread with `yajna review reply`, or fix it, commit, and run
-  `yajna review address REV-… T<n> --commit <sha> "<what changed>"`. Only a human resolves.
+  `yajna review address REV-… T<n> --commit <sha> "<what changed>"`. Run `yajna review
+  todo` when you start and before you report a branch as done; it lists what is still
+  owed. Only a human resolves, approves and merges.
 - **Large files never go into git history.** Results that matter become `ART` pages;
   ask before adding anything over a few MB.
 - **Never delete.** Mark `status: abandoned` or `aborted`; git history is the record.

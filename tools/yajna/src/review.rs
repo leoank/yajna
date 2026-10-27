@@ -93,6 +93,22 @@ pub fn run(vault: &Vault, action: &ReviewAction) -> Res<i32> {
             text,
             author,
         } => act(vault, review, thread, Act::Reopen, text, author.as_deref()),
+        ReviewAction::Approve {
+            review,
+            text,
+            author,
+        } => verdict(vault, review, "approved", text, author.as_deref()),
+        ReviewAction::RequestChanges {
+            review,
+            text,
+            author,
+        } => verdict(vault, review, "changes_requested", text, author.as_deref()),
+        ReviewAction::Merge {
+            review,
+            force,
+            author,
+        } => merge(vault, review, *force, author.as_deref()),
+        ReviewAction::Todo => todo(vault),
     }
 }
 
@@ -176,8 +192,11 @@ enum Action {
 
 #[derive(Debug, Clone)]
 struct Reply {
+    /// `YYYY-MM-DD HH:MM`
+    when: String,
     author: String,
     action: Option<Action>,
+    text: String,
     line: usize,
 }
 
@@ -278,8 +297,10 @@ fn parse(text: &str) -> (Vec<Thread>, Vec<String>) {
                 problems.push(format!("line {lineno}: a reply needs text after `:`"));
             }
             threads.last_mut().unwrap().replies.push(Reply {
+                when: format!("{} {}", &m[1], &m[2]),
                 author,
                 action,
+                text: m.get(6).map_or("", |t| t.as_str()).trim().to_string(),
                 line: i,
             });
         } else if line.starts_with("  ") && threads.last().is_some_and(|t| !t.replies.is_empty()) {
@@ -1591,6 +1612,301 @@ fn act(
         Ok(())
     })?;
     println!("{id} T{n} ({state}) {}", shown(vault, &home, &page.path));
+    Ok(0)
+}
+
+// --- verdicts and merging --------------------------------------------------------------
+
+/// Threads that still need an answer or a human: `open` and `addressed`.
+fn unsettled(page: &Page) -> Vec<String> {
+    parse(&page.body)
+        .0
+        .iter()
+        .filter(|t| matches!(t.state.as_str(), "open" | "addressed"))
+        .map(|t| format!("T{} ({})", t.n, t.state))
+        .collect()
+}
+
+fn human(author: &str, what: &str) -> Res<()> {
+    if author.starts_with("agent:") {
+        return Err(format!("{author}: only a human {what}"));
+    }
+    Ok(())
+}
+
+/// The page's text with `status` set (keeping the line's comment) and `line` appended to
+/// `## Summary`.
+fn with_verdict(text: &str, status: &str, line: &str, extra: Option<(&str, &str)>) -> Res<String> {
+    let text = crate::init::edit_frontmatter(text, |fm| {
+        if let Some(i) = fm.iter().position(|l| l.starts_with("status:")) {
+            let value = format!("status: {status}");
+            fm[i] = match fm[i].find(" #") {
+                Some(c) => format!("{value:<26}{}", fm[i][c..].trim_start()),
+                None => value,
+            };
+            if let Some((k, v)) = extra {
+                fm.retain(|l| !l.starts_with(&format!("{k}:")));
+                let at = fm
+                    .iter()
+                    .position(|l| l.starts_with("status:"))
+                    .unwrap_or(fm.len());
+                fm.insert(at + 1, format!("{k}: {v}"));
+            }
+        }
+    });
+    let mut lines: Vec<String> = text.lines().map(str::to_string).collect();
+    let start = lines
+        .iter()
+        .position(|l| l.trim_end() == "## Summary")
+        .ok_or("no ## Summary section")?;
+    let end = section_end(&lines, start);
+    let at = (start + 1..end)
+        .rev()
+        .find(|&i| !lines[i].trim().is_empty())
+        .map_or(start + 1, |i| i + 1);
+    lines.insert(at, line.to_string());
+    Ok(lines.join("\n") + "\n")
+}
+
+fn verdict(
+    vault: &Vault,
+    id: &str,
+    status: &str,
+    words: &[String],
+    author: Option<&str>,
+) -> Res<i32> {
+    let author = author_of(vault, author)?;
+    let (home, page) = find(vault, id)?;
+    if matches!(page.field("status"), Some("merged" | "closed")) {
+        return Err(format!(
+            "{id} is {} already",
+            page.field("status").unwrap_or("")
+        ));
+    }
+    let text = one_line(words);
+    let said = if text.is_empty() {
+        String::new()
+    } else {
+        format!(": {text}")
+    };
+    let line = if status == "approved" {
+        human(&author, "approves a review")?;
+        let unsettled = unsettled(&page);
+        if !unsettled.is_empty() {
+            return Err(format!(
+                "{id} has threads to settle first: {}; resolve or reopen them",
+                unsettled.join(", ")
+            ));
+        }
+        format!("- {} {author} approved{said}", stamp(vault))
+    } else {
+        if text.is_empty() {
+            return Err("say what to change".to_string());
+        }
+        format!("- {} {author} requested changes{said}", stamp(vault))
+    };
+    let old = fs::read_to_string(&page.path).map_err(|e| e.to_string())?;
+    fs::write(&page.path, with_verdict(&old, status, &line, None)?).map_err(|e| e.to_string())?;
+    println!("{id} {status} {}", shown(vault, &home, &page.path));
+    // approving a page, run or experiment signs its page, as a human removing
+    // `review: pending` would
+    let (kind, reference) = target_of(&page);
+    if status == "approved" && matches!(kind.as_str(), "page" | "run" | "experiment") {
+        if let Ok(target) = home.find(&reference) {
+            if target.field("review") == Some("pending") {
+                let text = fs::read_to_string(&target.path).map_err(|e| e.to_string())?;
+                let text = crate::init::edit_frontmatter(&text, |fm| {
+                    fm.retain(|l| l.split('#').next().unwrap_or("").trim() != "review: pending")
+                });
+                fs::write(&target.path, text).map_err(|e| e.to_string())?;
+                println!("{reference}: review: pending cleared");
+            }
+        }
+    }
+    Ok(0)
+}
+
+fn merge(vault: &Vault, id: &str, force: bool, author: Option<&str>) -> Res<i32> {
+    let author = author_of(vault, author)?;
+    human(&author, "merges a review")?;
+    let (home, page) = find(vault, id)?;
+    let (kind, branch) = target_of(&page);
+    if kind != "branch" {
+        return Err(format!(
+            "{id} reviews a {kind}; only a branch review is merged"
+        ));
+    }
+    let status = page.field("status").unwrap_or("").to_string();
+    if matches!(status.as_str(), "merged" | "closed") {
+        return Err(format!("{id} is {status} already"));
+    }
+    let into = git(&vault.root, &["symbolic-ref", "--short", "HEAD"]).map_err(|_| {
+        "this checkout is on no branch; merge from the branch to merge into".to_string()
+    })?;
+    if into == branch {
+        return Err(format!(
+            "{branch} is checked out here; merge from the branch it goes into"
+        ));
+    }
+    let unsettled = unsettled(&page);
+    let mut held = Vec::new();
+    if status != "approved" {
+        held.push(format!("the review is {status}, not approved"));
+    }
+    if !unsettled.is_empty() {
+        held.push(format!("threads {} are not resolved", unsettled.join(", ")));
+    }
+    if !held.is_empty() && !force {
+        return Err(format!(
+            "{id}: {}; --force merges anyway and says so in the page",
+            held.join(" and ")
+        ));
+    }
+    // what is merged is what is committed on the branch, review included
+    let dirty = git(
+        &home.root,
+        &["status", "--porcelain", "--untracked-files=no", "--", "."],
+    )?;
+    let page_rel = rel(&page.path, &home.root).to_string();
+    let untracked = git(&home.root, &["ls-files", "--error-unmatch", &page_rel]).is_err();
+    if !dirty.is_empty() || untracked {
+        return Err(format!(
+            "{} has uncommitted changes{}; commit them on {branch} first",
+            home.root.display(),
+            if untracked {
+                format!(" ({page_rel} is not committed)")
+            } else {
+                String::new()
+            }
+        ));
+    }
+    let (mut problems, _) = crate::validate::validate(&home)?;
+    let (collisions, _) = crate::parallel::against(&home, &into)?;
+    problems.extend(collisions);
+    if !problems.is_empty() {
+        return Err(format!(
+            "{branch} does not validate against {into}:\n{}",
+            problems.join("\n")
+        ));
+    }
+    let tip = rev(&home.root, &branch)?;
+    if let Err(e) = git(
+        &vault.root,
+        &["merge", "--no-ff", "--no-commit", "-q", &branch],
+    ) {
+        let _ = git(&vault.root, &["merge", "--abort"]);
+        return Err(format!(
+            "{e}\nthe merge was aborted; merge {into} into {branch} and resolve it there"
+        ));
+    }
+    let here = vault.root.join(&page_rel);
+    let said = if held.is_empty() {
+        format!("- {} {author} merged into {into}", stamp(vault))
+    } else {
+        format!(
+            "- {} {author} merged into {into} with --force: {}",
+            stamp(vault),
+            held.join(" and ")
+        )
+    };
+    let written = fs::read_to_string(&here)
+        .map_err(|e| e.to_string())
+        .and_then(|old| with_verdict(&old, "merged", &said, Some(("merge", &tip))))
+        .and_then(|new| fs::write(&here, new).map_err(|e| e.to_string()))
+        .and_then(|_| git(&vault.root, &["add", "--", &page_rel]))
+        .and_then(|_| {
+            git(
+                &vault.root,
+                &[
+                    "commit",
+                    "-q",
+                    "-m",
+                    &format!("Merge branch '{branch}' ({id})"),
+                ],
+            )
+        });
+    if let Err(e) = written {
+        let _ = git(&vault.root, &["merge", "--abort"]);
+        return Err(format!("{e}\nthe merge was aborted"));
+    }
+    let merged = git(&vault.root, &["rev-parse", "--short", "HEAD"])?;
+    println!("{id}: {branch} merged into {into} as {merged}");
+    Ok(0)
+}
+
+/// The branch this checkout is on, if any.
+fn current_branch(vault: &Vault) -> Option<String> {
+    git(&vault.root, &["symbolic-ref", "--short", "HEAD"]).ok()
+}
+
+/// Notes for `validate --against`: reviews of this branch that are not approved yet.
+pub fn unfinished(vault: &Vault) -> Vec<String> {
+    let Some(branch) = current_branch(vault) else {
+        return Vec::new();
+    };
+    all_reviews(vault)
+        .into_iter()
+        .filter(|(_, p)| target_of(p) == ("branch".to_string(), branch.clone()))
+        .filter(|(_, p)| matches!(p.field("status"), Some("open" | "changes_requested")))
+        .map(|(_, p)| {
+            format!(
+                "{} reviews {branch} and is {} with {} thread(s) unsettled",
+                p.id().unwrap_or(""),
+                p.field("status").unwrap_or(""),
+                unsettled(&p).len()
+            )
+        })
+        .collect()
+}
+
+fn todo(vault: &Vault) -> Res<i32> {
+    let branch = current_branch(vault);
+    let here = vault.root.canonicalize().ok();
+    let mut owed = Vec::new();
+    for (root, page) in all_reviews(vault) {
+        if matches!(page.field("status"), Some("merged" | "closed" | "approved")) {
+            continue;
+        }
+        let (kind, reference) = target_of(&page);
+        let mine = if kind == "branch" {
+            branch.as_deref() == Some(reference.as_str())
+        } else {
+            root.canonicalize().ok() == here
+        };
+        if !mine {
+            continue;
+        }
+        for t in parse(&page.body).0 {
+            if !matches!(t.state.as_str(), "open" | "outdated") {
+                continue;
+            }
+            let since = t
+                .replies
+                .first()
+                .map(|r| r.when.clone())
+                .unwrap_or_default();
+            let last = t
+                .replies
+                .last()
+                .map(|r| format!("{} {}: {}", r.when, r.author, r.text))
+                .unwrap_or_default();
+            owed.push((
+                since,
+                page.id().unwrap_or("").to_string(),
+                t.n,
+                t.state,
+                t.raw_anchor,
+                last,
+            ));
+        }
+    }
+    owed.sort();
+    for (_, id, n, state, anchor, last) in &owed {
+        println!("{id} T{n} ({state}) {anchor}\n    {last}");
+    }
+    if owed.is_empty() {
+        println!("no open threads");
+    }
     Ok(0)
 }
 

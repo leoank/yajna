@@ -72,6 +72,36 @@ clones).
 of the repository, with how many threads are open. `yajna review show REV-…` prints the
 threads, `--diff` the changes under review (`git diff base head -- paths`).
 
+## Approving and merging
+
+```sh
+yajna review request-changes REV-20261027-k3m8vd "explain the 32 first"
+yajna review approve REV-20261027-k3m8vd "good"
+yajna review merge REV-20261027-k3m8vd            # from main
+```
+
+Only a human approves, and only once every thread is resolved.
+Approving a review of a page, run or experiment also clears `review: pending` on its page.
+`request-changes` can come from anyone with a reason. Each verdict is a dated line under
+`## Summary`.
+
+`merge` is for a branch review, run from the checkout of the branch it goes into. It
+refuses while the review is not approved or a thread is unsettled (`--force` merges anyway
+and writes why into the page), while the branch's worktree has uncommitted changes or the
+review page is not committed there, and when the branch does not validate against the
+branch it goes into. Then it merges with `--no-ff`, and the merge commit carries the page
+with `status: merged`, `merge: <the tip merged>` and a line in the summary.
+
+## What an agent owes
+
+```sh
+yajna review todo
+```
+
+lists the `open` and `outdated` threads on reviews of the branch you are on, and on the
+other unfinished reviews of the checkout, oldest first, each with its last reply.
+`yajna validate --against main` notes reviews of the branch that are not approved yet.
+
 ## Keeping up
 
 ```sh

@@ -4448,3 +4448,151 @@ fn review_a_run_an_experiment_a_phase_and_update() {
 fn rel_of(root: &Path, p: &Path) -> String {
     p.strip_prefix(root).unwrap().to_string_lossy().to_string()
 }
+
+#[test]
+fn review_approve_request_changes_merge_and_todo() {
+    let home = Home::new();
+    let lab = vault();
+    let root = lab.root.canonicalize().unwrap();
+    assert_eq!(lab.run(&["new", "project", "Toy model"]).code, 0);
+    let out = lab.run(&["new", "experiment", "Q", "--project", "PRJ-0001"]);
+    let exp_path = lab.path(&out);
+    let exp = exp_path.file_name().unwrap().to_string_lossy()[..19].to_string();
+    fs::write(
+        &exp_path,
+        lab.read(&exp_path)
+            .replacen("\n---\n", "\nreview: pending\n---\n", 1),
+    )
+    .unwrap();
+    fs::create_dir_all(root.join("code")).unwrap();
+    fs::write(root.join("code/x.py"), "a = 1\nb = 2\n").unwrap();
+    git(&root, &["init", "-q", "-b", "main"]);
+    git(&root, &["add", "notes", "code", "yajna.toml"]);
+    git(&root, &["commit", "-q", "-m", "lab"]);
+
+    let spot = empty();
+    let wt = spot.root.join("speedup");
+    let out = lab.run(&[
+        "worktree",
+        "PRJ-0001",
+        "speedup",
+        "--path",
+        wt.to_str().unwrap(),
+    ]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    fs::write(wt.join("code/x.py"), "a = 1\nb = 20\n").unwrap();
+    git(&wt, &["commit", "-q", "-am", "faster"]);
+    let out = lab.run(&["review", "open", "toy-model/speedup"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let rev_path = PathBuf::from(out.stdout.lines().next().unwrap());
+    let id = rev_path.file_name().unwrap().to_string_lossy()[..19].to_string();
+    let out = lab.run(&["review", "comment", &id, "--at", "code/x.py:2", "why 20?"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+
+    // nothing merges or is approved while a thread is open, and no agent approves
+    let out = home.run(&root, &["review", "merge", &id], &[]);
+    assert_eq!(out.code, 1);
+    assert!(
+        out.stderr.contains("the review is open, not approved")
+            && out.stderr.contains("threads T1 (open) are not resolved"),
+        "{}",
+        out.stderr
+    );
+    let out = lab.run(&["review", "approve", &id]);
+    assert_eq!(out.code, 1);
+    assert!(
+        out.stderr.contains("settle first: T1 (open)"),
+        "{}",
+        out.stderr
+    );
+    let out = home.run(&wt, &["review", "approve", &id], &[]);
+    assert!(
+        out.stderr.contains("only a human approves"),
+        "{}",
+        out.stderr
+    );
+    let out = lab.run(&["review", "request-changes", &id, "explain", "20"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let page = fs::read_to_string(&rev_path).unwrap();
+    assert!(
+        page.contains("status: changes_requested # open | ")
+            && page.contains(" tester requested changes: explain 20\n\n## Threads"),
+        "{page}"
+    );
+
+    // the agent sees what it owes, and validate --against says the review is unfinished
+    let out = home.run(&wt, &["review", "todo"], &[]);
+    assert!(
+        out.stdout
+            .contains(&format!("{id} T1 (open) code/x.py:2 @ "))
+            && out.stdout.contains(" tester: why 20?"),
+        "{}",
+        out.stdout
+    );
+    let out = home.run(&wt, &["validate", "--against", "main"], &[]);
+    assert!(
+        out.stderr.contains(&format!(
+            "{id} reviews toy-model/speedup and is changes_requested with 1 thread(s) unsettled"
+        )),
+        "{}",
+        out.stderr
+    );
+    fs::write(wt.join("code/x.py"), "a = 1\nb = 20  # measured\n").unwrap();
+    git(&wt, &["commit", "-q", "-am", "explain"]);
+    let out = home.run(&wt, &["review", "address", &id, "T1", "explained"], &[]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(home
+        .run(&wt, &["review", "todo"], &[])
+        .stdout
+        .contains("no open threads"));
+    assert_eq!(lab.run(&["review", "resolve", &id, "T1"]).code, 0);
+    let out = lab.run(&["review", "approve", &id, "good"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+
+    // the review must be committed on the branch before it merges
+    let out = home.run(&root, &["review", "merge", &id], &[]);
+    assert_eq!(out.code, 1);
+    assert!(
+        out.stderr
+            .contains("commit them on toy-model/speedup first"),
+        "{}",
+        out.stderr
+    );
+    git(&wt, &["add", "notes"]);
+    git(&wt, &["commit", "-q", "-m", "review"]);
+    let tip = git(&wt, &["rev-parse", "HEAD"]).trim().to_string();
+    let out = home.run(&root, &["review", "merge", &id], &[]);
+    assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
+    let rel_page = rev_path.strip_prefix(&wt).unwrap();
+    let merged = fs::read_to_string(root.join(rel_page)).unwrap();
+    assert!(
+        merged.contains("status: merged            # open | ")
+            && merged.contains(&format!("merge: {tip}\n"))
+            && merged.contains(" tester approved: good\n- ")
+            && merged.contains(" tester merged into main\n"),
+        "{merged}"
+    );
+    let parents = git(&root, &["log", "-1", "--format=%P"]);
+    assert!(parents.trim().ends_with(&tip), "{parents}");
+    assert!(lab.read(&root.join("code/x.py")).contains("# measured"));
+    assert_eq!(home.run(&root, &["review", "merge", &id], &[]).code, 1);
+    let out = lab.run(&["validate"]);
+    assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
+
+    // approving a page review signs the page
+    let out = lab.run(&["review", "open", &exp]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let pid = lab.path(&out).file_name().unwrap().to_string_lossy()[..19].to_string();
+    let out = lab.run(&["review", "approve", &pid]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(
+        out.stdout.contains("review: pending cleared"),
+        "{}",
+        out.stdout
+    );
+    assert!(!lab.read(&exp_path).contains("review: pending"));
+    assert!(lab
+        .run(&["review", "merge", &pid])
+        .stderr
+        .contains("only a branch review is merged"));
+}

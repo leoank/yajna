@@ -509,6 +509,34 @@ pub enum ReviewAction {
         #[arg(long)]
         author: Option<String>,
     },
+    /// approve a review once no thread is open or addressed (a human only); for a page
+    /// target, also clears `review: pending` on the page
+    Approve {
+        review: String,
+        text: Vec<String>,
+        #[arg(long)]
+        author: Option<String>,
+    },
+    /// ask for changes before the review can be approved
+    RequestChanges {
+        review: String,
+        text: Vec<String>,
+        #[arg(long)]
+        author: Option<String>,
+    },
+    /// merge an approved branch review into the branch checked out here, with --no-ff,
+    /// after validating the branch against it (a human only)
+    Merge {
+        review: String,
+        /// merge although threads are open or the review is not approved; the page says so
+        #[arg(long)]
+        force: bool,
+        #[arg(long)]
+        author: Option<String>,
+    },
+    /// the open threads you owe: on reviews of the branch you are on, and on this
+    /// checkout's other reviews, oldest first
+    Todo,
 }
 
 #[derive(Subcommand, Debug, Clone)]

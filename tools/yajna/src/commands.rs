@@ -833,8 +833,9 @@ fn cmd_ref(vault: &Vault, key: &str, note: bool) -> Res<i32> {
 fn cmd_validate(vault: &Vault, against: Option<&str>) -> Res<i32> {
     let (mut problems, counted) = validate::validate(vault)?;
     if let Some(reference) = against {
-        let (collisions, notes) = crate::parallel::against(vault, reference)?;
+        let (collisions, mut notes) = crate::parallel::against(vault, reference)?;
         problems.extend(collisions);
+        notes.extend(crate::review::unfinished(vault));
         for n in notes {
             eprintln!("note: {n}");
         }

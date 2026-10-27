@@ -62,7 +62,7 @@ open items with the rest.
 - [x] Phase 1d designed: code review in the notebook, `docs/review.md` (ADR-0030)
 - [x] Phase 1d: `REV` pages, their validation and `yajna review` over branches, commit ranges and pages
 - [x] Phase 1d: reviews of runs, experiments and phases; `yajna phase start`; re-anchoring with `review update`
-- [ ] Phase 1d: `review approve`, `merge` and `todo`; the warning in `validate --against`; the skill
+- [x] Phase 1d: `review approve`, `merge` and `todo`; the warning in `validate --against`; the skill
 - [ ] Phase 1d: the diff view in `yajna serve --review`, behind a token
 - [ ] Phase 1d: reviews in Neovim
 - [ ] Phase 1d verified: ank reviews a real agent branch in manthan from the browser and Neovim, the agent addresses the threads, `review merge` brings it into main

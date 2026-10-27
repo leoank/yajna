@@ -1,6 +1,6 @@
 # Code review in the notebook
 
-Status: design v0.3, 2026-10-27; steps 1 and 2 built (yajna 0.10.0, 0.11.0). Companion to `architecture.md` (section 11,
+Status: design v0.4, 2026-10-27; steps 1 to 3 built (yajna 0.10.0 to 0.12.0). Companion to `architecture.md` (section 11,
 Phase 1d) and `reproduce.md`, which shares its commit resolution. Decision: ADR-0030.
 
 ## 1. What it is for
@@ -32,7 +32,7 @@ experiment, a phase of a project.
 | Run, experiment, phase | A run: from the previous run of its experiment to its `commit`. An experiment: from the commit that created its page to its last run. A phase: from `(since <sha>)` in the Progress item, else from the commit that ticked the item before it, to the commit that ticked it |
 | Interfaces | The CLI (`yajna review …`), a diff view in `yajna serve --review`, Neovim, and the page edited by hand. All write the same format |
 | Serve writing | Only with `--review`: a one-time token in the printed URL, an Origin check, and writes to the working tree that nobody commits for you |
-| Existing review machinery | `review: pending` stays the flag on curated pages; approving a page review clears it. `## Review` from `yajna sync` stays as it is |
+| Existing review machinery | `review: pending` stays the flag on curated pages; approving a review of a page, run or experiment clears it. `## Review` from `yajna sync` stays as it is |
 
 ## 3. The review page
 
@@ -157,16 +157,28 @@ like any other. `update` moves a branch review's head to the branch tip, a range
   changed. The commit must be on the target's branch (or after the head, for other
   targets).
 - **Resolving and approving:** a human. The rule mirrors curated pages, which only a human
-  signs (`review: pending`). `yajna review approve` sets `status: approved`, and for a page
-  target removes `review: pending` from the page.
-- **Merging:** `yajna review merge REV-…` runs `validate --against <base branch>`, refuses
-  while a thread is `open` or `addressed` or the review is not `approved` (`--force`
-  overrides and says so in the page), merges the branch with `--no-ff`, and sets
-  `status: merged` and `merge: <sha>`. `validate --against` warns about open reviews whose
-  target is the branch.
-- **Agents** find what they owe with `yajna review todo`: open threads on reviews of the
-  branch they are on, oldest first. The skill tells them to run it when they start and
-  before they report a branch as done.
+  signs (`review: pending`). `yajna review approve` refuses while a thread is `open` or
+  `addressed`, sets `status: approved`, and for a page, run or experiment target removes
+  `review: pending` from its page. `request-changes` (anyone, with a reason) sets
+  `changes_requested`. Both append a dated line to `## Summary`
+  (`- <date> <time> ank approved: <text>`), so the verdicts read in order.
+- **Merging:** `yajna review merge REV-…`, run in the checkout of the branch it goes into
+  (usually main), by a human. It refuses while a thread is `open` or `addressed` or the
+  review is not `approved` (`--force` overrides and says so in the page); while the
+  branch's worktree has uncommitted changes or the review page is not committed there,
+  since only what is committed is merged; and when the branch does not validate, or does
+  not validate against the branch it goes into (`--force` does not override these). It
+  then merges with `--no-ff`, sets `status: merged` and `merge: <the branch tip merged>`
+  in the page and adds a line to `## Summary`, all in the merge commit (`Merge branch
+  '<branch>' (REV-…)`). A conflict aborts the merge. (v0.3 said `merge:` is the merge
+  commit; a commit cannot name itself, and the merge is the commit whose second parent is
+  the recorded tip.)
+- **`validate --against`** notes the reviews of the current branch that are `open` or
+  `changes_requested`, with how many threads are unsettled.
+- **Agents** find what they owe with `yajna review todo`: `open` and `outdated` threads on
+  reviews of the branch they are on, and on the other unfinished reviews in their checkout,
+  oldest first, each with its last reply. The skill tells them to run it when they start
+  and before they report a branch as done.
 
 ## 7. Interfaces
 
