@@ -43,6 +43,7 @@
   - [The files viewer](design/files-viewer.md)
   - [Code review](design/review.md)
   - [Reproducing runs](design/reproduce.md)
+  - [Todos and logs from anywhere](design/from-anywhere.md)
 - [Conventions](design/conventions.md)
 - [Decision records](design/decisions/README.md)
 <!-- ADRS -->

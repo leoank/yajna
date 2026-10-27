@@ -38,3 +38,4 @@ one rather than an edit.
 | [0029](ADR-0029-files-viewer-frontend.md) | The files viewer's frontend: dockview-core, read-only CodeMirror 6, server-rendered markdown, panzoom images; a Nix-built bundle committed and embedded | accepted |
 | [0030](ADR-0030-code-review-in-the-notebook.md) | Code review in the notebook: `REV` pages over branches, ranges, pages, runs, experiments and phases; agents address, a human resolves; `review merge`; `serve --review` writes behind a token | accepted |
 | [0031](ADR-0031-reproducing-runs.md) | Reproducing runs: `yajna run shell`, `reproduce`, `diff` and `--on`; `host`, `env` and `outputs` on runs; resolvable commits; graduation remaps them | accepted |
+| [0032](ADR-0032-todos-and-logs-from-anywhere.md) | Todos and log lines from anywhere: a per-user registry (config plus state), `--in <repo>[/<project>]`, `yajna todo` with todo.txt tokens, `-e`, one-file commits into other repos | accepted |

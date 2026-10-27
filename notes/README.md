@@ -73,6 +73,11 @@ open items with the rest.
 - [ ] Phase 1e: `--on <host>`
 - [ ] Phase 1e: `graduate` remaps run and review commits; rc2s2 remapped with `--commits-only`
 - [ ] Phase 1e verified: RUN-20261023-g78vwy reproduced from a fresh clone gives the manifest hash it recorded
+- [x] From anywhere designed: todos and log lines into any notebook on the machine, `docs/from-anywhere.md` (ADR-0032)
+- [ ] From anywhere: the per-user config and state registry, `yajna repos`, `--in` and `--pick`
+- [ ] From anywhere: `log --in` and the one-file commit into another repo
+- [ ] From anywhere: `yajna todo` with `due:` and `p:`, `tasks --in`/`--all`, `todo done`
+- [ ] From anywhere: `-e`, and graduation moving a project's todos
 - [ ] Phase 2: data and runs (git-annex, `ART` pages, `experiment` and `autoresearch` commands)
 - [ ] Phase 2b: bench planning (run sheets, inventory, schedules)
 - [ ] Phase 3: the server and agents over HTTP and MCP
@@ -128,6 +133,8 @@ code.
 - Code review is designed in `docs/review.md` (ADR-0030) and reproducing runs in
   `docs/reproduce.md` (ADR-0031); both resolve runs, experiments and phases to commit
   ranges the same way.
+- Adding todos and log lines to any notebook from any shell is designed in
+  `docs/from-anywhere.md` (ADR-0032).
 - Future work is designed in `docs/protocol-framework.md`, `docs/protocol-corpus.md` and
   `docs/microfluidic-compiler.md`.
 

@@ -104,7 +104,7 @@ for path in sorted((root / "schema").glob("*.json")):
 # --- design documents ------------------------------------------------------------------
 design = src / "design"
 (design / "decisions").mkdir(parents=True, exist_ok=True)
-for name in ("architecture.md", "files-viewer.md", "review.md", "reproduce.md", "conventions.md"):
+for name in ("architecture.md", "files-viewer.md", "review.md", "reproduce.md", "from-anywhere.md", "conventions.md"):
     shutil.copyfile(root / "docs" / name, design / name)
 adrs = []
 for path in sorted((root / "docs/decisions").glob("*.md")):
