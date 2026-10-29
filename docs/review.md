@@ -167,8 +167,12 @@ When the head moves (`yajna review update`, or the diff view opened on a newer h
 2. the lines it pointed at, read from the thread's commit (the quote in the page is a copy
    of them), exactly, then ignoring whitespace; the nearest match to the old line numbers
    wins. A heading anchor looks for the heading;
-3. found: the anchor moves to the new commit and lines. Not found: the thread becomes
-   `outdated` and keeps showing against its own commit.
+3. found: the anchor moves to the new commit and lines. Not found: an `open` thread
+   becomes `outdated` and keeps showing against its own commit; an `addressed` one stays
+   `addressed` at its old anchor, since a fix is expected to change the lines it quoted,
+   and waits for a human to resolve or reopen it. (Before 0.15.0 it became `outdated`,
+   which `review approve` does not wait for, so an unchecked fix stopped holding the
+   approval back.)
 
 Threads are never deleted. An `outdated` thread that still matters is answered or resolved
 like any other. `update` moves a branch review's head to the branch tip, a range's to what

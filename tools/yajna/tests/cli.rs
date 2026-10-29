@@ -4493,7 +4493,8 @@ fn review_a_run_an_experiment_a_phase_and_update() {
         out.stderr
     );
 
-    // update: a thread follows its lines through a rename; one whose lines went is outdated
+    // update: a thread follows its lines through a rename; an open one whose lines went is
+    // outdated, an addressed one stays addressed for a human to check the fix
     fs::write(
         &exp_path,
         lab.read(&exp_path)
@@ -4511,18 +4512,41 @@ fn review_a_run_an_experiment_a_phase_and_update() {
     at("code/toy-model/x.py:5");
     at(&format!("{}#Question", rel_of(&lab.root, &exp_path)));
     lab.run(&["review", "comment", &rid, "in general"]);
+    at("code/toy-model/x.py:5");
     commit("comments");
     git(&root, &["mv", "code/toy-model/x.py", "code/toy-model/y.py"]);
     let mut moved = vec!["import os".to_string(), "import sys".to_string()];
     moved.extend(changed.iter().filter(|l| !l.starts_with("line5 ")).cloned());
     fs::write(root.join("code/toy-model/y.py"), moved.join("\n") + "\n").unwrap();
     let c9 = commit("renamed");
+    let out = lab.run_with(
+        &[
+            "review",
+            "address",
+            &rid,
+            "T5",
+            "--commit",
+            &c9,
+            "dropped line 5",
+        ],
+        None,
+        &[("YAJNA_AUTHOR", "agent:claude")],
+    );
+    assert_eq!(out.code, 0, "{}", out.stderr);
     let out = lab.run(&["review", "update", &rid]);
     assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(
+        out.stdout
+            .contains("T5 addressed: code/toy-model/x.py:5 @ ")
+            && out.stdout.contains("changed, as a fix does"),
+        "{}",
+        out.stdout
+    );
     let page = lab.read(&rpath);
     let s = &c9[..7];
     assert!(
         page.contains(&format!("head: {c9}\n"))
+            && page.contains("### T5 (addressed) code/toy-model/x.py:5 @ ")
             && page.contains(&format!("### T1 (open) code/toy-model/y.py:10-11 @ {s}\n"))
             && page.contains("### T2 (outdated) code/toy-model/x.py:5 @ ")
             && page.contains(&format!("#Question @ {s}\n"))

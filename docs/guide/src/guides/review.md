@@ -168,5 +168,7 @@ yajna review update REV-20261027-k3m8vd
 After new commits, `update` moves the review's head to where its target is now (the
 branch tip, or the target resolved again) and moves each open or addressed thread with
 it: the file is followed through renames and the lines it pointed at are looked for in the
-new version, exactly and then ignoring whitespace, nearest first. A thread whose lines are
-gone becomes `(outdated)` and keeps its old anchor; it can still be answered and resolved.
+new version, exactly and then ignoring whitespace, nearest first. An open thread whose
+lines are gone becomes `(outdated)` and keeps its old anchor; it can still be answered and
+resolved. An addressed thread whose lines are gone stays addressed: the fix changed them,
+and you still check it and resolve or reopen.

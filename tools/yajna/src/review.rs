@@ -1448,17 +1448,24 @@ fn update(vault: &Vault, id: &str, to: Option<&str>) -> Res<i32> {
         if !matches!(t.state.as_str(), "open" | "addressed") || *anchor == Anchor::General {
             continue;
         }
-        let (state, now) = match reanchor(&home.root, anchor, &head) {
-            Some(a) => (t.state.clone(), a.render()),
-            None => ("outdated".to_string(), t.raw_anchor.clone()),
+        // lines that are gone are expected of an addressed thread: the fix changed them. It
+        // stays addressed at its old anchor until a human resolves or reopens it; only an
+        // open thread becomes outdated
+        let (state, now, gone) = match reanchor(&home.root, anchor, &head) {
+            Some(a) => (t.state.clone(), a.render(), false),
+            None if t.state == "addressed" => (t.state.clone(), t.raw_anchor.clone(), true),
+            None => ("outdated".to_string(), t.raw_anchor.clone(), true),
         };
         println!(
             "T{} {}",
             t.n,
-            if state == "outdated" {
-                format!("outdated: {} is gone", t.raw_anchor)
-            } else {
-                now.clone()
+            match (gone, state.as_str()) {
+                (true, "addressed") => format!(
+                    "addressed: {} changed, as a fix does; resolve or reopen it",
+                    t.raw_anchor
+                ),
+                (true, _) => format!("outdated: {} is gone", t.raw_anchor),
+                _ => now.clone(),
             }
         );
         headings.push((t.start, format!("### T{} ({state}) {now}", t.n)));

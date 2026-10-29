@@ -342,8 +342,9 @@ and `resolve` append dated lines `- YYYY-MM-DD HH:MM <author>: <text>`; nothing 
 An agent replies and addresses; only a human resolves, and `yajna validate` rejects a
 thread an agent resolved. `yajna review list` shows the reviews of every worktree, `show`
 the threads, `show --diff` the changes. `yajna review update REV-…` moves the head to where
-the target is now and re-anchors open threads, following renames; a thread whose lines
-are gone becomes `(outdated)`; `--to <commit>` moves a commit range on to a later commit,
+the target is now and re-anchors open threads, following renames; an open thread whose
+lines are gone becomes `(outdated)`, an addressed one stays addressed for a human to check;
+`--to <commit>` moves a commit range on to a later commit,
 such as the fixes to a past feature. `about: [EXP-…, RUN-…, PRJ-…]` lists the pages the
 review is about besides its target (`review open … --about <ID>…`, `yajna review about
 REV-… <ID>…`); `review list --target <ID>` finds those reviews too. A human approves
