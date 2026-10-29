@@ -6,7 +6,7 @@ title: From anywhere (0.9.0) and Phase 1d steps 1 to 4 (0.10.0 to 0.13.0)
 model: "claude-opus-5-5"
 harness: "claude-code"
 started: 2026-10-27T10:00+00:00
-finished: 2026-10-27T18:27+00:00
+finished: 2026-10-27T21:47+00:00
 created_entities: []
 edited_entities: [PRJ-0001]
 outcome: done             # done | failed | aborted | pending
@@ -53,3 +53,5 @@ Written afterwards, on 2026-10-27, from the day's log: no session page was opene
   than the one before it (written up later), so only the line's form is checked;
   `results.tsv` is checked for being ignored by git rather than committed, since validate
   runs before the commit; a run's auto line reads "not yet described".
+- 0.15.0: `review update` keeps an addressed thread addressed when its lines are gone, found
+  in a demo of `update` for ank.
