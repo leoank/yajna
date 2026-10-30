@@ -23,3 +23,5 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo build --locked --manifest-path tools/Cargo.toml -p yajna
       - run: tools/target/debug/yajna.exe --version
+      - run: cargo build --locked --release --manifest-path tools/Cargo.toml -p yajna
+      - run: tools/target/release/yajna.exe --version
