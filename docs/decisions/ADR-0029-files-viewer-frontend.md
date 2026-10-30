@@ -45,3 +45,10 @@ viewer.
 - A new language in the text viewer is a CodeMirror package and a bundle rebuild.
 - The size cap for the text viewer and the bundle budget are set by
   `EXP-20261023-kjv5wy`.
+
+## Amendment, 2026-10-30 (yajna 0.17.0)
+
+The image viewer no longer uses @panzoom/panzoom. Its wheel zoom moved a fixed step per
+event, and a trackpad gesture sends dozens, so a flick reached the maximum scale at once,
+and with no bounds the image left the view. About eighty lines of our own zoom in
+proportion to the wheel delta, about the pointer, and keep the image in view.

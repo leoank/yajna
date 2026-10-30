@@ -41,7 +41,7 @@ a narrower meaning (ADR-0020).
 | Layout | dockview-core | 0029 |
 | Text and code | CodeMirror 6, read-only; a paged byte-range view above a size cap; follow mode for growing files | 0029 |
 | Markdown | Rendered by yajna's own renderer with links and citations resolved, with a toggle to source | 0029 |
-| Images | `<img>` with @panzoom/panzoom | 0029 |
+| Images | `<img>` with its own pan and zoom (panzoom until 0.17.0) | 0029 |
 | Frontend build | TypeScript bundled by esbuild through Nix (`nix run .#ui`); the bundle is committed and embedded with rust-embed; a flake check fails when it is stale | 0029 |
 
 ## 3. Shape
@@ -263,7 +263,7 @@ registry picks the highest score, and the tab's menu offers the others (*open as
 | Text | `text: true`, size up to the cap | CodeMirror 6, read-only, line numbers, highlighting by extension, in-file search, folding, line links. Follow mode on by default for `.log`, `.out`, `.err`, `.jsonl` and files that grew while open: appends with a `Range` request from the old size, keeps the view at the bottom unless scrolled up, reloads when the file shrank |
 | Large text | `text: true`, above the cap | A paged view over `Range` requests in 256 KB windows, with a byte-offset scrollbar, *jump to end* and follow; no highlighting, search within the loaded window. The cap starts at 20 MB; `EXP-20261023-kjv5wy` sets it |
 | Markdown | `.md` | Rendered through `/api/files/render`, so `[[ID]]` links to entity pages and citations work; a toggle flips to the text viewer. A page with a yajna `id` gets a link to its entity page |
-| Image | png, jpg, gif, webp, avif, bmp, ico, svg | `<img>` from `raw`, wheel and pinch zoom with @panzoom/panzoom, fit and 1:1; SVG as an image, never inline. Reloads on change, so a plot that a run rewrites updates |
+| Image | png, jpg, gif, webp, avif, bmp, ico, svg | `<img>` from `raw`, wheel and pinch zoom about the pointer in proportion to the gesture, drag to pan, double-click for 1:1 or Fit, fit and 1:1 buttons; the image is kept in view (centred while smaller than it, no empty edge while larger); SVG as an image, never inline. Reloads on change, so a plot that a run rewrites updates |
 | Binary | everything else | Size, mtime, type, a download link, *open as text* and *open as hex* (the first 64 KB) |
 
 Later, as needed: PDF in the browser's own viewer (an `<iframe>`), CSV and TSV as a table
@@ -276,7 +276,7 @@ module in the registry and, where the browser cannot read the format, a server r
 
 - Source is TypeScript under `tools/yajna-serve/ui/src`, with `package.json` and
   `package-lock.json` pinning dockview-core, CodeMirror (`@codemirror/view`, `state`,
-  `language`, `search`, and the language packages) and @panzoom/panzoom: libraries only,
+  `language`, `search`, and the language packages): libraries only,
   no build tools, installed with `--ignore-scripts`.
 - `build.sh` type-checks with `tsc` and bundles with `esbuild`, both from nixpkgs, so no
   native npm binaries enter the lock file. `nix run .#ui` runs it in the sandbox over the
