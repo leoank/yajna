@@ -39,7 +39,7 @@ then runs the checked-out source through `cargo run`, so edits take effect immed
   sequence (`EXP-20261021-000001`); leave it unset everywhere else.
 - `tools/zotero/` and `tools/corpus/` are run from a lab root, never from here.
 - Releases for machines without Nix: tag `vX.Y.Z` matching `tools/yajna/Cargo.toml` and
-  `.github/workflows/release.yml` attaches the four binaries to the GitHub release.
+  `.github/workflows/release.yml` attaches the five binaries to the GitHub release.
 - Never install tools ad hoc; add them to `flake.nix`.
 
 ## Trying changes against a real notebook

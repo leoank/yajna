@@ -43,7 +43,7 @@ notebook gives everyone the same version. Update it with `nix flake update yajna
 ## Without Nix
 
 Every [release](https://github.com/leoank/yajna/releases/latest) carries binaries for Linux
-(static, x86-64 and ARM64) and macOS (Apple silicon and Intel), each with a SHA-256
+(static, x86-64 and ARM64), macOS (Apple silicon and Intel) and Windows (x86-64), each with a SHA-256
 checksum in `yajna-<tag>-<target>.sha256`. Download the archive for your machine, check
 it, unpack it and put `yajna` on your `PATH`:
 
@@ -53,6 +53,7 @@ it, unpack it and put `yajna` on your `PATH`:
 | Linux, ARM64 | `yajna-<tag>-aarch64-unknown-linux-musl.tar.gz` |
 | macOS, Apple silicon | `yajna-<tag>-aarch64-apple-darwin.tar.gz` |
 | macOS, Intel | `yajna-<tag>-x86_64-apple-darwin.tar.gz` |
+| Windows, x86-64 | `yajna-<tag>-x86_64-pc-windows-msvc.zip` |
 
 ```sh
 tag=v0.2.0
@@ -65,6 +66,21 @@ tar xzf yajna-$tag-$target.tar.gz
 install yajna ~/.local/bin/
 yajna --version
 ```
+
+On Windows, in PowerShell:
+
+```powershell
+$tag = "v0.18.0"
+$base = "https://github.com/leoank/yajna/releases/download/$tag"
+Invoke-WebRequest "$base/yajna-$tag-x86_64-pc-windows-msvc.zip" -OutFile yajna.zip
+(Get-FileHash yajna.zip -Algorithm SHA256).Hash   # compare with the .sha256 file
+Expand-Archive yajna.zip -DestinationPath "$env:LOCALAPPDATA\yajna"
+& "$env:LOCALAPPDATA\yajna\yajna.exe" --version
+```
+
+Add that folder to your `PATH` to run `yajna` anywhere. yajna calls `git`, so Git for
+Windows must be installed. The Windows build is new, and its test suite runs only on
+Linux and macOS.
 
 On macOS, a binary downloaded with a browser is quarantined; `curl` downloads are not. If
 macOS refuses to run it, clear the flag with `xattr -d com.apple.quarantine yajna`.

@@ -1,5 +1,5 @@
 # Every push and pull request: the flake's checks (the CLI's tests in the sandbox, the
-# Neovim plugin's headless tests) and the package build, through Nix.
+# Neovim plugin's headless tests) and the package build, through Nix; and a Windows build.
 name: ci
 on:
   push:
@@ -14,3 +14,12 @@ jobs:
       - uses: DeterminateSystems/magic-nix-cache-action@v9
       - run: nix flake check -L
       - run: nix build -L .#yajna
+  # the release's Windows binary: the tests are Unix-only (symlinks, permissions), so it is
+  # built, and run once, here before a tag needs it
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo build --locked --manifest-path tools/Cargo.toml -p yajna
+      - run: tools/target/debug/yajna.exe --version

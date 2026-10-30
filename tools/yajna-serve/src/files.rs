@@ -9,7 +9,6 @@
 use std::collections::HashMap;
 use std::fs;
 use std::io::Read;
-use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
@@ -159,8 +158,21 @@ pub(crate) struct Target<'a> {
     pub(crate) meta: fs::Metadata,
 }
 
-fn id(m: &fs::Metadata) -> (u64, u64) {
+#[cfg(unix)]
+fn id(_: &Path, m: &fs::Metadata) -> (u64, u64) {
+    use std::os::unix::fs::MetadataExt;
     (m.dev(), m.ino())
+}
+
+/// Windows has no stable file index in std: the directory's canonical path stands in.
+#[cfg(not(unix))]
+fn id(path: &Path, _: &fs::Metadata) -> (u64, u64) {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    fs::canonicalize(path)
+        .unwrap_or_else(|_| path.to_path_buf())
+        .hash(&mut h);
+    (0, h.finish())
 }
 
 pub(crate) fn resolve<'a>(roots: &'a [Root], path: &str) -> Result<Target<'a>, ApiError> {
@@ -177,7 +189,7 @@ pub(crate) fn resolve<'a>(roots: &'a [Root], path: &str) -> Result<Target<'a>, A
             root.path.display()
         ))
     })?;
-    let mut ancestry = vec![id(&meta)];
+    let mut ancestry = vec![id(&root.path, &meta)];
     let mut abs = root.path.clone();
     let mut rel = String::new();
     let segments: Vec<&str> = segments.collect();
@@ -198,10 +210,10 @@ pub(crate) fn resolve<'a>(roots: &'a [Root], path: &str) -> Result<Target<'a>, A
         abs.push(seg);
         meta = fs::metadata(&abs).map_err(|_| not_found(format!("{path}: not found")))?;
         if meta.is_dir() {
-            if ancestry.contains(&id(&meta)) {
+            if ancestry.contains(&id(&abs, &meta)) {
                 return Err(not_found(format!("{path}: a symlink loop")));
             }
-            ancestry.push(id(&meta));
+            ancestry.push(id(&abs, &meta));
         }
     }
     Ok(Target {
@@ -291,7 +303,7 @@ fn read_listing(t: &Target) -> Result<Vec<Listed>, ApiError> {
                 .unwrap_or_default();
             let kind = match fs::metadata(&path) {
                 Err(_) => "broken",
-                Ok(m) if m.is_dir() && t.ancestry.contains(&id(&m)) => "loop",
+                Ok(m) if m.is_dir() && t.ancestry.contains(&id(&path, &m)) => "loop",
                 Ok(m) if m.is_dir() => "dir",
                 Ok(m) if m.is_file() => "file",
                 Ok(_) => "other",
