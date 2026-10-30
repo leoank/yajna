@@ -7,3 +7,17 @@ timezone = "Europe/London"
 bibliography = "notes/references/library.bib"
 
 [repos]             # namespaces this repo links to, e.g. rc2s2 = "github:leoank/rc2s2"
+
+[files]
+[[files.roots]]
+name = "notes"
+path = "notes"
+
+[[files.roots]]
+name = "code"
+path = "code"
+
+[[files.roots]]
+name = "scratch"
+path = "../scratch"
+
