@@ -3144,7 +3144,12 @@ fn citations_resolve_in_the_page_bibliography_and_render_through_pandoc() {
         "{}",
         out.stdout
     );
-    // with pandoc: author-year citations and a reference list, task state as characters
+    // with pandoc: author-year citations and a reference list, task state as characters.
+    // The release workflow's runners have no pandoc; nix flake check always does
+    if Command::new("pandoc").arg("--version").output().is_err() {
+        eprintln!("pandoc is not on PATH: the rendering half of this test is skipped");
+        return;
+    }
     let out = v.run_with(&["sync"], None, &env);
     assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
     assert!(out.stdout.contains("1 published"), "{}", out.stdout);
