@@ -70,7 +70,7 @@ yajna --version
 On Windows, in PowerShell:
 
 ```powershell
-$tag = "v0.18.0"
+$tag = "v0.18.1"
 $base = "https://github.com/leoank/yajna/releases/download/$tag"
 Invoke-WebRequest "$base/yajna-$tag-x86_64-pc-windows-msvc.zip" -OutFile yajna.zip
 (Get-FileHash yajna.zip -Algorithm SHA256).Hash   # compare with the .sha256 file
