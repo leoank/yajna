@@ -6,7 +6,7 @@ title: Review rounds, the fixes view and fixing on a branch (0.16.0)
 model: "claude-opus-5-5"
 harness: "claude-code"
 started: 2026-10-29T23:57+00:00
-finished: 2026-10-30T00:14+00:00
+finished: 2026-10-30T17:19+00:00
 created_entities: []
 edited_entities: []
 outcome: done             # done | failed | aborted | pending
@@ -39,3 +39,6 @@ branch from its head (yajna 0.16.0, plugin 0.15.0).
   fixed 15% per wheel event (a trackpad sends dozens per gesture) with no bounds; replaced
   with our own pan and zoom, proportional to the delta, about the pointer, the image kept
   in view; dropped `@panzoom/panzoom` (yajna 0.17.0, ADR-0029 amended).
+- Then: a Windows binary in the release (x86_64-pc-windows-msvc, zipped), a Windows build
+  job in CI, the files server's symlink-loop check made portable (device and inode on
+  Unix, the canonical path on Windows), install docs; yajna 0.18.0 tagged and released.
