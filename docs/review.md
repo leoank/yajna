@@ -1,6 +1,6 @@
 # Code review in the notebook
 
-Status: design v0.7, 2026-10-27; steps 1 to 4 built (yajna 0.10.0 to 0.13.0), `about` and approval records in 0.14.0. Companion to `architecture.md` (section 11,
+Status: design v0.8, 2026-10-30; steps 1 to 4 built (yajna 0.10.0 to 0.13.0), `about` and approval records in 0.14.0, rounds and fixes in 0.16.0. Companion to `architecture.md` (section 11,
 Phase 1d) and `reproduce.md`, which shares its commit resolution. Decision: ADR-0030.
 
 ## 1. What it is for
@@ -178,6 +178,32 @@ Threads are never deleted. An `outdated` thread that still matters is answered o
 like any other. `update` moves a branch review's head to the branch tip, a range's to what
 `B` names now, and re-resolves the other targets; the base stays.
 
+### 5.1 Rounds and fixes (v0.8)
+
+A review is read again after the fixes it asked for, and the whole `base..head` diff is
+the wrong thing to read then: it shows the feature already reviewed, and when other work
+landed between the review's head and the fixes (a commit range on main, reviewed after the
+fact), it shows that work too. A range cannot leave out commits in its middle, so two
+narrower views come beside it:
+
+- **Rounds.** `update` appends the head it moved from to `rounds: [<sha>, …]` (oldest
+  first). `review show REV-… --round` is `git diff <last round> head -- paths`, what came
+  since the last update; `review show` prints the round. The viewer lists those files as
+  *Since round N* with the threads at the head drawn in them.
+- **Fixes.** Every commit named in an `addressed in <sha>` reply, oldest first, each read
+  against its first parent in the review's paths: `review show REV-… --fixes`, and in the
+  viewer one group per fix. This needs nothing to be on a branch: the work in between is
+  not in any fix's diff. A thread can be opened on a fix (`review comment … --at <lines>
+  --commit <sha>`, or by selecting lines in the fix's diff); it is anchored at that
+  commit, drawn there, and re-anchored by `update` like any other.
+- **Fixing a past range on a branch.** When the fixes are made on a branch from the
+  review's head (the skill asks agents to, once other work has landed after it),
+  `review update REV-… --to <branch>` moves the range onto them and the next round is the
+  fixes alone; the branch is merged by hand, since `review merge` is for branch reviews.
+
+The server only reads a file between two commits the review names (its base, head, rounds,
+and each fix and its parent).
+
 ## 6. Who does what
 
 - **Opening** a review, commenting and replying: anyone, person or agent. An agent may
@@ -230,11 +256,11 @@ alike.
 ```
 yajna review open <branch | A..B | ID> [--base main] [--phase "<item>"] [--paths …]
 yajna review list [--open] [--target <ref>]
-yajna review show REV-… [--diff]                 # threads with their context, or the diff
-yajna review comment REV-… [--at <path>:<from>[-<to>] | --at <path>#<heading>] "<text>"   # no --at: general
+yajna review show REV-… [--diff | --round | --fixes]   # threads, the diff, since the last update, each fix
+yajna review comment REV-… [--at <path>:<from>[-<to>] | --at <path>#<heading> [--commit <fix>]] "<text>"   # no --at: general
 yajna review reply|address|resolve|reopen REV-… T<n> ["<text>"] [--commit <sha>]
 yajna review approve|request-changes REV-… ["<text>"]
-yajna review update REV-…                        # move head, re-anchor
+yajna review update REV-… [--to <commit>]       # move head (a range: to a later commit), re-anchor, start a round
 yajna review merge REV-… [--force]
 yajna review todo
 yajna phase start PRJ-… "<item>"
@@ -253,6 +279,9 @@ yajna phase start PRJ-… "<item>"
   scrolls and applies to the lines picked. Toggles in the review's header hide the file
   list, the comment box and (Focus, Esc leaves) the viewer's top bar, sidebar and status
   line, and wrap long lines; they are remembered per browser.
+- *Since round N* and one *Fix <sha>* group per addressing commit list, under the files,
+  what the last update brought in and what each fix changed on its own (section 5.1).
+  A fix's diff takes comments, anchored at that commit.
 - *Not in the review yet* lists, under the files, what differs between the review's head
   and the working tree of its checkout in the review's paths: later commits, uncommitted
   changes and untracked files, but not the page itself. Each opens as a read-only diff,

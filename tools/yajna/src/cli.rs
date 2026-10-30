@@ -491,6 +491,13 @@ pub enum ReviewAction {
         review: String,
         #[arg(long)]
         diff: bool,
+        /// only what changed since the last review update: the previous head to the head
+        #[arg(long, conflicts_with_all = ["diff", "fixes"])]
+        round: bool,
+        /// each commit named in an `addressed in` reply, as its own diff, whatever came
+        /// between them
+        #[arg(long, conflicts_with = "diff")]
+        fixes: bool,
     },
     /// start a thread: on lines (--at path:from-to), a heading (--at path#Heading), or the
     /// whole review
@@ -499,6 +506,9 @@ pub enum ReviewAction {
         /// <path>:<from>[-<to>] or <path>#<heading>, at the review's head; omit for a general thread
         #[arg(long)]
         at: Option<String>,
+        /// read --at at this commit instead of the head: a fix seen with show --fixes
+        #[arg(long, requires = "at")]
+        commit: Option<String>,
         text: Vec<String>,
         #[arg(long)]
         author: Option<String>,

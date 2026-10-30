@@ -57,16 +57,23 @@ pub fn run(vault: &Vault, action: &ReviewAction) -> Res<i32> {
         ReviewAction::About { review, ids } => said(add_about(vault, review, ids)),
         ReviewAction::List { open, target } => list(vault, *open, target.as_deref()),
         ReviewAction::Update { review, to } => update(vault, review, to.as_deref()),
-        ReviewAction::Show { review, diff } => show(vault, review, *diff),
+        ReviewAction::Show {
+            review,
+            diff,
+            round,
+            fixes,
+        } => show(vault, review, *diff, *round, *fixes),
         ReviewAction::Comment {
             review,
             at,
+            commit,
             text,
             author,
         } => said(comment(
             vault,
             review,
             at.as_deref(),
+            commit.as_deref(),
             text,
             author.as_deref(),
         )),
@@ -431,6 +438,9 @@ pub fn problems(vault: &Vault, page: &Page) -> Vec<String> {
         .iter()
         .filter_map(|k| Some((k.to_string(), page.field(k)?.to_string())))
         .collect();
+    for (i, c) in rounds_of(page).into_iter().enumerate() {
+        commits.push((format!("round {}", i + 1), c));
+    }
     for t in &threads {
         if let Some(c) = t.anchor.as_ref().and_then(Anchor::commit) {
             commits.push((format!("T{} anchor", t.n), c.to_string()));
@@ -1133,11 +1143,11 @@ pub(crate) fn target_of(page: &Page) -> (String, String) {
     (get("kind"), get("ref"))
 }
 
-/// The pages a review is about (`about:`), besides its target.
-fn about_of(page: &Page) -> Vec<String> {
+/// A frontmatter list of strings.
+fn strings(page: &Page, key: &str) -> Vec<String> {
     page.meta
         .as_ref()
-        .and_then(|m| m.get("about"))
+        .and_then(|m| m.get(key))
         .and_then(|a| a.as_array())
         .map(|a| {
             a.iter()
@@ -1146,6 +1156,75 @@ fn about_of(page: &Page) -> Vec<String> {
         })
         .unwrap_or_default()
 }
+
+/// The pages a review is about (`about:`), besides its target.
+fn about_of(page: &Page) -> Vec<String> {
+    strings(page, "about")
+}
+
+/// The heads a review had before each `review update` (`rounds:`), oldest first.
+fn rounds_of(page: &Page) -> Vec<String> {
+    strings(page, "rounds")
+}
+
+/// A commit that addressed threads of a review, to be read on its own.
+struct Fix {
+    commit: String,
+    /// its first parent, or the empty tree for a first commit
+    parent: String,
+    subject: String,
+    /// the threads it addressed
+    threads: Vec<usize>,
+}
+
+/// The commits named in `addressed in <sha>` replies, oldest first; those not in the
+/// repository are left out (validate reports them).
+fn fixes(root: &Path, threads: &[Thread]) -> Vec<Fix> {
+    let mut out: Vec<(i64, Fix)> = Vec::new();
+    for t in threads {
+        for r in &t.replies {
+            let Some(Action::Addressed(c)) = &r.action else {
+                continue;
+            };
+            let Ok(commit) = git(root, &["rev-parse", "--verify", &format!("{c}^{{commit}}")])
+            else {
+                continue;
+            };
+            if let Some((_, f)) = out.iter_mut().find(|(_, f)| f.commit == commit) {
+                if !f.threads.contains(&t.n) {
+                    f.threads.push(t.n);
+                }
+                continue;
+            }
+            let parent = git(
+                root,
+                &["rev-parse", "--verify", "-q", &format!("{commit}^")],
+            )
+            .unwrap_or_else(|_| EMPTY_TREE.to_string());
+            let (when, subject) = git(root, &["log", "-1", "--format=%ct%x09%s", &commit])
+                .ok()
+                .and_then(|l| {
+                    let (a, b) = l.split_once('\t')?;
+                    Some((a.parse().unwrap_or(0), b.to_string()))
+                })
+                .unwrap_or_default();
+            out.push((
+                when,
+                Fix {
+                    commit,
+                    parent,
+                    subject,
+                    threads: vec![t.n],
+                },
+            ));
+        }
+    }
+    out.sort_by_key(|(when, _)| *when);
+    out.into_iter().map(|(_, f)| f).collect()
+}
+
+/// git's empty tree, the "parent" of a first commit.
+const EMPTY_TREE: &str = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 
 /// `[A, B]`, as a frontmatter list of IDs.
 fn flow_list(ids: &[String]) -> String {
@@ -1236,32 +1315,65 @@ fn list(vault: &Vault, only_open: bool, target: Option<&str>) -> Res<i32> {
     Ok(0)
 }
 
-fn show(vault: &Vault, id: &str, diff: bool) -> Res<i32> {
+/// `git diff from to -- paths`, printed as git prints it.
+fn print_diff(root: &Path, from: &str, to: &str, paths: &[String]) -> Res<bool> {
+    let mut args = vec!["diff", from, to, "--"];
+    args.extend(paths.iter().map(String::as_str));
+    let status = std::process::Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .args(&args)
+        .status()
+        .map_err(|e| format!("git: {e}"))?;
+    Ok(status.success())
+}
+
+fn show(vault: &Vault, id: &str, diff: bool, round: bool, fixed: bool) -> Res<i32> {
     let (home, page) = find(vault, id)?;
     let (kind, reference) = target_of(&page);
     let base = page.field("base").unwrap_or("");
     let head = page.field("head").unwrap_or("");
+    let paths = strings(&page, "paths");
+    let rounds = rounds_of(&page);
+    if round {
+        let Some(last) = rounds.last() else {
+            return Err(format!(
+                "{id} has had one round: review update starts the next; --diff shows it all"
+            ));
+        };
+        println!(
+            "# since round {}: {}..{}",
+            rounds.len(),
+            short(last),
+            short(head)
+        );
+        return Ok(if print_diff(&home.root, last, head, &paths)? {
+            0
+        } else {
+            1
+        });
+    }
+    if fixed {
+        let all = fixes(&home.root, &parse(&page.body).0);
+        if all.is_empty() {
+            println!("{id}: no thread is addressed in a commit yet");
+        }
+        for f in &all {
+            let threads: Vec<String> = f.threads.iter().map(|n| format!("T{n}")).collect();
+            println!(
+                "# {} {} (addresses {})",
+                short(&f.commit),
+                f.subject,
+                threads.join(", ")
+            );
+            if !print_diff(&home.root, &f.parent, &f.commit, &paths)? {
+                return Ok(1);
+            }
+        }
+        return Ok(0);
+    }
     if diff {
-        let mut args = vec!["diff", base, head, "--"];
-        let paths: Vec<String> = page
-            .meta
-            .as_ref()
-            .and_then(|m| m.get("paths"))
-            .and_then(|p| p.as_array())
-            .map(|a| {
-                a.iter()
-                    .filter_map(|v| v.as_str().map(str::to_string))
-                    .collect()
-            })
-            .unwrap_or_default();
-        args.extend(paths.iter().map(String::as_str));
-        let status = std::process::Command::new("git")
-            .arg("-C")
-            .arg(&home.root)
-            .args(&args)
-            .status()
-            .map_err(|e| format!("git: {e}"))?;
-        if !status.success() {
+        if !print_diff(&home.root, base, head, &paths)? {
             return Ok(1);
         }
         // a run's script is usually committed after the code it ran, so the two runs'
@@ -1299,6 +1411,14 @@ fn show(vault: &Vault, id: &str, diff: bool) -> Res<i32> {
         page.field("status").unwrap_or(""),
         shown(vault, &home, &page.path)
     );
+    if !rounds.is_empty() {
+        let heads: Vec<&str> = rounds.iter().map(|r| short(r)).collect();
+        println!(
+            "round {}, after heads {}",
+            rounds.len() + 1,
+            heads.join(", ")
+        );
+    }
     let lines: Vec<&str> = page.body.lines().collect();
     let (threads, problems) = parse(&page.body);
     for t in &threads {
@@ -1477,6 +1597,23 @@ fn update(vault: &Vault, id: &str, to: Option<&str>) -> Res<i32> {
             .position(|l| l.starts_with("head:"))
             .ok_or("no head: in the frontmatter")?;
         lines[at] = format!("head: {head}");
+        // the head moved from starts the next round, to read what came since
+        let mut rounds = rounds_of(&page);
+        rounds.push(old.clone());
+        let line = format!("rounds: {}", flow_list(&rounds));
+        let offset = match lines[..offset]
+            .iter()
+            .position(|l| l.starts_with("rounds:"))
+        {
+            Some(i) => {
+                lines[i] = line;
+                offset
+            }
+            None => {
+                lines.insert(at + 1, line);
+                offset + 1
+            }
+        };
         if let Some(r) = &moved_ref {
             if let Some(i) = lines[..offset].iter().position(|l| l.starts_with("  ref:")) {
                 lines[i] = format!("  ref: {}", title_scalar(r));
@@ -1544,6 +1681,7 @@ fn comment(
     vault: &Vault,
     id: &str,
     at: Option<&str>,
+    commit: Option<&str>,
     words: &[String],
     author: Option<&str>,
 ) -> Res<String> {
@@ -1553,7 +1691,12 @@ fn comment(
     }
     let author = author_of(vault, author)?;
     let (home, page) = find(vault, id)?;
-    let head = page.field("head").unwrap_or("").to_string();
+    // lines are quoted at the review's head, or at a commit read on its own, a fix's
+    let head = match commit {
+        Some(c) if at.is_some() => rev(&home.root, c)?,
+        Some(_) => return Err("--commit places --at lines; a general thread has none".into()),
+        None => page.field("head").unwrap_or("").to_string(),
+    };
     let at_head = short(&head).to_string();
     let (anchor, quoted) = match at {
         None => (Anchor::General, Vec::new()),
@@ -1570,7 +1713,7 @@ fn comment(
                 },
             };
             let content = git(&home.root, &["show", &format!("{head}:./{path}")])
-                .map_err(|_| format!("{path} is not in the review's head {at_head}"))?;
+                .map_err(|_| format!("{path} is not in {at_head}"))?;
             let file: Vec<&str> = content.lines().collect();
             match which {
                 Ok(range) => {
@@ -2120,6 +2263,34 @@ impl Served {
     }
 }
 
+/// The files changed between two commits in `paths`, as the viewer lists them, without
+/// `own` (the review page).
+fn changed(
+    root: &Path,
+    from: &str,
+    to: &str,
+    paths: &[String],
+    own: Option<&Path>,
+) -> Vec<serde_json::Value> {
+    let mut args = vec!["diff", "--name-status", "-M", "--relative", from, to, "--"];
+    args.extend(paths.iter().map(String::as_str));
+    git(root, &args)
+        .unwrap_or_default()
+        .lines()
+        .filter_map(|l| {
+            let f: Vec<&str> = l.split('\t').collect();
+            match f.as_slice() {
+                [s, old, new] => {
+                    Some(serde_json::json!({ "status": &s[..1], "path": new, "old": old }))
+                }
+                [_, path] if own == Some(Path::new(path)) => None,
+                [s, path] => Some(serde_json::json!({ "status": &s[..1], "path": path })),
+                _ => None,
+            }
+        })
+        .collect()
+}
+
 /// What a page's text is now, to refuse a write over a change the viewer has not seen.
 fn version(text: &str) -> String {
     use std::hash::{Hash, Hasher};
@@ -2220,30 +2391,7 @@ impl yajna_serve::reviews::Reviews for Served {
                     .collect()
             })
             .unwrap_or_default();
-        let mut args = vec![
-            "diff",
-            "--name-status",
-            "-M",
-            "--relative",
-            &base,
-            &head,
-            "--",
-        ];
-        args.extend(paths.iter().map(String::as_str));
-        let files: Vec<serde_json::Value> = git(&home.root, &args)
-            .unwrap_or_default()
-            .lines()
-            .filter_map(|l| {
-                let f: Vec<&str> = l.split('\t').collect();
-                match f.as_slice() {
-                    [s, old, new] => {
-                        Some(serde_json::json!({ "status": &s[..1], "path": new, "old": old }))
-                    }
-                    [s, path] => Some(serde_json::json!({ "status": &s[..1], "path": path })),
-                    _ => None,
-                }
-            })
-            .collect();
+        let files = changed(&home.root, &base, &head, &paths, None);
         // what is not in the review yet: commits after its head and the working tree, in
         // the same paths, but not the review page itself
         let own = page
@@ -2251,6 +2399,14 @@ impl yajna_serve::reviews::Reviews for Served {
             .strip_prefix(&home.root)
             .ok()
             .map(Path::to_path_buf);
+        // the last round, and each fix on its own; a fix commit often carries the page too
+        let rounds = rounds_of(&page);
+        let since = rounds.last().map(|from| {
+            serde_json::json!({
+                "from": from,
+                "files": changed(&home.root, from, &head, &paths, own.as_deref()),
+            })
+        });
         let mut unreviewed: Vec<serde_json::Value> = Vec::new();
         if !head.is_empty() {
             let mut args = vec![
@@ -2279,6 +2435,18 @@ impl yajna_serve::reviews::Reviews for Served {
         }
         let lines: Vec<&str> = page.body.lines().collect();
         let (threads, problems) = parse(&page.body);
+        let fixed: Vec<serde_json::Value> = fixes(&home.root, &threads)
+            .into_iter()
+            .map(|f| {
+                serde_json::json!({
+                    "commit": f.commit,
+                    "parent": f.parent,
+                    "subject": f.subject,
+                    "threads": f.threads,
+                    "files": changed(&home.root, &f.parent, &f.commit, &paths, own.as_deref()),
+                })
+            })
+            .collect();
         let summary = lines
             .iter()
             .position(|l| l.trim_end() == "## Summary")
@@ -2303,6 +2471,9 @@ impl yajna_serve::reviews::Reviews for Served {
             "author": vault.default_author(),
             "summary": summary,
             "files": files,
+            "rounds": rounds,
+            "since": since,
+            "fixes": fixed,
             "unreviewed": unreviewed,
             "threads": threads.iter().map(|t| thread_json(&lines, t)).collect::<Vec<_>>(),
             "problems": problems,
@@ -2316,6 +2487,7 @@ impl yajna_serve::reviews::Reviews for Served {
         path: &str,
         old: Option<&str>,
         work: bool,
+        between: Option<(&str, &str)>,
     ) -> Result<serde_json::Value, String> {
         const MAX: usize = 4 << 20;
         let vault = Vault::open(self.root.clone())?;
@@ -2349,10 +2521,26 @@ impl yajna_serve::reviews::Reviews for Served {
                 .and_then(readable);
             return Ok(serde_json::json!({ "path": path, "base": at(head, path), "head": disk }));
         }
+        let (from, to) = match between {
+            // a round or a fix: only commits the review names, not any in the repository
+            Some((from, to)) => {
+                let threads = parse(&page.body).0;
+                let mut named = vec![base.to_string(), head.to_string()];
+                named.extend(rounds_of(&page));
+                for f in fixes(&home.root, &threads) {
+                    named.extend([f.parent, f.commit]);
+                }
+                if !named.iter().any(|c| c == from) || !named.iter().any(|c| c == to) {
+                    return Err(format!("{from}..{to}: not a round or a fix of {id}"));
+                }
+                (from, to)
+            }
+            None => (base, head),
+        };
         Ok(serde_json::json!({
             "path": path,
-            "base": at(base, old.unwrap_or(path)),
-            "head": at(head, path),
+            "base": at(from, old.unwrap_or(path)),
+            "head": at(to, path),
         }))
     }
 
@@ -2376,7 +2564,7 @@ impl yajna_serve::reviews::Reviews for Served {
         let words: Vec<String> = field("text").map(str::to_string).into_iter().collect();
         let thread = field("thread").unwrap_or("");
         let done = match action {
-            "comment" => comment(&vault, id, field("at"), &words, None),
+            "comment" => comment(&vault, id, field("at"), field("commit"), &words, None),
             "reply" => act(&vault, id, thread, Act::Reply, &words, None),
             "address" => act(
                 &vault,

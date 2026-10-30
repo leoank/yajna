@@ -159,6 +159,37 @@ When the fixes it asks for are committed, move the range on rather than opening 
 review: `yajna review update REV-… --to HEAD`. It refuses a commit that does not come after
 the review's head.
 
+## Reading only the fixes
+
+Say a review covers a feature as `C1..C2`, you then build something else on main, and the
+agent's fixes for the review land after that. `C1..<the fixes>` would show your other work
+too, and git cannot leave out commits from the middle of a range. Two views read only what
+is new:
+
+```sh
+yajna review show REV-20261027-k3m8vd --fixes     # each "addressed in" commit on its own
+yajna review show REV-20261027-k3m8vd --round     # since the last review update
+```
+
+`--fixes` diffs every commit named in an `addressed in` reply against its parent, in the
+review's paths, so the other work is in none of them. In the browser each fix is a group
+under the files; select lines in it to comment on the fix itself (`review comment … --at
+code/x.py:4 --commit <sha>` from the CLI).
+
+Each `review update` keeps the head it moved from in `rounds:`, and `--round` (the *Since
+round N* group in the browser) is that head to the new one. For a range that is everything
+in between, so the round is only the fixes when they were made on a branch from the
+review's head:
+
+```sh
+git worktree add ../fix-k3m8vd -b fix/k3m8vd <the review's head>
+# the agent commits the fixes there and addresses the threads with them
+yajna review update REV-20261027-k3m8vd --to fix/k3m8vd
+git merge fix/k3m8vd                               # when approved
+```
+
+The skill asks agents to do this when other work has landed after a range review's head.
+
 ## Keeping up
 
 ```sh

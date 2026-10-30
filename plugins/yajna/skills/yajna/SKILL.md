@@ -45,6 +45,7 @@ yajna review open HEAD..HEAD --title "<the work>"          # the review your cha
 yajna review about REV-… EXP-… RUN-…                       # what the review's work serves
 yajna review todo                                          # the review threads you owe on this branch
 yajna review list --open | show REV-… [--diff]             # reviews of your branch and what they ask
+yajna review show REV-… --round | --fixes                  # since the last update; each fix on its own
 yajna review reply|address REV-… T<n> "<text>" [--commit <sha>]   # answer; address with the fixing commit
 yajna review update REV-…                                  # after new commits: move the head, re-anchor threads
 yajna validate                                             # run before you report anything as done
@@ -106,9 +107,15 @@ one-line instructions under headings such as *Runs*.
   finish the current review (approve it, or say it is done); open a new one only then.
 - **Reviews are answered, not resolved, by agents.** When a `REV` page reviews your
   branch, answer each thread with `yajna review reply`, or fix it, commit, and run
-  `yajna review address REV-… T<n> --commit <sha> "<what changed>"`. Run `yajna review
-  todo` when you start and before you report a branch as done; it lists what is still
-  owed. Only a human resolves, approves and merges.
+  `yajna review address REV-… T<n> --commit <sha> "<what changed>"`, one commit per
+  fix where you can: the human reads each named commit on its own (`show --fixes`). Run
+  `yajna review todo` when you start and before you report a branch as done; it lists
+  what is still owed. Only a human resolves, approves and merges.
+- **Fix a past range on a branch from its head.** When a commit-range review asks for
+  changes and other work has landed after its `head`, do not fix on top of that work:
+  `git worktree add ../fix-REV-… -b fix/REV-… <head>`, commit the fixes there, address
+  the threads with those commits, and tell the human to run `yajna review update REV-…
+  --to fix/REV-…` (the next round is then the fixes alone) and to merge the branch.
 - **Large files never go into git history.** Results that matter become `ART` pages;
   ask before adding anything over a few MB.
 - **Never delete.** Mark `status: abandoned` or `aborted`; git history is the record.

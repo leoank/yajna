@@ -96,6 +96,17 @@ export interface ChangedFile {
   old?: string;
 }
 
+/** A commit named in an `addressed in` reply, read on its own. */
+export interface Fix {
+  commit: string;
+  /** its first parent, or the empty tree */
+  parent: string;
+  subject: string;
+  /** the threads it addressed */
+  threads: number[];
+  files: ChangedFile[];
+}
+
 export interface Review {
   id: string;
   title: string;
@@ -111,6 +122,11 @@ export interface Review {
   author: string;
   summary: string;
   files: ChangedFile[];
+  /** the heads before each review update, oldest first */
+  rounds: string[];
+  /** what changed since the last update: its head to the head */
+  since: { from: string; files: ChangedFile[] } | null;
+  fixes: Fix[];
   /** changed after the head or not committed (status `?`: untracked), not in the review yet */
   unreviewed: ChangedFile[];
   threads: Thread[];
@@ -166,9 +182,14 @@ export const canWrite = () => token !== '';
 export const reviews = {
   list: () => json<ReviewSummary[]>('/api/reviews'),
   get: (id: string) => json<Review>(`/api/reviews/${q(id)}`),
-  /** a changed file at the base and head; with `work`, at the head and in the working tree */
-  file: (id: string, f: ChangedFile, work = false) =>
-    json<Sides>(`/api/reviews/${q(id)}/file?path=${q(f.path)}${f.old ? `&old=${q(f.old)}` : ''}${work ? '&work=true' : ''}`),
+  /** a changed file at the base and head, or `between` a round's or a fix's two commits;
+   * with `work`, at the head and in the working tree */
+  file: (id: string, f: ChangedFile, work = false, between?: { from: string; to: string }) =>
+    json<Sides>(
+      `/api/reviews/${q(id)}/file?path=${q(f.path)}${f.old ? `&old=${q(f.old)}` : ''}${work ? '&work=true' : ''}${
+        between ? `&from=${q(between.from)}&to=${q(between.to)}` : ''
+      }`,
+    ),
   /** A write; a page that changed since `version` is refused with status 409. */
   async write(id: string, action: string, version: string, w: Write): Promise<Review> {
     const res = await fetch(`/api/reviews/${q(id)}/${action}`, {

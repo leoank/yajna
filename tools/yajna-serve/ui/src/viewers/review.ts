@@ -1,6 +1,6 @@
 // A review (docs/review.md 7.2): its changed files as side-by-side diffs with the threads
-// drawn at their lines, an overview with the summary, the verdict and every thread, the
-// changes not in the review yet, and, when the server runs with --review, forms that write
+// drawn at their lines, an overview with the summary, the verdict and every thread, what
+// changed since the last round, each fix on its own, the changes not in the review yet, and, when the server runs with --review, forms that write
 // to the page as the CLI does. The page is read again every two seconds, so an agent's
 // reply shows up while it is read; what is being typed survives that.
 
@@ -70,6 +70,8 @@ interface Action {
   needsText?: boolean;
   /** ask for the commit that addresses the thread */
   commit?: boolean;
+  /** the commit a new thread's lines are read at, when not the head: a fix's */
+  on?: string;
   /** where a new thread goes; null cancels */
   at?: () => string | null;
 }
@@ -79,8 +81,8 @@ interface Writer {
   /** what is being typed, by form, kept across reloads of the review */
   drafts: Map<string, string>;
   write(action: string, w: Write, key: string): Promise<void>;
-  /** a file of the review at a line, or another file */
-  openFile(path: string, line?: number): void;
+  /** a file of the review at a line (in the fix at `commit`, when it is one), or another file */
+  openFile(path: string, line?: number, commit?: string): void;
 }
 
 function form(w: Writer, key: string, actions: Action[], placeholder: string, extra: HTMLElement[] = []): HTMLElement {
@@ -96,7 +98,7 @@ function form(w: Writer, key: string, actions: Action[], placeholder: string, ex
     b.addEventListener('click', () => {
       const said = text.value.trim();
       if (a.needsText && !said) return text.focus();
-      let commit: string | undefined;
+      let commit = a.on;
       if (a.commit) {
         const c = window.prompt('The commit that addresses it (empty: the branch tip, or HEAD)', '');
         if (c === null) return;
@@ -139,7 +141,7 @@ function threadEl(t: Thread, w: Writer, withQuote: boolean): HTMLElement {
   const path = t.anchor.path;
   if (path) {
     where.classList.add('yr-link');
-    where.addEventListener('click', () => w.openFile(path, t.anchor.from));
+    where.addEventListener('click', () => w.openFile(path, t.anchor.from, t.anchor.commit));
   }
   head.append(where);
   box.append(head);
@@ -187,8 +189,8 @@ class BoxWidget extends WidgetType {
   }
 }
 
-/** Whether a thread's anchor is at the review's head, so its lines are in the right side. */
-const atHead = (t: Thread, r: Review) => !!t.anchor.commit && r.head.startsWith(t.anchor.commit) && t.state !== 'outdated';
+/** Whether a thread's anchor is at this commit (the head, or a fix), so its lines are in the right side. */
+const atCommit = (t: Thread, sha: string) => !!t.anchor.commit && sha.startsWith(t.anchor.commit) && t.state !== 'outdated';
 
 function lineOf(t: Thread, view: EditorView): number | null {
   const doc = view.state.doc;
@@ -262,13 +264,31 @@ const diffLook = EditorView.theme({
 
 // --- the viewer ---
 
-/** The file shown: a changed file of the review, or (work) one not in it yet. */
+/** The file shown: a changed file of the review, one not in it yet (work), or one of the
+ * last round or a fix, between those two commits. */
 interface Shown {
   path: string;
   work: boolean;
+  between?: { from: string; to: string };
 }
 
-const sameShown = (a: Shown | null, b: Shown | null) => a?.path === b?.path && a?.work === b?.work;
+const sameShown = (a: Shown | null, b: Shown | null) =>
+  a?.path === b?.path && a?.work === b?.work && a?.between?.from === b?.between?.from && a?.between?.to === b?.between?.to;
+
+/** Where in the review a shown file is listed. */
+function entryOf(r: Review, s: Shown): ChangedFile | undefined {
+  const list = s.work
+    ? r.unreviewed
+    : !s.between
+      ? r.files
+      : r.since && s.between.from === r.since.from && s.between.to === r.head
+        ? r.since.files
+        : (r.fixes.find((f) => f.commit === s.between!.to && f.parent === s.between!.from)?.files ?? []);
+  return list.find((x) => x.path === s.path);
+}
+
+/** A key for what is typed on a shown file. */
+const shownKey = (s: Shown) => `${s.work ? 'work:' : ''}${s.between?.to ?? ''}:${s.path}`;
 
 export const reviewKind = {
   name: 'review',
@@ -282,7 +302,7 @@ export const reviewKind = {
     let selected: Shown | null = null;
     let diff: { shown: Shown; head: string; sides: Sides; view: MergeView; wrap: Compartment } | undefined;
     /** a new thread being written inside the diff, on these lines */
-    let draft: { path: string; a: number; b: number } | null = null;
+    let draft: { key: string; a: number; b: number } | null = null;
     /** the lines picked in the right side, for the comment box */
     let picked: { a: number; b: number } | null = null;
     /** a line to bring into view once the file is shown */
@@ -304,7 +324,7 @@ export const reviewKind = {
     };
     say('');
 
-    const inlineKey = (path: string) => `inline:${path}`;
+    const inlineKey = (key: string) => `inline:${key}`;
 
     const writer: Writer = {
       review: () => current,
@@ -315,7 +335,7 @@ export const reviewKind = {
         try {
           current = await reviews.write(id, action, current.version, w);
           writer.drafts.delete(key);
-          if (draft && key === inlineKey(draft.path)) draft = null;
+          if (draft && key === inlineKey(draft.key)) draft = null;
           say('');
           render();
         } catch (e) {
@@ -328,8 +348,14 @@ export const reviewKind = {
           busy = false;
         }
       },
-      openFile(path, line) {
-        if (current.files.some((f) => f.path === path)) {
+      openFile(path, line, commit) {
+        // a thread on a fix opens in that fix
+        const fix = commit && !current.head.startsWith(commit) ? current.fixes.find((f) => f.commit.startsWith(commit)) : undefined;
+        if (fix?.files.some((f) => f.path === path)) {
+          selected = { path, work: false, between: { from: fix.parent, to: fix.commit } };
+          goTo = line;
+          render();
+        } else if (current.files.some((f) => f.path === path)) {
           selected = { path, work: false };
           goTo = line;
           render();
@@ -373,7 +399,7 @@ export const reviewKind = {
       const meta = el('div', 'yr-meta');
       meta.append(
         el('span', `yr-status yr-${r.status}`, r.status.replace('_', ' ')),
-        ` ${r.kind} ${r.ref} · ${r.base.slice(0, 7)}..${r.head.slice(0, 7)} · `,
+        ` ${r.kind} ${r.ref} · ${r.base.slice(0, 7)}..${r.head.slice(0, 7)}${r.rounds.length ? ` · round ${r.rounds.length + 1}` : ''} · `,
         canWrite() ? `writing as ${r.author}` : 'read-only: open the URL yajna serve --review printed to write',
       );
       top.append(row, meta);
@@ -403,6 +429,37 @@ export const reviewKind = {
         label.append(el('span', `yr-fs yr-fs-${f.status}`, f.status), pathEl(f.path));
         if (f.old) label.title = `${f.old} → ${f.path}`;
         item(label, { path: f.path, work: false }, n);
+      }
+      const group = (text: string, hint: string) => {
+        const head = el('li', 'yr-group', text);
+        head.title = hint;
+        files.append(head);
+      };
+      const entries = (list: ChangedFile[], between: { from: string; to: string }) => {
+        for (const f of list) {
+          const shown = { path: f.path, work: false, between };
+          const n = current.threads.filter((t) => t.anchor.path === f.path && atCommit(t, between.to) && t.state !== 'resolved').length;
+          const label = el('span', 'yr-entry');
+          label.append(el('span', `yr-fs yr-fs-${f.status}`, f.status), pathEl(f.path));
+          if (f.old) label.title = `${f.old} → ${f.path}`;
+          item(label, shown, n);
+        }
+      };
+      const since = current.since;
+      if (since?.files.length) {
+        group(
+          `Since round ${current.rounds.length} · ${since.from.slice(0, 7)}..${current.head.slice(0, 7)}`,
+          'What changed since the last yajna review update: the head it moved from to the head',
+        );
+        entries(since.files, { from: since.from, to: current.head });
+      }
+      for (const fx of current.fixes) {
+        if (!fx.files.length) continue;
+        group(
+          `Fix ${fx.commit.slice(0, 7)} · ${fx.threads.map((n) => `T${n}`).join(', ')}`,
+          `${fx.subject}\nThis commit on its own, against its parent, whatever else came between the fixes`,
+        );
+        entries(fx.files, { from: fx.parent, to: fx.commit });
       }
       if (current.unreviewed.length) {
         const head = el('li', 'yr-group', 'Not in the review yet');
@@ -478,27 +535,29 @@ export const reviewKind = {
       main.append(shown);
     }
 
-    function decorations(view: EditorView, path: string): DecorationSet {
+    /** The threads at `sha` on this file, and the new thread being written on `key`. */
+    function decorations(view: EditorView, path: string, sha: string, key: string): DecorationSet {
       const r = current;
       const ranges: Range<Decoration>[] = [];
-      for (const t of r.threads.filter((t) => t.anchor.path === path && atHead(t, r))) {
+      for (const t of r.threads.filter((t) => t.anchor.path === path && atCommit(t, sha))) {
         const line = lineOf(t, view);
         if (line === null) continue;
         const widget = new BoxWidget(JSON.stringify(t) + canWrite(), () => threadEl(t, writer, false));
         ranges.push(Decoration.widget({ widget, block: true, side: 1 }).range(view.state.doc.line(line).to));
       }
-      if (draft && draft.path === path && draft.b <= view.state.doc.lines) {
+      if (draft && draft.key === key && draft.b <= view.state.doc.lines) {
         const { a, b } = draft;
-        const widget = new BoxWidget(`draft:${path}:${a}-${b}`, () => {
+        const on = sha === r.head ? undefined : sha;
+        const widget = new BoxWidget(`draft:${key}:${a}-${b}`, () => {
           const box = el('div', 'yr-thread yr-draft');
           box.append(el('div', 'yr-thread-head', `New thread on ${lines(a, b)}`));
           const cancel = el('button', '', 'Cancel');
           cancel.addEventListener('click', () => {
             draft = null;
-            view.dispatch({ effects: setThreads.of(decorations(view, path)) });
+            view.dispatch({ effects: setThreads.of(decorations(view, path, sha, key)) });
           });
           const at = () => (a === b ? `${path}:${a}` : `${path}:${a}-${b}`);
-          box.append(form(writer, inlineKey(path), [{ label: 'Comment', action: 'comment', needsText: true, at }], 'Your comment… (Ctrl-Enter sends)', [cancel]));
+          box.append(form(writer, inlineKey(key), [{ label: 'Comment', action: 'comment', needsText: true, at, on }], 'Your comment… (Ctrl-Enter sends)', [cancel]));
           requestAnimationFrame(() => box.querySelector('textarea')?.focus());
           return box;
         });
@@ -508,7 +567,7 @@ export const reviewKind = {
     }
 
     /** The sticky box above the diff: comment on whatever lines are picked on the right. */
-    function composer(path: string): HTMLElement {
+    function composer(path: string, key: string, on?: string): HTMLElement {
       const box = el('div', 'yr-compose');
       const label = el('div', 'yr-picked');
       const show = () => {
@@ -525,7 +584,7 @@ export const reviewKind = {
         const { a, b } = picked;
         return a === b ? `${path}:${a}` : `${path}:${a}-${b}`;
       };
-      const f = form(writer, `new:${path}`, [{ label: 'Comment', action: 'comment', needsText: true, at }], 'A comment on the picked lines… (Ctrl-Enter sends)');
+      const f = form(writer, `new:${key}`, [{ label: 'Comment', action: 'comment', needsText: true, at, on }], 'A comment on the picked lines… (Ctrl-Enter sends)');
       (f.querySelector('textarea') as HTMLTextAreaElement).rows = 1;
       box.append(label, f);
       (box as HTMLElement & { show?: () => void }).show = show;
@@ -537,15 +596,18 @@ export const reviewKind = {
       const r = current;
       const shown = selected;
       if (!shown) return;
-      const f = (shown.work ? r.unreviewed : r.files).find((x) => x.path === shown.path)!;
+      const f = entryOf(r, shown)!;
+      // the commit the right side is at, where its threads are drawn
+      const sha = shown.between?.to ?? r.head;
+      const key = shownKey(shown);
       if (!again && diff && sameShown(diff.shown, shown) && diff.head === r.head && !shown.work) {
         // the same file at the same head: only the threads change
         const v = diff.view.b;
-        v.dispatch({ effects: setThreads.of(decorations(v, f.path)) });
-        afterDiff(f);
+        v.dispatch({ effects: setThreads.of(decorations(v, f.path, sha, key)) });
+        afterDiff(f, sha);
         return;
       }
-      const sides = await reviews.file(id, f, shown.work);
+      const sides = await reviews.file(id, f, shown.work, shown.between);
       if (disposed || !sameShown(selected, shown)) return;
       if (!again && diff && sameShown(diff.shown, shown) && diff.sides.base === sides.base && diff.sides.head === sides.head) return;
       const keep = diff && sameShown(diff.shown, shown) ? (main.querySelector('.yr-scroll')?.scrollTop ?? 0) : 0;
@@ -561,6 +623,10 @@ export const reviewKind = {
       main.replaceChildren();
       main.classList.add('yr-split');
       const scroll = el('div', 'yr-scroll');
+      if (shown.between && sha !== r.head) {
+        const fx = r.fixes.find((x) => x.commit === sha);
+        main.append(el('p', 'yr-muted yr-extras', `Fix ${sha.slice(0, 7)}: ${fx?.subject ?? ''}, on its own against its parent. A comment here is anchored to this commit.`));
+      }
       if (shown.work) {
         main.append(
           el(
@@ -570,14 +636,15 @@ export const reviewKind = {
           ),
         );
       }
-      const compose = writable && prefs.composer ? composer(f.path) : null;
+      const on = sha === r.head ? undefined : sha;
+      const compose = writable && prefs.composer ? composer(f.path, key, on) : null;
       if (compose) main.append(compose);
       const box = el('div', 'yr-diff');
       scroll.append(box, el('div', 'yr-extras'));
       main.append(scroll);
       const start = (a: number, b: number) => {
-        draft = { path: f.path, a, b };
-        view.b.dispatch({ effects: setThreads.of(decorations(view.b, f.path)) });
+        draft = { key, a, b };
+        view.b.dispatch({ effects: setThreads.of(decorations(view.b, f.path, sha, key)) });
       };
       const right = writable
         ? [
@@ -602,9 +669,9 @@ export const reviewKind = {
       });
       diff = { shown, head: r.head, sides, view, wrap };
       // threads anchor to the head; the working tree's lines are not theirs
-      if (!shown.work) view.b.dispatch({ effects: setThreads.of(decorations(view.b, f.path)) });
+      if (!shown.work) view.b.dispatch({ effects: setThreads.of(decorations(view.b, f.path, sha, key)) });
       if (sides.head === null) box.before(el('p', 'yr-muted yr-extras', shown.work ? 'Deleted in the working tree.' : 'Deleted at the head: nothing to comment on here.'));
-      afterDiff(f);
+      afterDiff(f, sha);
       if (goTo && goTo <= view.b.state.doc.lines) {
         const pos = view.b.state.doc.line(goTo).from;
         requestAnimationFrame(() => view.b.dispatch({ effects: EditorView.scrollIntoView(pos, { y: 'center' }) }));
@@ -613,12 +680,12 @@ export const reviewKind = {
     }
 
     /** Below a diff: this file's threads at other commits, which have no lines here. */
-    function afterDiff(f: ChangedFile) {
+    function afterDiff(f: ChangedFile, sha: string) {
       const extras = main.querySelector('.yr-diff + .yr-extras');
       if (!extras) return;
       extras.replaceChildren();
       if (selected?.work) return;
-      const elsewhere = current.threads.filter((t) => t.anchor.path === f.path && !atHead(t, current));
+      const elsewhere = current.threads.filter((t) => t.anchor.path === f.path && !atCommit(t, sha));
       if (elsewhere.length) extras.append(el('h3', '', 'Threads at other commits'));
       for (const t of elsewhere) extras.append(threadEl(t, writer, true));
     }
@@ -627,8 +694,7 @@ export const reviewKind = {
       header();
       layout();
       fileList();
-      const list = selected?.work ? current.unreviewed : current.files;
-      if (!selected || !list.some((x) => x.path === selected!.path)) {
+      if (!selected || !entryOf(current, selected)) {
         selected = null;
         overview();
       } else void file();

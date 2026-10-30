@@ -4902,6 +4902,47 @@ fn serve_review_writes_only_with_the_token_and_never_over_a_change() {
         "",
     );
     assert_eq!(status, 404);
+    // a fix, read on its own: only between the commits the review names
+    git(&root, &["add", "code"]);
+    git(&root, &["commit", "-q", "-m", "fix"]);
+    let fix = git(&root, &["rev-parse", "HEAD"]).trim().to_string();
+    let parent = git(&root, &["rev-parse", "HEAD~1"]).trim().to_string();
+    let out = lab.run(&[
+        "review",
+        "address",
+        &id,
+        "T1",
+        "--commit",
+        &fix,
+        "--author",
+        "agent:claude",
+        "b is 3",
+    ]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let (_, body) = http(&addr, "GET", &format!("/api/reviews/{id}"), &[], "");
+    let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert!(
+        v["fixes"][0]["commit"] == fix.as_str()
+            && v["fixes"][0]["threads"] == serde_json::json!([1])
+            && v["fixes"][0]["files"].to_string().contains("code/y.py"),
+        "{body}"
+    );
+    let file = |from: &str| {
+        http(
+            &addr,
+            "GET",
+            &format!("/api/reviews/{id}/file?path=code/x.py&from={from}&to={fix}"),
+            &[],
+            "",
+        )
+    };
+    let (status, body) = file(&parent);
+    let sides: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert!(
+        status == 200 && sides["base"] == "a = 1\nb = 2\n" && sides["head"] == "a = 1\nb = 3\n",
+        "{status} {body}"
+    );
+    assert_eq!(file("HEAD").0, 404);
     child.kill().unwrap();
     let _ = child.wait();
     let text = lab.read(&page);
@@ -5012,6 +5053,117 @@ fn conventions_are_checked_from_a_date() {
     );
     let out = v.run(&["validate"]);
     assert!(!out.stdout.contains("approval record"), "{}", out.stdout);
+}
+
+#[test]
+fn review_rounds_and_fixes_leave_out_work_in_between() {
+    let lab = vault();
+    let root = lab.root.canonicalize().unwrap();
+    fs::create_dir_all(root.join("code")).unwrap();
+    fs::write(root.join("code/x.py"), "a = 1\n").unwrap();
+    git(&root, &["init", "-q", "-b", "main"]);
+    let commit = |msg: &str| {
+        git(&root, &["add", "notes", "code", "yajna.toml"]);
+        git(&root, &["commit", "-q", "-m", msg]);
+        git(&root, &["rev-parse", "HEAD"]).trim().to_string()
+    };
+    let c1 = commit("one");
+    fs::write(root.join("code/x.py"), "a = 2\n").unwrap();
+    let c2 = commit("feature A");
+    let out = lab.run(&["review", "open", &format!("{c1}..{c2}")]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let rev_path = lab.path(&out);
+    let rid = rev_path.file_name().unwrap().to_string_lossy()[..19].to_string();
+    assert_eq!(
+        lab.run(&["review", "comment", &rid, "--at", "code/x.py:1", "why 2?"])
+            .code,
+        0
+    );
+    // another feature lands, then the fix, then more of the other feature
+    fs::write(root.join("code/y.py"), "big\n").unwrap();
+    commit("feature B");
+    fs::write(root.join("code/x.py"), "a = 3\n").unwrap();
+    let f1 = commit("fix: a is 3");
+    let out = lab.run(&[
+        "review",
+        "address",
+        &rid,
+        "T1",
+        "--commit",
+        &f1,
+        "--author",
+        "agent:claude",
+        "a is 3",
+    ]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    fs::write(root.join("code/y.py"), "bigger\n").unwrap();
+    let c4 = commit("feature B, more");
+
+    // the fix on its own, without B or the review page it carried
+    let out = lab.run(&["review", "show", &rid, "--fixes"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(
+        out.stdout
+            .contains(&format!("# {} fix: a is 3 (addresses T1)", &f1[..7]))
+            && out.stdout.contains("+a = 3")
+            && !out.stdout.contains("big")
+            && !out.stdout.contains("reviews/"),
+        "{}",
+        out.stdout
+    );
+    // a comment on the fix is anchored to it
+    let out = lab.run(&[
+        "review",
+        "comment",
+        &rid,
+        "--at",
+        "code/x.py:1",
+        "--commit",
+        &f1,
+        "why not 4?",
+    ]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(
+        lab.read(&rev_path).contains(&format!(
+            "### T2 (open) code/x.py:1 @ {}\n```py\na = 3\n",
+            &f1[..7]
+        )),
+        "{}",
+        lab.read(&rev_path)
+    );
+    assert_eq!(
+        lab.run(&["review", "comment", &rid, "--commit", &f1, "x"])
+            .code,
+        2,
+        "--commit needs --at"
+    );
+
+    // rounds: each update keeps the head it moved from
+    let out = lab.run(&["review", "show", &rid, "--round"]);
+    assert!(out.stderr.contains("has had one round"), "{}", out.stderr);
+    assert_eq!(lab.run(&["review", "update", &rid, "--to", &f1]).code, 0);
+    assert!(lab
+        .read(&rev_path)
+        .contains(&format!("head: {f1}\nrounds: [{c2}]\n")));
+    assert_eq!(lab.run(&["review", "update", &rid, "--to", "HEAD"]).code, 0);
+    assert!(lab
+        .read(&rev_path)
+        .contains(&format!("head: {c4}\nrounds: [{c2}, {f1}]\n")));
+    let out = lab.run(&["review", "show", &rid, "--round"]);
+    assert!(
+        out.stdout.contains("# since round 2")
+            && out.stdout.contains("+bigger")
+            && !out.stdout.contains("a = 3"),
+        "{}",
+        out.stdout
+    );
+    let out = lab.run(&["review", "show", &rid]);
+    assert!(
+        out.stdout
+            .contains(&format!("round 3, after heads {}, {}", &c2[..7], &f1[..7])),
+        "{}",
+        out.stdout
+    );
 }
 
 #[test]

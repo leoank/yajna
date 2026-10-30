@@ -31,9 +31,17 @@ pub trait Reviews: Send + Sync {
     fn list(&self) -> Result<Value, String>;
     /// one review with its threads, changed files and `version`
     fn get(&self, id: &str) -> Result<Value, String>;
-    /// a changed file at the review's base (`old`, when renamed) and head; with `work`, a
-    /// file not in the review yet, at the head and as it is in the working tree
-    fn file(&self, id: &str, path: &str, old: Option<&str>, work: bool) -> Result<Value, String>;
+    /// a changed file at the review's base (`old`, when renamed) and head, or `between` two
+    /// commits the review names (a round, a fix); with `work`, a file not in the review
+    /// yet, at the head and as it is in the working tree
+    fn file(
+        &self,
+        id: &str,
+        path: &str,
+        old: Option<&str>,
+        work: bool,
+        between: Option<(&str, &str)>,
+    ) -> Result<Value, String>;
     /// `action` (comment, reply, address, resolve, reopen, approve, request-changes) with
     /// its fields in `body`, refused unless `body.version` is the page's current version;
     /// the review as it is afterwards
@@ -110,6 +118,8 @@ pub(crate) struct FileQuery {
     old: Option<String>,
     #[serde(default)]
     work: bool,
+    from: Option<String>,
+    to: Option<String>,
 }
 
 pub(crate) async fn file_handler(
@@ -120,7 +130,11 @@ pub(crate) async fn file_handler(
     let Some(r) = app.reviews.clone() else {
         return no_reviews();
     };
-    blocking(move || r.file(&id, &q.path, q.old.as_deref(), q.work)).await
+    blocking(move || {
+        let between = q.from.as_deref().zip(q.to.as_deref());
+        r.file(&id, &q.path, q.old.as_deref(), q.work, between)
+    })
+    .await
 }
 
 pub(crate) async fn write_handler(
@@ -159,7 +173,14 @@ mod tests {
         fn get(&self, id: &str) -> Result<Value, String> {
             Ok(serde_json::json!({ "id": id, "version": "v1" }))
         }
-        fn file(&self, _: &str, _: &str, _: Option<&str>, _: bool) -> Result<Value, String> {
+        fn file(
+            &self,
+            _: &str,
+            _: &str,
+            _: Option<&str>,
+            _: bool,
+            _: Option<(&str, &str)>,
+        ) -> Result<Value, String> {
             Ok(Value::Null)
         }
         fn write(&self, id: &str, _: &str, body: &Value) -> Result<Value, WriteError> {

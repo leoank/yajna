@@ -345,7 +345,11 @@ the threads, `show --diff` the changes. `yajna review update REV-…` moves the 
 the target is now and re-anchors open threads, following renames; an open thread whose
 lines are gone becomes `(outdated)`, an addressed one stays addressed for a human to check;
 `--to <commit>` moves a commit range on to a later commit,
-such as the fixes to a past feature. `about: [EXP-…, RUN-…, PRJ-…]` lists the pages the
+such as the fixes to a past feature. Each update keeps the head it left in `rounds:`;
+`show --round` is what came since, and `show --fixes` each commit named in an `addressed
+in` reply on its own, which leaves out work that landed between the review and its fixes.
+An agent fixing a past range after other work has landed does it on a branch from the
+review's head, so `--to <branch>` brings in the fixes alone. `about: [EXP-…, RUN-…, PRJ-…]` lists the pages the
 review is about besides its target (`review open … --about <ID>…`, `yajna review about
 REV-… <ID>…`); `review list --target <ID>` finds those reviews too. A human approves
 (`yajna review approve REV-… [<text>]`, refused while a thread is open or addressed), which
