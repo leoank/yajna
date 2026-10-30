@@ -6,7 +6,7 @@ title: Review rounds, the fixes view and fixing on a branch (0.16.0)
 model: "claude-opus-5-5"
 harness: "claude-code"
 started: 2026-10-29T23:57+00:00
-finished: 2026-10-30T00:05+00:00
+finished: 2026-10-30T00:14+00:00
 created_entities: []
 edited_entities: []
 outcome: done             # done | failed | aborted | pending
@@ -35,3 +35,7 @@ branch from its head (yajna 0.16.0, plugin 0.15.0).
 - Docs: `review.md` v0.8 section 5.1, conventions, the guide's "Reading only the fixes".
 - Decided without asking: a fix's diff is limited to the review's paths like the rest of
   the review; fixes are ordered by commit time; the rounds list holds full SHAs.
+- Then, asked by ank: the image viewer's zoom threw the image off screen. panzoom zoomed a
+  fixed 15% per wheel event (a trackpad sends dozens per gesture) with no bounds; replaced
+  with our own pan and zoom, proportional to the delta, about the pointer, the image kept
+  in view; dropped `@panzoom/panzoom` (yajna 0.17.0, ADR-0029 amended).
