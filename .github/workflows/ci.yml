@@ -45,4 +45,9 @@ jobs:
             $y validate
           } 2>&1 | tee out.txt
           if grep "is also at" out.txt; then echo "registered twice"; exit 1; fi
+          # serve --review makes its token from the OS's random source
+          $y serve --review --port 0 > serve.txt 2>&1 &
+          for i in $(seq 60); do grep -q "reviews, writable" serve.txt && break; sleep 1; done
+          kill $! 2>/dev/null || taskkill //F //IM yajna.exe > /dev/null 2>&1 || true
+          grep "reviews, writable" serve.txt || { cat serve.txt; exit 1; }
           if grep -rl $'\r' notes; then echo "pages written with CRLF"; exit 1; fi

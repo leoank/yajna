@@ -81,14 +81,28 @@ pub fn files_problems(vault: &Vault) -> Vec<String> {
     }
 }
 
-/// A token for writing to reviews: 128 bits from the system's random source, in hex.
-fn token() -> String {
-    use std::io::Read;
+/// Open `url` in the default browser, without waiting; nothing happens when that fails.
+pub(crate) fn open_url(url: &str) {
+    use std::process::Command;
+    // rundll32 takes the URL as one argument; `cmd /c start` would split it at `&`
+    let _ = if cfg!(windows) {
+        Command::new("rundll32")
+            .args(["url.dll,FileProtocolHandler", url])
+            .spawn()
+    } else if cfg!(target_os = "macos") {
+        Command::new("open").arg(url).spawn()
+    } else {
+        Command::new("xdg-open").arg(url).spawn()
+    };
+}
+
+/// A token for writing to reviews: 128 bits from the system's random source (getrandom on
+/// Linux, the platform's secure source on macOS and Windows), in hex.
+fn token() -> Res<String> {
     let mut bytes = [0u8; 16];
-    std::fs::File::open("/dev/urandom")
-        .and_then(|mut f| f.read_exact(&mut bytes))
-        .expect("/dev/urandom");
-    bytes.iter().map(|b| format!("{b:02x}")).collect()
+    getrandom::fill(&mut bytes)
+        .map_err(|e| format!("no random source for the review token: {e}"))?;
+    Ok(bytes.iter().map(|b| format!("{b:02x}")).collect())
 }
 
 pub fn cmd_serve(
@@ -150,7 +164,7 @@ pub fn cmd_serve(
         notebook: vault.namespace().unwrap_or("notebook").to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
         reviews: Some(Arc::new(crate::review::Served::new(vault.root.clone()))),
-        token: review.then(token),
+        token: review.then(token).transpose()?,
     };
     let written = cfg.token.clone();
     yajna_serve::run(cfg, |addr| {
@@ -161,12 +175,7 @@ pub fn cmd_serve(
             println!("reviews, writable: {url}files/?token={t}");
         }
         if open {
-            let opener = if cfg!(target_os = "macos") {
-                "open"
-            } else {
-                "xdg-open"
-            };
-            let _ = std::process::Command::new(opener).arg(&url).spawn();
+            open_url(&url);
         }
     })?;
     Ok(0)

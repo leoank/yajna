@@ -512,12 +512,7 @@ pub fn login(client: &Path) -> Res<i32> {
         ])
     );
     println!("Open this URL and allow access (a browser should open):\n{url}");
-    let opener = if cfg!(target_os = "macos") {
-        "open"
-    } else {
-        "xdg-open"
-    };
-    let _ = std::process::Command::new(opener).arg(&url).spawn();
+    crate::serve::open_url(&url);
     let (mut stream, _) = listener.accept().map_err(|e| e.to_string())?;
     let mut line = String::new();
     BufReader::new(stream.try_clone().map_err(|e| e.to_string())?)
