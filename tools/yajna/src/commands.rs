@@ -398,7 +398,7 @@ pub fn create(
 /// when it is missing.
 fn list_on(vault: &Vault, parent: &str, section: &str, id: &str, what: &str) -> Res<()> {
     let page = vault.find(parent)?;
-    let text = fs::read_to_string(&page.path).map_err(|e| e.to_string())?;
+    let text = crate::vault::read_text(&page.path).map_err(|e| e.to_string())?;
     let item = format!("- [[{id}]] {}", what.trim());
     let mut lines: Vec<&str> = text.lines().collect();
     let heading = format!("## {section}");
@@ -462,7 +462,7 @@ fn cmd_skill(vault: &Vault, print: bool) -> Res<i32> {
 
 pub fn skill_text() -> Res<String> {
     crate::vault::Skills::get("yajna/SKILL.md")
-        .map(|f| String::from_utf8_lossy(&f.data).into_owned())
+        .map(|f| String::from_utf8_lossy(&f.data).replace("\r\n", "\n"))
         .ok_or_else(|| "the skill is not embedded in this binary".to_string())
 }
 

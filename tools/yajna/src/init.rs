@@ -557,7 +557,7 @@ pub fn graduate(
     if let Ok(new) = Vault::open(into.clone()) {
         crate::anywhere::remember(&new);
     }
-    let text = fs::read_to_string(&page.path).map_err(|e| e.to_string())?;
+    let text = crate::vault::read_text(&page.path).map_err(|e| e.to_string())?;
     let text = edit_frontmatter(&text, |lines| {
         set_field(lines, "status", "moved");
         set_field(lines, "code", to);

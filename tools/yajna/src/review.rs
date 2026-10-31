@@ -420,7 +420,7 @@ fn section_end(lines: &[impl AsRef<str>], start: usize) -> usize {
 pub fn problems(vault: &Vault, page: &Page) -> Vec<String> {
     let (threads, mut out) = parse(&page.body);
     // line numbers in messages count from the top of the file
-    let offset = fs::read_to_string(&page.path)
+    let offset = crate::vault::read_text(&page.path)
         .map(|t| t.lines().count() - page.body.lines().count())
         .unwrap_or(0);
     let shift = |m: String| match m.strip_prefix("line ").and_then(|r| r.split_once(':')) {
@@ -963,7 +963,7 @@ fn resolve_phase(vault: &Vault, target: &str, words: &str) -> Res<Resolved> {
     }
     let id = page.id().unwrap_or(target).to_string();
     let file = rel(&page.path, root).to_string();
-    let text = fs::read_to_string(&page.path).map_err(|e| e.to_string())?;
+    let text = crate::vault::read_text(&page.path).map_err(|e| e.to_string())?;
     let lines: Vec<&str> = text.lines().collect();
     let items = progress(&text);
     let (k, item) = find_item(&items, words)?;
@@ -1012,7 +1012,7 @@ pub fn phase(vault: &Vault, action: &PhaseAction) -> Res<i32> {
     if page.field("type") != Some("project") {
         return Err(format!("{project} is not a project"));
     }
-    let text = fs::read_to_string(&page.path).map_err(|e| e.to_string())?;
+    let text = crate::vault::read_text(&page.path).map_err(|e| e.to_string())?;
     let items = progress(&text);
     let (_, it) = find_item(&items, &words)?;
     if it.done {
@@ -1257,7 +1257,7 @@ fn add_about(vault: &Vault, id: &str, ids: &[String]) -> Res<String> {
     if about.len() == before {
         return Ok(format!("{id} is about {} already", about.join(", ")));
     }
-    let text = fs::read_to_string(&page.path).map_err(|e| e.to_string())?;
+    let text = crate::vault::read_text(&page.path).map_err(|e| e.to_string())?;
     let line = format!("about: {}", flow_list(&about));
     let text = crate::init::edit_frontmatter(&text, |fm| {
         match fm.iter().position(|l| l.starts_with("about:")) {
@@ -1655,7 +1655,7 @@ fn one_line(words: &[String]) -> String {
 /// Rewrite the body of a review page with `edit` and write it back, keeping the
 /// frontmatter as it is.
 fn rewrite(page: &Page, edit: impl FnOnce(&mut Vec<String>) -> Res<()>) -> Res<()> {
-    let text = fs::read_to_string(&page.path).map_err(|e| e.to_string())?;
+    let text = crate::vault::read_text(&page.path).map_err(|e| e.to_string())?;
     let mut lines: Vec<String> = text.lines().map(str::to_string).collect();
     edit(&mut lines)?;
     fs::write(&page.path, lines.join("\n") + "\n").map_err(|e| e.to_string())
@@ -1790,7 +1790,7 @@ fn comment(
 
 /// Lines in the file before the page body (frontmatter).
 fn body_offset(page: &Page) -> Res<usize> {
-    let text = fs::read_to_string(&page.path).map_err(|e| e.to_string())?;
+    let text = crate::vault::read_text(&page.path).map_err(|e| e.to_string())?;
     Ok(text.lines().count() - page.body.lines().count())
 }
 
@@ -1992,7 +1992,7 @@ fn verdict(
         }
         format!("- {} {author} requested changes{said}", stamp(vault))
     };
-    let old = fs::read_to_string(&page.path).map_err(|e| e.to_string())?;
+    let old = crate::vault::read_text(&page.path).map_err(|e| e.to_string())?;
     fs::write(&page.path, with_verdict(&old, status, &line, None)?).map_err(|e| e.to_string())?;
     let mut out = format!("{id} {status} {}", shown(vault, &home, &page.path));
     // approving signs the pages the review covers that wait for a human: its target when
@@ -2018,7 +2018,7 @@ fn verdict(
 /// `review: pending` becomes `review: approved`, with who approved it, when, and in which
 /// review (none: on the page itself).
 fn sign(vault: &Vault, page: &Page, author: &str, review: Option<&str>) -> Res<()> {
-    let text = fs::read_to_string(&page.path).map_err(|e| e.to_string())?;
+    let text = crate::vault::read_text(&page.path).map_err(|e| e.to_string())?;
     let record = format!(
         "approval: {{by: {author}, on: {}{}}}",
         date_of(&vault.now()),
@@ -2143,7 +2143,7 @@ fn merge(vault: &Vault, id: &str, force: bool, author: Option<&str>) -> Res<i32>
             held.join(" and ")
         )
     };
-    let written = fs::read_to_string(&here)
+    let written = crate::vault::read_text(&here)
         .map_err(|e| e.to_string())
         .and_then(|old| with_verdict(&old, "merged", &said, Some(("merge", &tip))))
         .and_then(|new| fs::write(&here, new).map_err(|e| e.to_string()))
@@ -2376,7 +2376,7 @@ impl yajna_serve::reviews::Reviews for Served {
     fn get(&self, id: &str) -> Result<serde_json::Value, String> {
         let vault = Vault::open(self.root.clone())?;
         let (home, page) = find(&vault, id)?;
-        let text = fs::read_to_string(&page.path).map_err(|e| e.to_string())?;
+        let text = crate::vault::read_text(&page.path).map_err(|e| e.to_string())?;
         let (kind, reference) = target_of(&page);
         let base = page.field("base").unwrap_or("").to_string();
         let head = page.field("head").unwrap_or("").to_string();
@@ -2554,7 +2554,7 @@ impl yajna_serve::reviews::Reviews for Served {
         let _one = self.lock.lock().map_err(|e| Refused(e.to_string()))?;
         let vault = Vault::open(self.root.clone()).map_err(Refused)?;
         let (_, page) = find(&vault, id).map_err(Refused)?;
-        let text = fs::read_to_string(&page.path).map_err(|e| Refused(e.to_string()))?;
+        let text = crate::vault::read_text(&page.path).map_err(|e| Refused(e.to_string()))?;
         if body["version"].as_str() != Some(version(&text).as_str()) {
             return Err(Conflict(format!(
                 "{id} changed since you read it; it has been reloaded"

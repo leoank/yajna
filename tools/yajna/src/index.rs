@@ -164,7 +164,7 @@ impl Index {
             let relpath = rel(&page.path, &vault.root).to_string();
             if ptype == "log" {
                 // line numbers count from the top of the file, frontmatter included
-                let total = fs::read_to_string(&page.path)
+                let total = crate::vault::read_text(&page.path)
                     .map(|t| t.lines().count())
                     .unwrap_or(0);
                 let offset = total.saturating_sub(page.body.lines().count());

@@ -1039,7 +1039,7 @@ struct Listed {
 /// to: a page's `project` (or its own ID), or the `## PRJ-…` heading it sits under.
 fn collect(vault: &Vault, ns: &str, out: &mut Vec<Item>) -> Res<()> {
     for page in vault.pages()? {
-        let text = fs::read_to_string(&page.path).map_err(|e| e.to_string())?;
+        let text = crate::vault::read_text(&page.path).map_err(|e| e.to_string())?;
         let page_project = page
             .field("project")
             .map(|p| p.rsplit('/').next().unwrap_or(p).to_string())

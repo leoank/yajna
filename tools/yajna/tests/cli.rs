@@ -5061,6 +5061,53 @@ fn conventions_are_checked_from_a_date() {
 }
 
 #[test]
+fn crlf_pages_from_a_windows_checkout_are_read_and_written_as_lf() {
+    let lab = vault();
+    let root = lab.root.canonicalize().unwrap();
+    assert_eq!(lab.run(&["new", "project", "Toy"]).code, 0);
+    let out = lab.run(&["new", "experiment", "Q", "--project", "PRJ-0001"]);
+    let exp = lab.path(&out);
+    assert_eq!(lab.run(&["log", "a line"]).code, 0);
+    // what git's core.autocrlf checks out on Windows
+    let crlf = |p: &Path| fs::write(p, lab.read(p).replace('\n', "\r\n")).unwrap();
+    let mut pages = vec![exp.clone()];
+    for dir in ["notes/projects", "notes/log"] {
+        let mut stack = vec![root.join(dir)];
+        while let Some(d) = stack.pop() {
+            for e in fs::read_dir(&d).unwrap() {
+                let p = e.unwrap().path();
+                if p.is_dir() {
+                    stack.push(p);
+                } else if p.extension().is_some_and(|x| x == "md") {
+                    pages.push(p);
+                }
+            }
+        }
+    }
+    for p in &pages {
+        crlf(p);
+    }
+    let out = lab.run(&["validate"]);
+    assert_eq!(out.code, 0, "{}", out.stdout);
+    // a template override with CRLF still makes an LF page
+    fs::create_dir_all(root.join(".yajna/templates")).unwrap();
+    let template = fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../templates/experiment.md"),
+    )
+    .unwrap();
+    fs::write(
+        root.join(".yajna/templates/experiment.md"),
+        template.replace('\n', "\r\n"),
+    )
+    .unwrap();
+    let out = lab.run(&["new", "experiment", "Q2", "--project", "PRJ-0001"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(!lab.read(&lab.path(&out)).contains('\r'));
+    let out = lab.run(&["validate"]);
+    assert_eq!(out.code, 0, "{}", out.stdout);
+}
+
+#[test]
 fn review_rounds_and_fixes_leave_out_work_in_between() {
     let lab = vault();
     let root = lab.root.canonicalize().unwrap();

@@ -245,7 +245,26 @@ pub fn load_yaml(text: &str) -> Res<Value> {
 }
 
 /// (frontmatter mapping or None, body). Frontmatter must start on line 1.
+/// A page's text with LF line endings: one checked out on Windows (core.autocrlf) has CRLF,
+/// and is the same page. What yajna writes back is LF.
+pub fn read_text(path: impl AsRef<Path>) -> std::io::Result<String> {
+    let text = fs::read_to_string(path)?;
+    Ok(if text.contains('\r') {
+        text.replace("\r\n", "\n")
+    } else {
+        text
+    })
+}
+
 pub fn split_frontmatter(text: &str) -> (Option<Map<String, Value>>, String) {
+    // a page checked out on Windows (core.autocrlf) has CRLF line endings; it is the same page
+    let lf;
+    let text = if text.contains('\r') {
+        lf = text.replace("\r\n", "\n");
+        lf.as_str()
+    } else {
+        text
+    };
     if !text.starts_with("---\n") {
         return (None, text.to_string());
     }
@@ -482,7 +501,7 @@ impl Vault {
 
     // --- pages -----------------------------------------------------------------------
     pub fn read(&self, path: &Path) -> Res<Page> {
-        let text = fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
+        let text = read_text(path).map_err(|e| format!("{}: {e}", path.display()))?;
         let (meta, body) = split_frontmatter(&text);
         Ok(Page {
             path: path.to_path_buf(),
@@ -685,11 +704,14 @@ impl Vault {
             format!("{name}.md")
         };
         let local = self.root.join(".yajna").join("templates").join(&file);
+        // pages are written with LF wherever the template was checked out
         if local.is_file() {
-            return fs::read_to_string(&local).map_err(|e| format!("{}: {e}", local.display()));
+            return fs::read_to_string(&local)
+                .map(|t| t.replace("\r\n", "\n"))
+                .map_err(|e| format!("{}: {e}", local.display()));
         }
         match Templates::get(&file) {
-            Some(f) => Ok(String::from_utf8_lossy(&f.data).into_owned()),
+            Some(f) => Ok(String::from_utf8_lossy(&f.data).replace("\r\n", "\n")),
             None => Err(format!("no template {file}")),
         }
     }

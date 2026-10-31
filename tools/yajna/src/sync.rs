@@ -1162,7 +1162,7 @@ pub fn cmd_sync(
             .as_str()
             .ok_or("create doc: no id in the reply")?
             .to_string();
-        let text = fs::read_to_string(&page.path).map_err(|e| e.to_string())?;
+        let text = crate::vault::read_text(&page.path).map_err(|e| e.to_string())?;
         fs::write(&page.path, set_doc_id(&text, &s.mode, &id)).map_err(|e| e.to_string())?;
         println!(
             "created {} for {}",
@@ -1183,7 +1183,7 @@ pub fn cmd_sync(
         let r = rel(&page.path, &vault.root).to_string();
         if !no_comments {
             let comments = api.comments(&doc)?;
-            let text = fs::read_to_string(&page.path).map_err(|e| e.to_string())?;
+            let text = crate::vault::read_text(&page.path).map_err(|e| e.to_string())?;
             let (new_text, to_resolve, fresh) = merge_review(&text, &comments);
             for cid in &to_resolve {
                 api.post_json(
@@ -1534,7 +1534,7 @@ pub fn cmd_pull(vault: &Vault, ids: &[String]) -> Res<i32> {
             continue;
         }
         // the page around the merged body: its frontmatter and its review section, untouched
-        let text = fs::read_to_string(&page.path).map_err(|e| e.to_string())?;
+        let text = crate::vault::read_text(&page.path).map_err(|e| e.to_string())?;
         let fm = &text[..text.len() - page.body.len()];
         let review = find_section(&page.body)
             .map(|(s, e)| &page.body[s..e])

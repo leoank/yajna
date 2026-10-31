@@ -522,7 +522,7 @@ fn import_entry(
 
 /// Set frontmatter fields on a freshly created page and replace its body.
 fn rewrite(path: &Path, fields: &[(&str, &str)], body: &str) -> Res<()> {
-    let text = fs::read_to_string(path).map_err(|e| e.to_string())?;
+    let text = crate::vault::read_text(path).map_err(|e| e.to_string())?;
     let text = edit_frontmatter(&text, |lines| {
         for (k, v) in fields {
             if *k == "created" {

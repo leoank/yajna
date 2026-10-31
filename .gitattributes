@@ -1,0 +1,3 @@
+# LF everywhere, also in a Windows checkout (core.autocrlf): the templates, schemas and skill
+# are embedded in the binary and become the pages it writes
+* text=auto eol=lf

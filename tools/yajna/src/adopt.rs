@@ -75,7 +75,7 @@ pub fn cmd_adopt(vault: &Vault, file: &Path, o: &Options) -> Res<i32> {
     }
     let etype = canonical_type(o.etype);
     let ent = entity(&etype).ok_or_else(|| format!("unknown page type {etype:?}"))?;
-    let text = fs::read_to_string(&src).map_err(|e| format!("{shown_src}: {e}"))?;
+    let text = crate::vault::read_text(&src).map_err(|e| format!("{shown_src}: {e}"))?;
     let (fm, body) = split_raw(&text);
     let own = fm.map(blocks).unwrap_or_default();
     if let Some((_, b)) = own.iter().find(|(k, _)| k == "id") {
@@ -177,7 +177,7 @@ pub fn cmd_adopt(vault: &Vault, file: &Path, o: &Options) -> Res<i32> {
         None,
         doc_dir.as_deref(),
     )?;
-    let made = fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    let made = crate::vault::read_text(&path).map_err(|e| e.to_string())?;
     let mut fm_lines: Vec<String> = split_raw(&made)
         .0
         .unwrap_or_default()

@@ -430,7 +430,7 @@ pub fn migrate_ids(vault: &Vault, dry_run: bool) -> Res<i32> {
         move_id(vault, &page, old, new)?;
         // the page has moved; keep the old ID on it so old references still find it
         let moved = vault.find(new)?;
-        let text = fs::read_to_string(&moved.path).map_err(|e| e.to_string())?;
+        let text = crate::vault::read_text(&moved.path).map_err(|e| e.to_string())?;
         let text = crate::init::edit_frontmatter(&text, |lines| {
             crate::init::insert_after(lines, "id", &format!("previous_id: {old}"));
         });
