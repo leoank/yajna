@@ -11,6 +11,46 @@ itself is a separate, private repo of the `lab` shape (ADR-0018); mine is
 **User guide: <https://leoank.github.io/yajna/>** — install, quickstart, concepts, guides
 for each kind of work, and the reference.
 
+## Quickstart
+
+Install the binary. With Nix:
+
+```sh
+nix profile install github:leoank/yajna      # or: nix run github:leoank/yajna -- --version
+```
+
+On Linux or macOS without Nix, take the archive for your machine from the
+[latest release](https://github.com/leoank/yajna/releases/latest)
+(`x86_64-unknown-linux-musl`, `aarch64-unknown-linux-musl`, `aarch64-apple-darwin`,
+`x86_64-apple-darwin`):
+
+```sh
+tag=v0.19.0 target=aarch64-apple-darwin
+curl -LO https://github.com/leoank/yajna/releases/download/$tag/yajna-$tag-$target.tar.gz
+tar xzf yajna-$tag-$target.tar.gz && install yajna ~/.local/bin/
+```
+
+On Windows (x86-64 or ARM64), in PowerShell, with [Git for Windows](https://git-scm.com/download/win)
+installed:
+
+```powershell
+$tag = "v0.19.0"; $target = "x86_64-pc-windows-msvc"   # or aarch64-pc-windows-msvc
+Invoke-WebRequest "https://github.com/leoank/yajna/releases/download/$tag/yajna-$tag-$target.zip" -OutFile yajna.zip
+Expand-Archive yajna.zip -DestinationPath "$env:LOCALAPPDATA\yajna"   # then add that folder to PATH
+```
+
+Checksums and the other ways to install are in the guide's
+[Install](https://leoank.github.io/yajna/install.html) page. Then start a notebook:
+
+```sh
+yajna init lab mylab && cd mylab && git init
+yajna new project "Vesicle imaging"                         # PRJ-0001
+yajna new experiment "Does fixation change counts?" --project PRJ-0001
+yajna log "Set up the notebook."
+yajna validate                                              # schemas, IDs, links, citations
+yajna serve --open                                          # browse it
+```
+
 ## Layout
 
 | Path | What |
@@ -60,7 +100,7 @@ Get the binary from this flake: `packages.yajna` (and `packages.yajna-nvim` for 
 plugin) as an input of a lab repo's flake or of a machine config, or
 `nix run github:leoank/yajna -- validate`. Machines without Nix take a binary from the
 GitHub releases (`x86_64-linux` musl, `aarch64-linux`, `aarch64-darwin`,
-`x86_64-darwin`). `docs/conventions.md` is the cheat sheet for writing an entry.
+`x86_64-darwin`, `x86_64-windows`, `aarch64-windows`). `docs/conventions.md` is the cheat sheet for writing an entry.
 
 For Claude Code this repo is a plugin marketplace:
 

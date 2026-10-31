@@ -43,7 +43,7 @@ notebook gives everyone the same version. Update it with `nix flake update yajna
 ## Without Nix
 
 Every [release](https://github.com/leoank/yajna/releases/latest) carries binaries for Linux
-(static, x86-64 and ARM64), macOS (Apple silicon and Intel) and Windows (x86-64), each with a SHA-256
+(static, x86-64 and ARM64), macOS (Apple silicon and Intel) and Windows (x86-64 and ARM64), each with a SHA-256
 checksum in `yajna-<tag>-<target>.sha256`. Download the archive for your machine, check
 it, unpack it and put `yajna` on your `PATH`:
 
@@ -54,9 +54,10 @@ it, unpack it and put `yajna` on your `PATH`:
 | macOS, Apple silicon | `yajna-<tag>-aarch64-apple-darwin.tar.gz` |
 | macOS, Intel | `yajna-<tag>-x86_64-apple-darwin.tar.gz` |
 | Windows, x86-64 | `yajna-<tag>-x86_64-pc-windows-msvc.zip` |
+| Windows, ARM64 | `yajna-<tag>-aarch64-pc-windows-msvc.zip` |
 
 ```sh
-tag=v0.2.0
+tag=v0.19.0
 target=aarch64-apple-darwin
 base=https://github.com/leoank/yajna/releases/download/$tag
 curl -LO $base/yajna-$tag-$target.tar.gz
@@ -70,9 +71,10 @@ yajna --version
 On Windows, in PowerShell:
 
 ```powershell
-$tag = "v0.18.1"
+$tag = "v0.19.0"
+$target = "x86_64-pc-windows-msvc"   # aarch64-pc-windows-msvc on ARM
 $base = "https://github.com/leoank/yajna/releases/download/$tag"
-Invoke-WebRequest "$base/yajna-$tag-x86_64-pc-windows-msvc.zip" -OutFile yajna.zip
+Invoke-WebRequest "$base/yajna-$tag-$target.zip" -OutFile yajna.zip
 (Get-FileHash yajna.zip -Algorithm SHA256).Hash   # compare with the .sha256 file
 Expand-Archive yajna.zip -DestinationPath "$env:LOCALAPPDATA\yajna"
 & "$env:LOCALAPPDATA\yajna\yajna.exe" --version
