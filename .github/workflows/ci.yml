@@ -32,10 +32,17 @@ jobs:
         shell: bash
         run: |
           y=$PWD/tools/target/release/yajna.exe
+          export XDG_STATE_HOME="$RUNNER_TEMP/state"
+          # init registers the notebook before it is in git; later commands find it through
+          # git, which prints C:/… where the root is C:\…: the same notebook, no note
           $y init lab "$RUNNER_TEMP/lab" --author ci
           cd "$RUNNER_TEMP/lab"
-          $y new project "Toy" --author ci
-          $y new experiment "Q" --project PRJ-0001 --author ci
-          $y log "a line" --author ci
-          $y validate
+          git init -q
+          {
+            $y new project "Toy" --author ci
+            $y new experiment "Q" --project PRJ-0001 --author ci
+            $y log "a line" --author ci
+            $y validate
+          } 2>&1 | tee out.txt
+          if grep "is also at" out.txt; then echo "registered twice"; exit 1; fi
           if grep -rl $'\r' notes; then echo "pages written with CRLF"; exit 1; fi

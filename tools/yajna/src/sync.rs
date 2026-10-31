@@ -416,9 +416,7 @@ fn credentials_path() -> PathBuf {
     }
     let base = std::env::var("XDG_CONFIG_HOME")
         .map(PathBuf::from)
-        .unwrap_or_else(|_| {
-            PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".config")
-        });
+        .unwrap_or_else(|_| crate::anywhere::home().join(".config"));
     base.join("yajna").join("gdoc.json")
 }
 

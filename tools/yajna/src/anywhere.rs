@@ -134,12 +134,28 @@ struct Seen {
     others: Vec<String>,
 }
 
+/// `$HOME`, else the platform's home (Windows sets `USERPROFILE`, not `HOME`), so the state
+/// and config never land in whatever directory yajna was run from.
+pub fn home() -> PathBuf {
+    std::env::var_os("HOME")
+        .filter(|h| !h.is_empty())
+        .map(PathBuf::from)
+        .or_else(std::env::home_dir)
+        .unwrap_or_default()
+}
+
 fn xdg(var: &str, fallback: &str) -> PathBuf {
     std::env::var(var)
         .ok()
         .filter(|s| !s.is_empty())
         .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(fallback))
+        .unwrap_or_else(|| home().join(fallback))
+}
+
+/// A path with the platform's separators: git prints `C:/Users/…` on Windows where the
+/// notebook's root is `C:\Users\…`, and the two must compare equal.
+fn native(p: &Path) -> PathBuf {
+    p.components().collect()
 }
 
 pub fn config_path() -> PathBuf {
@@ -189,29 +205,33 @@ pub fn remember(vault: &Vault) {
         return;
     };
     let mut state = load_state();
-    let here = vault.root.to_string_lossy().to_string();
+    let known = |s: &Seen, p: &Path| {
+        std::iter::once(&s.path)
+            .chain(&s.others)
+            .any(|q| native(Path::new(q)) == native(p))
+    };
     if let Some(s) = state.repos.get(&ns) {
-        if s.path == here || s.others.contains(&here) {
+        if known(s, &vault.root) {
             return;
         }
     }
     let main = main_checkout(&vault.root).unwrap_or_else(|_| vault.root.clone());
-    let main = main.to_string_lossy().to_string();
     match state.repos.get_mut(&ns) {
-        Some(s) if s.path == main || s.others.contains(&main) => return,
+        Some(s) if known(s, &main) => return,
         Some(s) if is_notebook(Path::new(&s.path)) => {
             eprintln!(
-                "note: {ns} is also at {main}; yajna uses {} (pin one under [repos] in {})",
+                "note: {ns} is also at {}; yajna uses {} (pin one under [repos] in {})",
+                main.display(),
                 s.path,
                 config_path().display()
             );
-            s.others.push(main);
+            s.others.push(main.to_string_lossy().into_owned());
         }
         _ => {
             state.repos.insert(
                 ns,
                 Seen {
-                    path: main,
+                    path: main.to_string_lossy().into_owned(),
                     shape: vault.shape().to_string(),
                     seen: jiff::Timestamp::now().to_string(),
                     others: Vec::new(),
@@ -238,12 +258,12 @@ pub fn main_checkout(root: &Path) -> Res<PathBuf> {
             .then(|| block.lines().find_map(|l| l.strip_prefix("worktree ")))
             .flatten()
     });
-    let checkout = PathBuf::from(checkout.ok_or_else(|| {
+    let checkout = native(Path::new(checkout.ok_or_else(|| {
         format!(
             "{}: no checkout of {branch} on disk; add one with git worktree add",
             root.display()
         )
-    })?);
+    })?));
     let prefix = prefix.trim_end_matches('/');
     Ok(if prefix.is_empty() {
         checkout
