@@ -14,14 +14,28 @@ jobs:
       - uses: DeterminateSystems/magic-nix-cache-action@v9
       - run: nix flake check -L
       - run: nix build -L .#yajna
-  # the release's Windows binary: the tests are Unix-only (symlinks, permissions), so it is
-  # built, and run once, here before a tag needs it
+  # the release's Windows binaries: the tests are Unix-only (symlinks, permissions), so each
+  # is built here and makes a notebook that it must validate, before a tag needs it
   windows:
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, windows-11-arm]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo build --locked --manifest-path tools/Cargo.toml -p yajna
       - run: tools/target/debug/yajna.exe --version
       - run: cargo build --locked --release --manifest-path tools/Cargo.toml -p yajna
-      - run: tools/target/release/yajna.exe --version
+      - name: a notebook made and validated by the release binary
+        shell: bash
+        run: |
+          y=$PWD/tools/target/release/yajna.exe
+          $y init lab "$RUNNER_TEMP/lab" --author ci
+          cd "$RUNNER_TEMP/lab"
+          $y new project "Toy" --author ci
+          $y new experiment "Q" --project PRJ-0001 --author ci
+          $y log "a line" --author ci
+          $y validate
+          if grep -rl $'\r' notes; then echo "pages written with CRLF"; exit 1; fi

@@ -1,5 +1,5 @@
 # Release binaries for machines without Nix (ADR-0017). Tag `vX.Y.Z` (matching
-# tools/yajna/Cargo.toml) and the five binaries land on the GitHub release.
+# tools/yajna/Cargo.toml) and the six binaries land on the GitHub release.
 name: release
 on:
   push:
@@ -28,6 +28,7 @@ jobs:
           - { target: aarch64-apple-darwin, os: macos-latest }
           - { target: x86_64-apple-darwin, os: macos-latest }
           - { target: x86_64-pc-windows-msvc, os: windows-latest }
+          - { target: aarch64-pc-windows-msvc, os: windows-11-arm }
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
