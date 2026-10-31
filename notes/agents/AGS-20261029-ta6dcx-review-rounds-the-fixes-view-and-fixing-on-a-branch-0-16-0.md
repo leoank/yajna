@@ -6,7 +6,7 @@ title: Review rounds, the fixes view and fixing on a branch (0.16.0)
 model: "claude-opus-5-5"
 harness: "claude-code"
 started: 2026-10-29T23:57+00:00
-finished: 2026-10-31T15:13+00:00
+finished: 2026-10-31T15:24+00:00
 created_entities: []
 edited_entities: []
 outcome: done             # done | failed | aborted | pending
@@ -54,3 +54,8 @@ branch from its head (yajna 0.16.0, plugin 0.15.0).
   compare normalised. Also: the registry and config fell back to `$HOME`, which Windows does
   not set, so they would land in the current directory; they now use the platform's home.
   CI reproduces the init-then-git sequence on both Windows runners.
+- Bug report from ank (Windows): `yajna serve --open --review` panicked opening
+  `/dev/urandom` for the review token. The token now comes from `getrandom` (the OS's secure
+  source everywhere), failing with an error rather than a panic. `--open` and sync's sign-in
+  ran `xdg-open` on Windows; one `open_url` uses rundll32 there. CI starts
+  `serve --review` on both Windows runners.
