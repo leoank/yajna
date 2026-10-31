@@ -6,7 +6,7 @@ title: Review rounds, the fixes view and fixing on a branch (0.16.0)
 model: "claude-opus-5-5"
 harness: "claude-code"
 started: 2026-10-29T23:57+00:00
-finished: 2026-10-30T17:19+00:00
+finished: 2026-10-31T15:00+00:00
 created_entities: []
 edited_entities: []
 outcome: done             # done | failed | aborted | pending
@@ -42,3 +42,9 @@ branch from its head (yajna 0.16.0, plugin 0.15.0).
 - Then: a Windows binary in the release (x86_64-pc-windows-msvc, zipped), a Windows build
   job in CI, the files server's symlink-loop check made portable (device and inode on
   Unix, the canonical path on Windows), install docs; yajna 0.18.0 tagged and released.
+- 2026-10-31, from ank's report: the Windows binary wrote CRLF pages its validator rejected.
+  Git for Windows checks out with CRLF, so the embedded templates had it. `.gitattributes`
+  keeps the checkout LF, templates and the skill are normalised when read, and pages are
+  read with `read_text` so a CRLF checkout of a notebook validates and edits. CI now builds
+  a notebook with each Windows binary and validates it. Added the Windows ARM64 build and a
+  README Quickstart; yajna 0.19.0 released.
