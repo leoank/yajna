@@ -6,7 +6,7 @@ title: Review rounds, the fixes view and fixing on a branch (0.16.0)
 model: "claude-opus-5-5"
 harness: "claude-code"
 started: 2026-10-29T23:57+00:00
-finished: 2026-10-31T15:24+00:00
+finished: 2026-11-02T13:41+00:00
 created_entities: []
 edited_entities: []
 outcome: done             # done | failed | aborted | pending
@@ -59,3 +59,31 @@ branch from its head (yajna 0.16.0, plugin 0.15.0).
   source everywhere), failing with an error rather than a panic. `--open` and sync's sign-in
   ran `xdg-open` on Windows; one `open_url` uses rundll32 there. CI starts
   `serve --review` on both Windows runners.
+- 2026-11-02, from ank's tasks (0.20.0): the files viewer wrote as the checkout's author, so
+  a `serve --review` started in an agent's worktree or shell signed ank's comments as the
+  agent and refused an approval. It now writes as the checkout's author unless that is an
+  agent's, then as `yajna.toml`'s. `serve --review --open` opens the writable URL with its
+  token rather than the read-only root.
+- 2026-11-02, review viewer (0.20.0): picking lines took the line below once a thread sat
+  above it. The thread boxes had vertical margins, which CodeMirror leaves out when it
+  measures a block widget, so every box shifted the text 12px below where the editor
+  placed its lines; the spacing is now padding on a wrapper. Reproduced and checked in a
+  headless browser against a scratch notebook. New: a bar between the two sides resizes
+  them, and *Unified* shows one pane with `unifiedMergeView`. The Focus blur did not
+  reproduce in Brave, headless or windowed.
+- 2026-11-02, the Focus "blur" (from ank's screen recording): the review flickered between
+  two layouts every frame. At a browser zoom other than 100% dockview rounds its width up
+  past the window's by a fraction of a pixel; the page then took a scrollbar, narrowed,
+  dockview shrank to fit, the scrollbar went and the page widened again. Reproduced in a
+  windowed Brave at 110% zoom with classic scrollbars (html alternating 1363.6 and 1350px
+  wide); the page no longer scrolls (`overflow: hidden` on html and body), and all four
+  combinations of Focus and Unified then hold one layout. A first guess (dockview's views
+  not scrolling, a stable scrollbar gutter on the diff) did not fix it and was taken out.
+- 2026-11-02, issue #1 (sync drops figures and flattens fenced blocks): Drive's HTML import
+  cannot reach a local file, so a picture of the repo now travels inside the upload as a
+  `data:` URI, and one on its own line becomes a centred figure with its alt text as the
+  caption, in both the pulldown-cmark and the pandoc renderings. An SVG or a path outside
+  the repo stops that page with the reason; a doc over Drive's 5 MB multipart limit says
+  so. A fenced block becomes a monospaced paragraph with its lines and spaces. Mermaid is
+  left as source (rendering it needs a headless browser). Tested against the fake Drive
+  only: whether Docs keeps `data:` images on import is not yet checked against Google.
