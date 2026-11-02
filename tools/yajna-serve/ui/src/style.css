@@ -26,7 +26,10 @@
   }
 }
 * { box-sizing: border-box; }
-html, body { height: 100%; margin: 0; }
+/* the page never scrolls, its panes do: at a browser zoom other than 100% dockview rounds
+   its width up past the window's by a fraction of a pixel, and a page scrollbar that came
+   for it narrowed the page, went, and came again every frame (a flicker) */
+html, body { height: 100%; margin: 0; overflow: hidden; }
 body {
   display: grid;
   grid-template-rows: 30px 1fr 22px;
@@ -155,7 +158,9 @@ kbd { border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; font: 1
 .yr-muted { color: var(--muted); }
 .yr-problem { color: #cf222e; padding: 2px 16px; }
 .yr-thread { border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 4px; margin: 8px 0; padding: 6px 10px; background: var(--bg); font: 13px/1.4 system-ui, sans-serif; white-space: normal; }
-.cm-editor .yr-thread { margin: 6px 10px; }
+/* a thread in a diff: the wrapper's padding spaces it, as the editor does not count margins */
+.cm-editor .yr-box { padding: 6px 10px; }
+.cm-editor .yr-thread { margin: 0; }
 .yr-thread.yr-resolved { border-left-color: #2ea043; opacity: 0.8; }
 .yr-thread.yr-addressed { border-left-color: #bf8700; }
 .yr-thread.yr-outdated { border-left-color: var(--muted); }
@@ -182,6 +187,8 @@ kbd { border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; font: 1
 }
 .yr-buttons button:hover { background: var(--hover); }
 .yr-diff .cm-mergeView { font-size: 12.5px; }
+.yr-sash { flex: none; width: 5px; cursor: col-resize; border-left: 1px solid var(--line); touch-action: none; }
+.yr-sash:hover { background: var(--select); }
 body.yr-focus { grid-template-rows: 1fr; }
 body.yr-focus #top, body.yr-focus #status, body.yr-focus #sidebar, body.yr-focus #sash { display: none; }
 .yr-row { display: flex; gap: 12px; align-items: center; }

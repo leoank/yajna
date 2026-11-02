@@ -4,9 +4,9 @@
 // to the page as the CLI does. The page is read again every two seconds, so an agent's
 // reply shows up while it is read; what is being typed survives that.
 
-import { Compartment, EditorSelection, EditorState, StateEffect, StateField, type Range } from '@codemirror/state';
+import { Compartment, EditorSelection, EditorState, StateEffect, StateField, type Extension, type Range } from '@codemirror/state';
 import { EditorView, Decoration, WidgetType, drawSelection, lineNumbers, showTooltip, type DecorationSet, type Tooltip } from '@codemirror/view';
-import { MergeView } from '@codemirror/merge';
+import { MergeView, unifiedMergeView } from '@codemirror/merge';
 import { reviews, canWrite, ApiError, type Review, type Thread, type ChangedFile, type Write, type Sides } from '../api';
 import { register, type Context, type Viewer } from './registry';
 import { language, theme } from './text';
@@ -20,10 +20,14 @@ interface Prefs {
   wrap: boolean;
   composer: boolean;
   focus: boolean;
+  /** one pane, the deleted lines above the added ones, instead of two side by side */
+  unified: boolean;
+  /** the left side's share of the width, side by side */
+  split: number;
 }
 
 function loadPrefs(): Prefs {
-  const fallback = { files: true, wrap: false, composer: true, focus: false };
+  const fallback = { files: true, wrap: false, composer: true, focus: false, unified: false, split: 0.5 };
   try {
     return { ...fallback, ...JSON.parse(localStorage.getItem(PREFS_KEY) ?? '{}') };
   } catch {
@@ -182,7 +186,10 @@ class BoxWidget extends WidgetType {
     return other.sig === this.sig;
   }
   toDOM() {
-    return this.build();
+    // the spacing is padding on a wrapper: the editor measures a block widget without its margins
+    const box = el('div', 'yr-box');
+    box.append(this.build());
+    return box;
   }
   ignoreEvent() {
     return true;
@@ -262,6 +269,68 @@ const diffLook = EditorView.theme({
   '&.cm-merge-b .cm-changedText': { background: 'rgba(34, 187, 34, 0.3)' },
 });
 
+/** A file's diff: the head's editor, where threads are drawn, and every editor shown. */
+interface Diff {
+  b: EditorView;
+  editors: EditorView[];
+  destroy(): void;
+}
+
+const collapse = { margin: 4, minSize: 8 };
+
+/** Base and head side by side, with a bar between them that sets their widths (double-click: half each). */
+function sideBySide(parent: HTMLElement, sides: Sides, ext: Extension[], right: Extension[], prefs: Prefs): Diff {
+  const view = new MergeView({
+    a: { doc: sides.base ?? '', extensions: [...ext, lineNumbers()] },
+    b: { doc: sides.head ?? '', extensions: [...ext, ...right] },
+    parent,
+    collapseUnchanged: collapse,
+    gutter: true,
+  });
+  const left = view.a.dom.parentElement!;
+  const bar = el('div', 'yr-sash');
+  bar.title = 'Drag to resize the sides; double-click for half each';
+  left.after(bar);
+  const set = (share: number) => {
+    left.style.flex = `0 0 ${(share * 100).toFixed(2)}%`;
+  };
+  set(prefs.split);
+  bar.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    bar.setPointerCapture(e.pointerId);
+    const box = left.parentElement!.getBoundingClientRect();
+    const move = (m: PointerEvent) => {
+      prefs.split = Math.min(0.85, Math.max(0.15, (m.clientX - box.left) / box.width));
+      set(prefs.split);
+    };
+    const up = () => {
+      bar.removeEventListener('pointermove', move);
+      savePrefs(prefs);
+    };
+    bar.addEventListener('pointermove', move);
+    bar.addEventListener('pointerup', up, { once: true });
+  });
+  bar.addEventListener('dblclick', () => {
+    prefs.split = 0.5;
+    set(prefs.split);
+    savePrefs(prefs);
+  });
+  return { b: view.b, editors: [view.a, view.b], destroy: () => view.destroy() };
+}
+
+/** One pane: the head, with the base's removed lines shown above the lines that replaced them. */
+function unified(parent: HTMLElement, sides: Sides, extensions: Extension[]): Diff {
+  const view = new EditorView({
+    doc: sides.head ?? '',
+    extensions: [
+      ...extensions,
+      unifiedMergeView({ original: sides.base ?? '', mergeControls: false, gutter: true, collapseUnchanged: collapse }),
+    ],
+    parent,
+  });
+  return { b: view, editors: [view], destroy: () => view.destroy() };
+}
+
 // --- the viewer ---
 
 /** The file shown: a changed file of the review, one not in it yet (work), or one of the
@@ -300,7 +369,7 @@ export const reviewKind = {
     setFocus(prefs.focus);
     /** the file shown, or null for the overview */
     let selected: Shown | null = null;
-    let diff: { shown: Shown; head: string; sides: Sides; view: MergeView; wrap: Compartment } | undefined;
+    let diff: { shown: Shown; head: string; sides: Sides; view: Diff; wrap: Compartment } | undefined;
     /** a new thread being written inside the diff, on these lines */
     let draft: { key: string; a: number; b: number } | null = null;
     /** the lines picked in the right side, for the comment box */
@@ -363,7 +432,7 @@ export const reviewKind = {
       },
     };
 
-    function toggle(label: string, key: keyof Prefs, hint: string) {
+    function toggle(label: string, key: 'files' | 'wrap' | 'composer' | 'focus' | 'unified', hint: string) {
       const b = el('button', 'yr-toggle', label);
       b.title = hint;
       b.setAttribute('aria-pressed', String(prefs[key]));
@@ -373,11 +442,11 @@ export const reviewKind = {
         if (key === 'focus') setFocus(prefs.focus);
         if (key === 'wrap' && diff) {
           const ext = prefs.wrap ? EditorView.lineWrapping : [];
-          for (const v of [diff.view.a, diff.view.b]) v.dispatch({ effects: diff.wrap.reconfigure(ext) });
+          for (const v of diff.view.editors) v.dispatch({ effects: diff.wrap.reconfigure(ext) });
         }
         layout();
         header();
-        if (key === 'composer' && selected) void file(true);
+        if ((key === 'composer' || key === 'unified') && selected) void file(true);
       });
       return b;
     }
@@ -391,6 +460,7 @@ export const reviewKind = {
       const tools = el('div', 'yr-tools');
       tools.append(
         toggle('Files', 'files', 'Show the list of files'),
+        toggle('Unified', 'unified', 'One pane with the removed lines above the added ones, instead of two side by side'),
         toggle('Wrap', 'wrap', 'Wrap long lines in the diffs'),
         toggle('Comment box', 'composer', 'Keep a comment box for the selected lines above the diff'),
         toggle('Focus', 'focus', 'Hide the top bar, the sidebar and the status line (Esc leaves)'),
@@ -660,13 +730,7 @@ export const reviewKind = {
             }),
           ]
         : [lineNumbers(), threadField];
-      const view = new MergeView({
-        a: { doc: sides.base ?? '', extensions: [...ext, lineNumbers()] },
-        b: { doc: sides.head ?? '', extensions: [...ext, ...right] },
-        parent: box,
-        collapseUnchanged: { margin: 4, minSize: 8 },
-        gutter: true,
-      });
+      const view = prefs.unified ? unified(box, sides, [...ext, ...right]) : sideBySide(box, sides, ext, right, prefs);
       diff = { shown, head: r.head, sides, view, wrap };
       // threads anchor to the head; the working tree's lines are not theirs
       if (!shown.work) view.b.dispatch({ effects: setThreads.of(decorations(view.b, f.path, sha, key)) });

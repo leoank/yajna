@@ -278,7 +278,9 @@ yajna phase start PRJ-… "<item>"
   under those lines; or type in the comment box that stays at the top of the diff while it
   scrolls and applies to the lines picked. Toggles in the review's header hide the file
   list, the comment box and (Focus, Esc leaves) the viewer's top bar, sidebar and status
-  line, and wrap long lines; they are remembered per browser.
+  line, wrap long lines, and show the diff as one pane (*Unified*: the removed lines
+  above the lines that replaced them, threads under the head's lines); a bar between the
+  two sides sets their widths. All are remembered per browser.
 - *Since round N* and one *Fix <sha>* group per addressing commit list, under the files,
   what the last update brought in and what each fix changed on its own (section 5.1).
   A fix's diff takes comments, anchored at that commit.

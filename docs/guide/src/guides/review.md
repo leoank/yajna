@@ -116,8 +116,10 @@ side-by-side diff with its threads under their lines. To comment, select lines o
 right (or click a line number, shift-click for a range) and press *Comment on lines…*
 over them, or type in the comment box at the top of the diff, which stays while you
 scroll. Reply, address, resolve and reopen from the thread; Ctrl-Enter sends. The header's
-toggles hide the file list or the comment box, wrap long lines, and *Focus* hides the rest
-of the viewer (Esc brings it back). The tab reads the review again every two seconds, so
+toggles hide the file list or the comment box, wrap long lines, show the diff in one pane
+(*Unified*, the removed lines above the added ones), and *Focus* hides the rest of the
+viewer (Esc brings it back). Drag the bar between the two sides to resize them;
+double-click it for half each. The tab reads the review again every two seconds, so
 an agent's reply appears while you read.
 
 *Not in the review yet*, under the files, shows what has changed since the review's head:
