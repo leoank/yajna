@@ -2519,6 +2519,70 @@ fn mirror_pages_pull_doc_edits_as_a_merge_and_publish_only_when_committed() {
 }
 
 #[test]
+fn sync_carries_figures_and_fenced_blocks_into_the_doc() {
+    let v = vault();
+    v.run(&["new", "project", "Archaea"]);
+    let prj = v.root.join("notes/projects/PRJ-0001-archaea/README.md");
+    let figures = v.root.join("notes/projects/PRJ-0001-archaea/figures");
+    fs::create_dir_all(&figures).unwrap();
+    fs::write(figures.join("e0 bench.png"), b"\x89PNG fake").unwrap();
+    fs::write(figures.join("e1.png"), b"PNG2").unwrap();
+    let body = "\n![Figure 1. The benchmark.](figures/e0%20bench.png)\n\n![Figure 2. The splits.](figures/e1.png)\n\n```mermaid\nflowchart LR\n  A[x] --> B\n```\n";
+    fs::write(
+        &prj,
+        v.read(&prj).replace(
+            "\ntags: []\n",
+            "\ntags: []\nsync: {provider: gdoc, mode: publish}\n",
+        ) + body,
+    )
+    .unwrap();
+    let (base, drive) = fake_drive();
+    let env = [("YAJNA_GDOC_API", base.as_str()), ("YAJNA_GDOC_TOKEN", "t")];
+    let out = v.run_with(&["sync"], None, &env);
+    assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
+    let doc = v
+        .read(&prj)
+        .split("doc_id: ")
+        .nth(1)
+        .unwrap()
+        .split('}')
+        .next()
+        .unwrap()
+        .to_string();
+    let html = drive.lock().unwrap().docs[&doc].0.clone();
+    // each figure its own paragraph, the file inline, the alt text as its caption under it
+    assert!(
+        html.contains("<p style=\"text-align:center\"><img src=\"data:image/png;base64,iVBORyBmYWtl\" alt=\"Figure 1. The benchmark.\" /></p>\n<p style=\"text-align:center\"><i>Figure 1. The benchmark.</i></p>")
+            && html.contains("src=\"data:image/png;base64,UE5HMg==\"")
+            && html.contains("<i>Figure 2. The splits.</i>"),
+        "{html}"
+    );
+    // a fenced block keeps its lines and indentation in a monospaced paragraph
+    assert!(
+        html.contains("monospace")
+            && html.contains("flowchart&nbsp;LR<br>&nbsp;&nbsp;A[x]&nbsp;--&gt;&nbsp;B</p>"),
+        "{html}"
+    );
+    assert!(!html.contains("<pre"), "{html}");
+    // an image outside the repo, or one Docs cannot show, is an error rather than nothing
+    for (src, why) in [
+        ("../../../../x.png", "no such file in the repo"),
+        ("figures/e1.svg", "PNG, JPEG or GIF"),
+    ] {
+        fs::write(figures.join("e1.svg"), "<svg/>").unwrap();
+        fs::write(&prj, v.read(&prj) + &format!("\n![a]({src})\n")).unwrap();
+        let out = v.run_with(&["sync"], None, &env);
+        assert!(
+            out.stderr.contains(why) || out.stdout.contains(why),
+            "{src}: {}{}",
+            out.stdout,
+            out.stderr
+        );
+        fs::write(&prj, v.read(&prj).replace(&format!("\n![a]({src})\n"), "")).unwrap();
+    }
+}
+
+#[test]
 fn sync_publishes_and_pulls_comments_back() {
     let v = vault();
     v.run(&["new", "project", "Archaea"]);

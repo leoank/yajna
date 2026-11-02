@@ -453,7 +453,14 @@ fn refresh(agent: &ureq::Agent) -> Res<String> {
 }
 
 fn b64url(bytes: &[u8]) -> String {
-    const A: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    base64(
+        bytes,
+        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_",
+        false,
+    )
+}
+
+fn base64(bytes: &[u8], alphabet: &[u8], pad: bool) -> String {
     let mut out = String::new();
     for chunk in bytes.chunks(3) {
         let n = chunk
@@ -461,7 +468,10 @@ fn b64url(bytes: &[u8]) -> String {
             .enumerate()
             .fold(0u32, |n, (i, b)| n | (*b as u32) << (16 - 8 * i));
         for i in 0..=chunk.len() {
-            out.push(A[(n >> (18 - 6 * i) & 63) as usize] as char);
+            out.push(alphabet[(n >> (18 - 6 * i) & 63) as usize] as char);
+        }
+        if pad {
+            out.push_str(&"=".repeat(3 - chunk.len()));
         }
     }
     out
@@ -833,6 +843,15 @@ fn render(vault: &Vault, page: &Page, docs: &BTreeMap<String, String>) -> Res<St
             )
             .replace("<input disabled=\"\" type=\"checkbox\"/>\n", "☐ ")
     };
+    let dir = page.path.parent().unwrap_or(&vault.root);
+    let html_body = for_docs(&html_body, dir, &vault.root)?;
+    // the upload is one multipart request, which Drive takes up to 5 MB
+    if html_body.len() > 5 << 20 {
+        return Err(format!(
+            "{:.1} MB with its images inline, and Drive takes 5 MB in one upload; make the figures smaller",
+            html_body.len() as f64 / (1 << 20) as f64
+        ));
+    }
     let id = page.id().unwrap_or("");
     let status = page.field("status").unwrap_or("");
     Ok(format!(
@@ -846,6 +865,148 @@ fn render(vault: &Vault, page: &Page, docs: &BTreeMap<String, String>) -> Res<St
         },
         esc(page.field("title").unwrap_or(id))
     ))
+}
+
+static FIGURE_RE: LazyLock<Regex> = LazyLock::new(|| {
+    // an image alone in its paragraph (pulldown-cmark), or pandoc's figure around one
+    Regex::new(r#"(?s)<p>(?P<a><img [^>]*>)</p>|<figure>\s*(?P<b><img [^>]*>)\s*(?:<figcaption[^>]*>.*?</figcaption>\s*)?</figure>"#).unwrap()
+});
+static IMG_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"<img [^>]*>"#).unwrap());
+static ATTR_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"(?P<k>[a-z]+)="(?P<v>[^"]*)""#).unwrap());
+static PRE_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"(?s)<pre[^>]*><code[^>]*>(?P<code>.*?)</code></pre>"#).unwrap());
+
+const CODE_STYLE: &str = "font-family:'Roboto Mono',monospace;font-size:9pt;line-height:1.2;background-color:#f3f3f3;margin-top:0;margin-bottom:8pt";
+
+/// What Docs cannot take from the HTML as it is (issue #1). Its import cannot reach a local
+/// file, so an image of the repo goes inline as a `data:` URI, and an image on its own
+/// becomes a centred figure with its alt text as the caption under it. It drops `<pre>`,
+/// so a fenced block becomes a paragraph set in a monospaced font, its lines and spaces kept.
+fn for_docs(html: &str, dir: &Path, root: &Path) -> Res<String> {
+    let mut failed = None;
+    let mut inline = |img: &str| -> String {
+        match embed(img, dir, root) {
+            Ok(i) => i,
+            Err(e) => {
+                failed.get_or_insert(e);
+                String::new()
+            }
+        }
+    };
+    let html = FIGURE_RE.replace_all(html, |c: &regex::Captures| {
+        let img = c
+            .name("a")
+            .or(c.name("b"))
+            .map(|m| m.as_str())
+            .unwrap_or("");
+        let alt = attr(img, "alt").unwrap_or_default();
+        let mut out = format!("<p style=\"text-align:center\">{}</p>\n", inline(img));
+        if !alt.is_empty() {
+            out.push_str(&format!(
+                "<p style=\"text-align:center\"><i>{alt}</i></p>\n"
+            ));
+        }
+        out
+    });
+    let html = IMG_RE.replace_all(&html, |c: &regex::Captures| {
+        if c[0].contains("src=\"data:") {
+            c[0].to_string()
+        } else {
+            inline(&c[0])
+        }
+    });
+    if let Some(e) = failed {
+        return Err(e);
+    }
+    let html = PRE_RE.replace_all(&html, |c: &regex::Captures| {
+        let lines: Vec<String> = c["code"]
+            .trim_end_matches('\n')
+            .split('\n')
+            .map(|l| l.replace(' ', "&nbsp;"))
+            .collect();
+        format!("<p style=\"{CODE_STYLE}\">{}</p>", lines.join("<br>"))
+    });
+    Ok(html.into_owned())
+}
+
+fn attr(tag: &str, key: &str) -> Option<String> {
+    ATTR_RE
+        .captures_iter(tag)
+        .find(|c| &c["k"] == key)
+        .map(|c| c["v"].to_string())
+}
+
+/// An `<img>` whose `src` is a file of the repo, with that file inline; one on the web is
+/// left for Docs to fetch.
+fn embed(img: &str, dir: &Path, root: &Path) -> Res<String> {
+    let src = attr(img, "src").unwrap_or_default();
+    if src.is_empty() || src.contains("://") || src.starts_with("data:") {
+        return Ok(img.to_string());
+    }
+    let rel = percent_decode(&src.replace("&amp;", "&"));
+    let path = if let Some(r) = rel.strip_prefix('/') {
+        root.join(r)
+    } else {
+        dir.join(&rel)
+    };
+    let inside = path
+        .canonicalize()
+        .ok()
+        .filter(|p| root.canonicalize().is_ok_and(|r| p.starts_with(r)));
+    let Some(path) = inside.filter(|p| p.is_file()) else {
+        return Err(format!("image {rel}: no such file in the repo"));
+    };
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+    let mime = match ext.as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        _ => {
+            return Err(format!(
+                "image {rel}: Google Docs takes PNG, JPEG or GIF images"
+            ))
+        }
+    };
+    let bytes = fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let data = base64(
+        &bytes,
+        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/",
+        true,
+    );
+    Ok(img.replacen(
+        &format!("src=\"{src}\""),
+        &format!("src=\"data:{mime};base64,{data}\""),
+        1,
+    ))
+}
+
+/// `%20` and the like back to bytes, as in a link's path; a `+` stays a `+`.
+fn percent_decode(s: &str) -> String {
+    let b = s.as_bytes();
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < b.len() {
+        match (
+            b[i],
+            s.get(i + 1..i + 3)
+                .and_then(|h| u8::from_str_radix(h, 16).ok()),
+        ) {
+            (b'%', Some(x)) => {
+                out.push(x);
+                i += 3;
+            }
+            (c, _) => {
+                out.push(c);
+                i += 1;
+            }
+        }
+    }
+    String::from_utf8_lossy(&out).into_owned()
 }
 
 fn hash(html: &str) -> String {
@@ -1585,6 +1746,23 @@ pub fn cmd_pull(vault: &Vault, ids: &[String]) -> Res<i32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pandoc_figures_become_a_picture_and_its_caption() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        fs::write(root.join("a.gif"), b"GIF").unwrap();
+        let html = "<figure>\n<img src=\"a.gif\" alt=\"Figure 1. A.\" />\n<figcaption aria-hidden=\"true\">Figure 1. A.</figcaption>\n</figure>\n<pre class=\"mermaid\"><code>a\n  b</code></pre>";
+        assert_eq!(
+            for_docs(html, root, root).unwrap(),
+            format!(
+                "<p style=\"text-align:center\"><img src=\"data:image/gif;base64,R0lG\" alt=\"Figure 1. A.\" /></p>\n<p style=\"text-align:center\"><i>Figure 1. A.</i></p>\n\n<p style=\"{CODE_STYLE}\">a<br>&nbsp;&nbsp;b</p>"
+            )
+        );
+        // a picture on the web is left for Docs to fetch, inline with the text
+        let web = "<p>see <img src=\"https://x.org/a.png\" alt=\"\" /> here</p>";
+        assert_eq!(for_docs(web, root, root).unwrap(), web);
+    }
 
     #[test]
     fn zotero_html_marks_become_case_protected_latex() {

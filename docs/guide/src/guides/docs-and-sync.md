@@ -117,6 +117,15 @@ yajna sync DOC-20261022-d4m1q8   # just this one
 - The doc starts with the page's ID, status and title, then the body. Checkboxes appear
   as ☐ and ☑. `[[links]]` to other synced pages point at their docs; to other pages they
   point at the site when `[sync] site_url` is set, and are plain text otherwise.
+- Images go into the doc. A picture of the repo, its path relative to the page (such as
+  `figures/e0.png`), is carried inside the upload; one on its own line becomes a
+  centred figure with its alt text as the caption under it. Docs takes PNG, JPEG and GIF:
+  an SVG, or a path that is not a file of the repo, stops that page's sync with the
+  reason. A picture on the web is left for Google to fetch. Everything uploaded for one
+  page, pictures included, has to stay under 5 MB.
+- A fenced block arrives as a paragraph in a monospaced font with its lines and
+  indentation, which suits sample output and ASCII diagrams. A `mermaid` block arrives as
+  its source: render the diagram to a PNG and include that instead.
 - Edits made in the Google Doc are overwritten at the next publish. Comment, do not edit,
   or make the page a [mirror page](#edits-come-back-mirror-pages).
 
