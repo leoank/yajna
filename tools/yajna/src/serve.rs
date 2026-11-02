@@ -175,7 +175,11 @@ pub fn cmd_serve(
             println!("reviews, writable: {url}files/?token={t}");
         }
         if open {
-            open_url(&url);
+            // with --review, the page that can write
+            match &written {
+                Some(t) => open_url(&format!("{url}files/?token={t}")),
+                None => open_url(&url),
+            }
         }
     })?;
     Ok(0)

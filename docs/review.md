@@ -1,6 +1,6 @@
 # Code review in the notebook
 
-Status: design v0.8, 2026-10-30; steps 1 to 4 built (yajna 0.10.0 to 0.13.0), `about` and approval records in 0.14.0, rounds and fixes in 0.16.0. Companion to `architecture.md` (section 11,
+Status: design v0.8, 2026-10-30; steps 1 to 4 built (yajna 0.10.0 to 0.13.0), `about` and approval records in 0.14.0, rounds and fixes in 0.16.0, the viewer's author in 0.20.0. Companion to `architecture.md` (section 11,
 Phase 1d) and `reproduce.md`, which shares its commit resolution. Decision: ADR-0030.
 
 ## 1. What it is for
@@ -293,7 +293,9 @@ yajna phase start PRJ-… "<item>"
   keeps it in memory (a reload needs the printed URL again) and sends it as
   `X-Yajna-Token` with every `POST`, which must also carry an `Origin` naming the host it
   was sent to. The rest of the server stays read-only (ADR-0028). The viewer writes as
-  the notebook's author (`$YAJNA_AUTHOR`, else `yajna.toml`).
+  the checkout's author (`$YAJNA_AUTHOR`, else `.yajna/author`, else `yajna.toml`) unless
+  that is an agent's, as in an agent's worktree or shell, then as `yajna.toml`'s: the
+  person at the browser is not the agent. `--open` opens the printed URL.
 - A write edits the REV page in the working tree of the right worktree and commits
   nothing. Each write carries the version of the page the viewer read; a page that changed
   since is refused with 409, the view reloads and keeps the unsent text. Writes from the

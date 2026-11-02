@@ -4781,7 +4781,8 @@ fn serve_review_writes_only_with_the_token_and_never_over_a_change() {
         .env("YAJNA_CACHE", root.join(".cache"))
         .env("XDG_STATE_HOME", root.join(".cache/state"))
         .env("XDG_CONFIG_HOME", root.join(".cache/config"))
-        .env_remove("YAJNA_AUTHOR")
+        // started from an agent's shell: the viewer still writes as the notebook's author
+        .env("YAJNA_AUTHOR", "agent:claude")
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()
@@ -4863,6 +4864,12 @@ fn serve_review_writes_only_with_the_token_and_never_over_a_change() {
     assert!(
         status == 200 && body.contains("from the viewer"),
         "{status} {body}"
+    );
+    assert!(
+        fs::read_to_string(&page)
+            .unwrap()
+            .contains(" tester: from the viewer"),
+        "the viewer writes as the notebook's author"
     );
     // what is not in the review yet: a change in the working tree and a new file, but not
     // the review page, which is not committed either

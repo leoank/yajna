@@ -104,9 +104,11 @@ with `status: merged`, `merge: <the tip merged>` and a line in the summary.
 ## In the browser
 
 ```sh
-yajna serve --review
+yajna serve --review --open
 # reviews, writable: http://127.0.0.1:8765/files/?token=…
 ```
+
+`--open` opens that writable URL in the browser.
 
 The files viewer lists the reviews above the tree. A review opens as a tab: an overview
 with the summary, the verdict buttons and every thread, then each changed file as a
@@ -125,6 +127,8 @@ on disk. Commit them and run `yajna review update` to comment on them.
 Writing needs the printed URL: it carries a token the page keeps in memory, so a reload,
 or `yajna serve` without `--review`, is read-only. A write made after someone else changed
 the page is refused and the tab reloads with your text kept. Nothing is committed for you.
+What you write is signed with the notebook's author from `yajna.toml`, even when the
+server was started in an agent's worktree or shell, where `yajna` writes as the agent.
 
 ## What an agent owes
 

@@ -2349,6 +2349,18 @@ fn thread_json(lines: &[&str], t: &Thread) -> serde_json::Value {
     serde_json::json!({ "n": t.n, "state": t.state, "anchor": anchor, "quote": quote, "replies": replies })
 }
 
+/// Who writes from the files viewer: a person at a browser, so the checkout's author unless
+/// that is an agent's (`YAJNA_AUTHOR` or `.yajna/author` in an agent's worktree), then the
+/// notebook's own.
+fn viewer(vault: &Vault) -> String {
+    let a = vault.default_author();
+    if a.starts_with("agent:") {
+        vault.author.clone()
+    } else {
+        a
+    }
+}
+
 impl yajna_serve::reviews::Reviews for Served {
     fn list(&self) -> Result<serde_json::Value, String> {
         let vault = Vault::open(self.root.clone())?;
@@ -2468,7 +2480,7 @@ impl yajna_serve::reviews::Reviews for Served {
             "paths": paths,
             "about": about_of(&page),
             "page": page.path.display().to_string(),
-            "author": vault.default_author(),
+            "author": viewer(&vault),
             "summary": summary,
             "files": files,
             "rounds": rounds,
@@ -2563,21 +2575,23 @@ impl yajna_serve::reviews::Reviews for Served {
         let field = |k: &str| body[k].as_str().filter(|s| !s.is_empty());
         let words: Vec<String> = field("text").map(str::to_string).into_iter().collect();
         let thread = field("thread").unwrap_or("");
+        let by = viewer(&vault);
+        let by = Some(by.as_str());
         let done = match action {
-            "comment" => comment(&vault, id, field("at"), field("commit"), &words, None),
-            "reply" => act(&vault, id, thread, Act::Reply, &words, None),
+            "comment" => comment(&vault, id, field("at"), field("commit"), &words, by),
+            "reply" => act(&vault, id, thread, Act::Reply, &words, by),
             "address" => act(
                 &vault,
                 id,
                 thread,
                 Act::Address(field("commit").map(str::to_string)),
                 &words,
-                None,
+                by,
             ),
-            "resolve" => act(&vault, id, thread, Act::Resolve, &words, None),
-            "reopen" => act(&vault, id, thread, Act::Reopen, &words, None),
-            "approve" => verdict(&vault, id, "approved", &words, None),
-            "request-changes" => verdict(&vault, id, "changes_requested", &words, None),
+            "resolve" => act(&vault, id, thread, Act::Resolve, &words, by),
+            "reopen" => act(&vault, id, thread, Act::Reopen, &words, by),
+            "approve" => verdict(&vault, id, "approved", &words, by),
+            "request-changes" => verdict(&vault, id, "changes_requested", &words, by),
             other => Err(format!("{other}: not something a review does")),
         };
         done.map_err(Refused)?;

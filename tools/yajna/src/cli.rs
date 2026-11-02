@@ -355,7 +355,7 @@ pub enum Cmd {
         /// port (0 picks a free one)
         #[arg(long, default_value_t = 8765)]
         port: u16,
-        /// open the browser
+        /// open the browser, at the writable files viewer with --review
         #[arg(long)]
         open: bool,
         /// also answer requests addressed to this host name, e.g. the name `tailscale serve`
