@@ -538,18 +538,25 @@ pub fn worktree(
     )?);
     let toplevel = PathBuf::from(git(&vault.root, &["rev-parse", "--show-toplevel"])?);
     let prefix = git(&vault.root, &["rev-parse", "--show-prefix"])?;
+    // a project repo, or its container, is the project already: its worktrees are named by
+    // the topic alone (neusis/<topic>, not neusis/neusis/<topic>); a lab's by the branch
+    let name = if vault.is_project() {
+        topic.clone()
+    } else {
+        branch.clone()
+    };
     let target = match path {
         Some(p) => p.to_path_buf(),
         // the gclb layout: <container>/.bare plus one directory per branch
         None if common.file_name().map(|n| n == ".bare").unwrap_or(false) => {
-            common.parent().unwrap().join(&branch)
+            common.parent().unwrap().join(&name)
         }
         None => {
             let repo = toplevel
                 .file_name()
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_default();
-            toplevel.with_file_name(format!("{repo}-{slug}-{topic}"))
+            toplevel.with_file_name(format!("{repo}-{}", name.replace('/', "-")))
         }
     };
     if target.exists() {

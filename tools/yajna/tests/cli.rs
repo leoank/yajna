@@ -6580,6 +6580,66 @@ fn on_a_host_without_the_checkout_it_is_cloned_from_origin() {
 }
 
 #[test]
+fn a_project_repos_worktree_is_named_by_its_topic_alone() {
+    // a project repo in the bare layout: <container>/.bare and <container>/main
+    let src = empty();
+    let out = src.run(&[
+        "init",
+        "project",
+        "Toy",
+        "--namespace",
+        "toy",
+        "--author",
+        "tester",
+    ]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    git(&src.root, &["init", "-q", "-b", "main"]);
+    git(&src.root, &["add", "-A"]);
+    git(&src.root, &["commit", "-q", "-m", "toy"]);
+    let container = empty();
+    git(
+        &container.root,
+        &["clone", "-q", "--bare", src.root.to_str().unwrap(), ".bare"],
+    );
+    git(
+        &container.root.join(".bare"),
+        &["worktree", "add", "-q", "../main", "main"],
+    );
+    let main = Vault {
+        _dir: tempfile::tempdir().unwrap(),
+        root: container.root.join("main"),
+    };
+    let out = main.run(&["worktree", "PRJ-0001", "Aero map"]);
+    assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
+    assert!(
+        out.stdout.contains("branch   toy/aero-map"),
+        "{}",
+        out.stdout
+    );
+    assert!(
+        container.root.join("aero-map/.yajna/author").is_file(),
+        "{}",
+        out.stdout
+    );
+    assert!(
+        !container.root.join("toy").exists(),
+        "not nested under the namespace"
+    );
+    // and beside a plain checkout, <repo>-<topic>
+    let out = src.run(&["worktree", "PRJ-0001", "Wind tunnel"]);
+    assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
+    let name = src.root.file_name().unwrap().to_string_lossy().to_string();
+    assert!(
+        src.root
+            .with_file_name(format!("{name}-wind-tunnel"))
+            .is_dir(),
+        "{}",
+        out.stdout
+    );
+    let _ = fs::remove_dir_all(src.root.with_file_name(format!("{name}-wind-tunnel")));
+}
+
+#[test]
 fn the_plugin_carries_the_cli_version() {
     // one skill, shipped in the binary and in the plugin: their versions say which CLI it
     // describes, so they move together

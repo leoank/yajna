@@ -21,7 +21,9 @@ $ yajna worktree PRJ-0003 aero-map
 creates the branch `<project-slug>/aero-map` from `main` (`--from` another branch) and
 checks it out in a new worktree: `<container>/<branch>` when the repository uses a bare-repo
 layout (a `.bare` directory with one directory per branch), otherwise
-`<repo>-<project-slug>-aero-map` beside the repository; `--path` puts it elsewhere. It
+`<repo>-<project-slug>-aero-map` beside the repository. In a project repository, which is
+the project already, the directory is named by the topic alone: `<container>/aero-map` or
+`<repo>-aero-map`. `--path` puts it elsewhere. It
 writes `.yajna/author` there:
 `agent:claude-<project-slug>-aero-map`. Every yajna command in that worktree writes as that
 author unless `YAJNA_AUTHOR` or `--author` says otherwise. `--agent codex` names a different

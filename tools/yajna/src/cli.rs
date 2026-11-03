@@ -299,7 +299,8 @@ pub enum Cmd {
         #[arg(long, default_value = "main")]
         from: String,
         /// where to put the worktree (default: <container>/<branch> in a bare-repo layout,
-        /// else <repo>-<slug>-<topic> beside the repo)
+        /// else <repo>-<slug>-<topic> beside the repo; in a project repo <container>/<topic>
+        /// and <repo>-<topic>)
         #[arg(long)]
         path: Option<PathBuf>,
     },
