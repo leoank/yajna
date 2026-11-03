@@ -197,12 +197,12 @@ Every `compute` run you record must be re-creatable by someone who has only the 
    outputs: files under `$YAJNA_RUN_DIR` when yajna runs it, else beside itself (the
    stub's `out=` line does this), never outside the repo except under a root in `env`,
    and, for metric runs, one `===RESULT=== {...}` line on stdout.
-4. To check a run or try a fix at its commit, `yajna run shell RUN-…` gives the project's
-   dev shell in a worktree at that commit with the run's directory copied in; `yajna run
-   reproduce RUN-…` runs it again into a new run and records whether it `reproduced`.
 3. Record in `Notes` what the script does not control (hardware, network, time) and what
    differed between the run and the plan. `yajna validate` fails when `script` points at
    a file that does not exist.
+4. To check a run or try a fix at its commit, `yajna run shell RUN-…` gives the project's
+   dev shell in a worktree at that commit with the run's directory copied in; `yajna run
+   reproduce RUN-…` runs it again into a new run and records whether it `reproduced`.
 
 Hand-recorded runs that were not scripted (an interactive session, a one-off probe) say so
 under `Notes` and still leave a script that gets as close as possible.
