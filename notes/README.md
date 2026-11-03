@@ -76,6 +76,8 @@ open items with the rest.
 - [x] Phase 1e: `--on <host>` driven from the laptop: the other machine needs git and Nix, not yajna, and the new run's page is written here (ADR-0033) (since 2c88d86) (0.23.0; tested against an ssh that runs locally on a second clone, not yet against oppy)
 - [x] Shell completion: subcommands, flags, and IDs from the notebook with their titles (zsh, bash, fish) (since 2c88d86) (0.23.0)
 - [x] Phase 1e: `run record --host` and `--env NAME=VALUE` for a run that ran elsewhere; `--on` clones the host's checkout when it is missing (since 742f1fc) (0.24.0)
+- [x] `yajna worktree` in a project repo names the directory by the topic alone (neusis/<topic>, not neusis/neusis/<topic>) (0.24.1)
+- [ ] Phases as pages: `PHS-` pages (dated IDs) are the source of truth for a project's phases, the project page's *Progress* a one-line-per-phase view linking to them; a simple `yajna phase migrate`, then the phases filled in with ank (since e0fa2ca)
 - [ ] Phase 1e verified: RUN-20261023-g78vwy reproduced from a fresh clone gives the manifest hash it recorded (since 42ae68f)
 - [x] From anywhere designed: todos and log lines into any notebook on the machine, `docs/from-anywhere.md` (ADR-0032)
 - [x] From anywhere: the per-user config and state registry, `yajna repos`, `--in` and `--pick`
