@@ -192,7 +192,8 @@ session may leave `script: null` and say why under `Notes`.
 in its code directory, else the root's) in a git worktree at the run's `commit`, kept in
 the cache, with the run's page and directory copied in from HEAD at their current paths
 (`--working-tree`: from the working tree), and `YAJNA_RUN`, `YAJNA_RUN_DIR`,
-`YAJNA_RUN_COMMIT` and the run's `env` set; `-c <command>` runs one command instead. It
+`YAJNA_RUN_COMMIT` and the run's `env` set, starting in the run's directory; `-c <command>`
+runs one command instead, from the notebook's root. It
 says what does not line up: a script that did not exist at the commit, a project directory
 named otherwise then, another host, an `env` path missing here. `yajna run reproduce RUN-…`
 runs a compute run's script there into a new run with `reproduces` and a `verdict`
@@ -205,7 +206,8 @@ original's. `yajna run diff RUN-a RUN-b` shows what differs between two runs, an
 clean` removes the worktrees. `--on <host>` (alone: the run's `host`) does `shell`,
 `reproduce` or `clean` on another machine, driven from here over ssh (ADR-0033): the
 worktree is made in the checkout named in the machine-local `.yajna/hosts.toml` (`[oppy]
-root = "~/workspace/manthan"`, cloned from this repository's `origin` when it is missing)
+root = "~/workspace/manthan"`, cloned from this repository's `origin` when it is missing;
+`ssh = "-A"` there and `--ssh "<options>"` pass options to ssh)
 after a `git fetch`, and a reproduction's page, logs and outputs come back here. That machine needs git, tar and Nix, not yajna.
 
 **The author of a run is whoever executed it.** An agent records its runs, log lines and

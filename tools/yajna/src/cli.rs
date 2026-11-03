@@ -514,6 +514,10 @@ pub enum RunAction {
         /// .yajna/hosts.toml (alone: the run's host); it needs git, tar and Nix, not yajna
         #[arg(long, num_args = 0..=1, default_missing_value = "", value_name = "HOST")]
         on: Option<String>,
+        /// options for ssh to that machine, added to `ssh` for it in .yajna/hosts.toml:
+        /// --ssh "-J bastion -A"
+        #[arg(long, value_name = "OPTIONS", allow_hyphen_values = true)]
+        ssh: Vec<String>,
     },
     /// remove run worktrees, all or one; one with changes outside the run's directory is
     /// kept unless --force
@@ -526,6 +530,10 @@ pub enum RunAction {
         /// the worktrees on that machine, made by --on there
         #[arg(long, value_name = "HOST")]
         on: Option<String>,
+        /// options for ssh to that machine, added to `ssh` for it in .yajna/hosts.toml:
+        /// --ssh "-J bastion -A"
+        #[arg(long, value_name = "OPTIONS", allow_hyphen_values = true)]
+        ssh: Vec<String>,
     },
     /// what differs between two runs: commit, host, env, outputs, metrics, the code between
     /// their commits, their scripts and pages
@@ -554,6 +562,10 @@ pub enum RunAction {
         /// .yajna/hosts.toml (alone: the run's host), and the new run's page is written here
         #[arg(long, num_args = 0..=1, default_missing_value = "", value_name = "HOST")]
         on: Option<String>,
+        /// options for ssh to that machine, added to `ssh` for it in .yajna/hosts.toml:
+        /// --ssh "-J bastion -A"
+        #[arg(long, value_name = "OPTIONS", allow_hyphen_values = true)]
+        ssh: Vec<String>,
     },
 }
 

@@ -32,6 +32,19 @@ struct Remote {
     root: String,
     /// `$HOME/.cache/yajna/runs/<hash>`, where its run worktrees live there
     trees: String,
+    /// options for every ssh to it: `ssh` in `.yajna/hosts.toml`, then `--ssh`
+    ssh: Vec<String>,
+}
+
+impl Remote {
+    /// `ssh <options> -t|-T <host>`, a command line still to add.
+    fn ssh(&self, tty: bool) -> Command {
+        let mut cmd = Command::new("ssh");
+        cmd.args(&self.ssh)
+            .arg(if tty { "-t" } else { "-T" })
+            .arg(&self.host);
+        cmd
+    }
 }
 
 /// The worktree of one run, here or on a remote, ready to run something in.
@@ -64,15 +77,29 @@ impl Tree {
         self.wt.join(self.dir_rel.trim_end_matches('/'))
     }
 
-    /// `argv` at the notebook's root in the worktree, in the flake's dev shell when there is
-    /// one, with `env` exported: here, or over ssh (`tty` for an interactive shell).
-    fn command(&self, argv: &[String], env: &[(String, String)], tty: bool) -> Res<Command> {
+    /// `argv` in `cwd` (default the notebook's root) in the worktree, in the flake's dev
+    /// shell when there is one, with `env` exported: here, or over ssh. An empty `argv` is
+    /// an interactive shell: here the user's `$SHELL`; there nix's own interactive bash in
+    /// the dev shell (inside `nix develop -c`, `$SHELL` is the build's bash, which has no
+    /// readline and prints the prompt's `\[ \]` as they are), else the login shell.
+    fn command(
+        &self,
+        argv: &[String],
+        env: &[(String, String)],
+        cwd: Option<&Path>,
+    ) -> Res<Command> {
         let flake = self.flake.as_ref().map(|f| self.wt.join(f));
+        let cwd = cwd.map(Path::to_path_buf).unwrap_or_else(|| self.root());
         let Some(remote) = &self.remote else {
+            let argv: Vec<String> = if argv.is_empty() {
+                vec![std::env::var("SHELL").unwrap_or_else(|_| "sh".to_string())]
+            } else {
+                argv.to_vec()
+            };
             let mut cmd = match &flake {
                 Some(f) => {
                     let mut c = Command::new("nix");
-                    c.arg("develop").arg(f).arg("-c").args(argv);
+                    c.arg("develop").arg(f).arg("-c").args(&argv);
                     c
                 }
                 None => {
@@ -81,13 +108,13 @@ impl Tree {
                     c
                 }
             };
-            cmd.current_dir(self.root())
+            cmd.current_dir(cwd)
                 .envs(env.iter().map(|(k, v)| (k.as_str(), v.as_str())));
             return Ok(cmd);
         };
         let mut words = vec![
             "cd".to_string(),
-            q(&self.root().to_string_lossy())?,
+            q(&cwd.to_string_lossy())?,
             "&&".into(),
             "exec".into(),
             "env".into(),
@@ -95,28 +122,37 @@ impl Tree {
         for (k, v) in env {
             words.push(q(&format!("{k}={v}"))?);
         }
-        if let Some(f) = &flake {
-            words.extend([
-                "nix".into(),
-                "develop".into(),
-                q(&f.to_string_lossy())?,
-                "-c".into(),
-            ]);
+        match (&flake, argv.is_empty()) {
+            (Some(f), true) => {
+                words.extend(["nix".into(), "develop".into(), q(&f.to_string_lossy())?])
+            }
+            (None, true) => words.extend(["sh".into(), "-c".into(), q("exec \"${SHELL:-sh}\"")?]),
+            (Some(f), false) => {
+                words.extend([
+                    "nix".into(),
+                    "develop".into(),
+                    q(&f.to_string_lossy())?,
+                    "-c".into(),
+                ]);
+                for a in argv {
+                    words.push(q(a)?);
+                }
+            }
+            (None, false) => {
+                for a in argv {
+                    words.push(q(a)?);
+                }
+            }
         }
-        for a in argv {
-            words.push(q(a)?);
-        }
-        let mut cmd = Command::new("ssh");
-        cmd.arg(if tty { "-t" } else { "-T" })
-            .arg(&remote.host)
-            .arg(words.join(" "));
+        let mut cmd = remote.ssh(argv.is_empty());
+        cmd.arg(words.join(" "));
         Ok(cmd)
     }
 
     /// Run a script through `sh` on the remote and return its stdout; its stderr is shown.
     fn sh(&self, script: &str, stdin: Option<Stdio>) -> Res<String> {
         let remote = self.remote.as_ref().expect("a remote tree");
-        remote_sh(&remote.host, script, stdin)
+        remote_sh(remote, script, stdin)
     }
 }
 
@@ -142,9 +178,11 @@ fn q_home(path: &str) -> Res<String> {
     }
 }
 
-fn remote_sh(host: &str, script: &str, stdin: Option<Stdio>) -> Res<String> {
-    let out = Command::new("ssh")
-        .args(["-T", host, script])
+fn remote_sh(remote: &Remote, script: &str, stdin: Option<Stdio>) -> Res<String> {
+    let host = &remote.host;
+    let out = remote
+        .ssh(false)
+        .arg(script)
         .stdin(stdin.unwrap_or(Stdio::null()))
         .stderr(Stdio::inherit())
         .output()
@@ -203,8 +241,9 @@ fn host_of(page: &Page, on: &str) -> Res<String> {
     })
 }
 
-/// A machine and its checkout of this notebook, from `.yajna/hosts.toml`.
-fn remote_of(vault: &Vault, host: &str) -> Res<Remote> {
+/// A machine and its checkout of this notebook, from `.yajna/hosts.toml`, with `--ssh`
+/// options added to the ones the file gives it.
+fn remote_of(vault: &Vault, host: &str, ssh: &[String]) -> Res<Remote> {
     let host = host.to_string();
     let file = vault.root.join(".yajna").join("hosts.toml");
     let hosts: toml::Table = fs::read_to_string(&file)
@@ -225,7 +264,25 @@ fn remote_of(vault: &Vault, host: &str) -> Res<Remote> {
     let mut h = DefaultHasher::new();
     (&host, &root).hash(&mut h);
     let trees = format!("\"$HOME\"/.cache/yajna/runs/{:016x}", h.finish());
-    Ok(Remote { host, root, trees })
+    let mut options: Vec<String> = Vec::new();
+    let given = hosts
+        .get(&host)
+        .and_then(|h| h.get("ssh"))
+        .and_then(|s| s.as_str())
+        .into_iter()
+        .map(str::to_string)
+        .chain(ssh.iter().cloned());
+    for g in given {
+        options.extend(
+            shlex::split(&g).ok_or_else(|| format!("ssh options {g:?}: unbalanced quotes"))?,
+        );
+    }
+    Ok(Remote {
+        host,
+        root,
+        trees,
+        ssh: options,
+    })
 }
 
 /// Section 3: a worktree at the run's commit, with the run's page and directory copied in
@@ -459,7 +516,7 @@ mkdir -p "$wt"/{dir_q}
                 .stdout(Stdio::piped())
                 .spawn()
                 .map_err(|e| format!("tar: {e}"))?;
-            let out = remote_sh(&r.host, &script, Some(Stdio::from(tar.stdout.unwrap())));
+            let out = remote_sh(r, &script, Some(Stdio::from(tar.stdout.unwrap())));
             let _ = fs::remove_dir_all(&stage);
             let wt = out?
                 .lines()
@@ -529,22 +586,21 @@ pub(crate) fn shell(
     command: Option<&str>,
     working_tree: bool,
     on: Option<&str>,
+    ssh: &[String],
 ) -> Res<i32> {
     let page = run_page(vault, id)?;
     let remote = on
-        .map(|h| remote_of(vault, &host_of(&page, h)?))
+        .map(|h| remote_of(vault, &host_of(&page, h)?, ssh))
         .transpose()?;
     let tree = open_tree(vault, &page, working_tree, remote)?;
     for line in &tree.banner {
         eprintln!("yajna: {line}");
     }
-    let argv: Vec<String> = match command {
-        Some(c) => vec!["sh".into(), "-c".into(), c.into()],
-        // the user's shell here; the login shell there
-        None if tree.remote.is_some() => {
-            vec!["sh".into(), "-c".into(), "exec \"${SHELL:-sh}\"".into()]
-        }
-        None => vec![std::env::var("SHELL").unwrap_or_else(|_| "sh".to_string())],
+    // a command runs from the notebook's root, as run scripts expect; a shell starts in the
+    // run's directory
+    let (argv, cwd): (Vec<String>, Option<PathBuf>) = match command {
+        Some(c) => (vec!["sh".into(), "-c".into(), c.into()], None),
+        None => (Vec::new(), Some(tree.run_dir())),
     };
     let mut env = tree.env.clone();
     env.extend([
@@ -556,18 +612,24 @@ pub(crate) fn shell(
         ("YAJNA_RUN_COMMIT".to_string(), tree.commit.clone()),
     ]);
     let status = tree
-        .command(&argv, &env, command.is_none())?
+        .command(&argv, &env, cwd.as_deref())?
         .status()
-        .map_err(|e| format!("{}: {e}", argv[0]))?;
+        .map_err(|e| format!("the shell: {e}"))?;
     Ok(status.code().unwrap_or(1))
 }
 
-pub(crate) fn clean(vault: &Vault, id: Option<&str>, force: bool, on: Option<&str>) -> Res<i32> {
+pub(crate) fn clean(
+    vault: &Vault,
+    id: Option<&str>,
+    force: bool,
+    on: Option<&str>,
+    ssh: &[String],
+) -> Res<i32> {
     if let Some(on) = on {
         if on.is_empty() {
             return Err("run clean --on needs the host's name".to_string());
         }
-        let r = remote_of(vault, on)?;
+        let r = remote_of(vault, on, ssh)?;
         let pattern = match id {
             Some(i) => q(&vault.canonical_id(i))?,
             None => "RUN-*".to_string(),
@@ -595,7 +657,7 @@ exit $kept
             changes = CHANGES_SH,
             host = r.host,
         );
-        print!("{}", remote_sh(&r.host, &script, None)?);
+        print!("{}", remote_sh(&r, &script, None)?);
         return Ok(0);
     }
     let dir = trees_dir(vault);
@@ -1024,6 +1086,7 @@ pub(crate) fn reproduce(
     tolerance: Option<f64>,
     out_roots: &[String],
     on: Option<&str>,
+    ssh: &[String],
 ) -> Res<i32> {
     let page = run_page(vault, id)?;
     let id = page.id().unwrap_or(id).to_string();
@@ -1041,7 +1104,7 @@ pub(crate) fn reproduce(
         .ok_or_else(|| format!("{id} belongs to no experiment"))?
         .to_string();
     let remote = on
-        .map(|h| remote_of(vault, &host_of(&page, h)?))
+        .map(|h| remote_of(vault, &host_of(&page, h)?, ssh))
         .transpose()?;
     // the scratch roots, on the machine that runs: made and resolved here, made there
     let mut roots: BTreeMap<String, String> = BTreeMap::new();
@@ -1205,7 +1268,7 @@ pub(crate) fn reproduce(
     let cmd = tree.command(
         &[script_in_tree.to_string_lossy().into_owned()],
         &run_env,
-        false,
+        None,
     )?;
     let (stdout, ok) = capture(
         cmd,
@@ -1268,8 +1331,9 @@ pub(crate) fn reproduce(
             }
             s.push_str("tar -cf - .\n");
             let remote = tree.remote.as_ref().unwrap();
-            let mut ssh = Command::new("ssh")
-                .args(["-T", &remote.host, &s])
+            let mut ssh = remote
+                .ssh(false)
+                .arg(&s)
                 .stdout(Stdio::piped())
                 .spawn()
                 .map_err(|e| format!("ssh: {e}"))?;

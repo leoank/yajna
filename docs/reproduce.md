@@ -27,7 +27,7 @@ does it on the machine that has the data.
 |---|---|
 | The tree | A git worktree at the run's `commit`, with the run's directory (page, `run.sh`, small outputs) copied in from the current revision at its current path |
 | Where and how long | In the cache, `<cache>/runs/<repo hash>/RUN-…`, reused when the same run is opened again, removed by `yajna run clean` |
-| The shell | `nix develop` on the project's flake inside the worktree, cwd at its root, with `YAJNA_RUN`, `YAJNA_RUN_DIR`, `YAJNA_RUN_COMMIT` and the run's recorded `env` set |
+| The shell | `nix develop` on the project's flake inside the worktree, cwd at the run's directory (a `-c` command at the root), with `YAJNA_RUN`, `YAJNA_RUN_DIR`, `YAJNA_RUN_COMMIT` and the run's recorded `env` set |
 | New run fields | `host`, `env` (no secrets), `outputs` (paths with sha256), `origin_commit` (after graduation), `reproduces` and `verdict` (on a reproduction) |
 | Commits | Full SHAs from now on; a `done` compute run must have a `commit` that resolves, or `commit: unknown` with the reason in *Notes* |
 | Comparing | `run reproduce` compares the recorded `outputs` hashes and the `===RESULT===` metrics (exact, or `--tolerance`); unlisted files are reported, not judged |
@@ -186,7 +186,8 @@ for the run's `host`) does the same there, driven from here over ssh (ADR-0033, 
 the first version, which ran yajna on the remote). The checkout there is named in
 `.yajna/hosts.toml` (machine-local, not committed: `[oppy] root = "~/workspace/manthan"`);
 when nothing is at `root`, this repository's `origin` is cloned there. An existing checkout
-is used as it is: only fetched in, and given worktrees.
+is used as it is: only fetched in, and given worktrees. `ssh = "<options>"` for a host there,
+and `--ssh "<options>"` on a command, are passed to every ssh to it.
 yajna fetches in it so the commit is there (it must be pushed), makes or reuses the
 worktree in `~/.cache/yajna/runs/` on that machine with git, streams the run's page and
 directory over as a tar archive from this repository's HEAD (or working tree), and runs

@@ -144,8 +144,9 @@ the run's page and directory into it from HEAD, at their current paths, because 
 is usually committed after the code it ran, and opens the project's dev shell there with
 `YAJNA_RUN`, `YAJNA_RUN_DIR`, `YAJNA_RUN_COMMIT` and the run's `env` set. It says what does
 not line up: the script that did not exist at the commit, a project directory named
-otherwise then, another host, an `env` path missing on this machine. `-c "<command>"` runs one
-command instead of a shell; `--working-tree` copies the run's directory from your working
+otherwise then, another host, an `env` path missing on this machine. The shell starts in the run's
+directory; `-c "<command>"` runs one command instead, from the notebook's root, where run
+scripts expect to be; `--working-tree` copies the run's directory from your working
 tree, to try an uncommitted fix to its script.
 
 ```console
@@ -178,7 +179,10 @@ checkout of the notebook, git, tar and Nix, not yajna. Name its checkout in
 ```toml
 [oppy]
 root = "~/workspace/mylab"
+ssh = "-A"            # options for every ssh to it: agent forwarding, -J bastion, -p 2222
 ```
+
+`--ssh "<options>"` adds options for one command.
 
 `--on` alone means the run's `host`. When there is nothing at `root` yet, yajna clones your
 repository's `origin` there first; an existing checkout is used as it is, on whatever branch,

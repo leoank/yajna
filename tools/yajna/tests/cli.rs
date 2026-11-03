@@ -5941,6 +5941,19 @@ fn run_shell_opens_the_commit_with_the_run_directory_from_now() {
         assert!(out.stderr.contains(said), "{said}: {}", out.stderr);
     }
 
+    // a shell, not a command, starts in the run's directory
+    let mut with_sh = env.to_vec();
+    with_sh.push(("SHELL", "/bin/sh"));
+    let out = v.run_with(&["run", "shell", &id], Some("pwd\n"), &with_sh);
+    assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
+    assert!(
+        out.stdout
+            .trim_end()
+            .ends_with(&format!("PRJ-0001-toy-model/runs/{id}")),
+        "{}",
+        out.stdout
+    );
+
     // --working-tree takes an uncommitted fix to the script; without it, HEAD's
     let script = v.root.join(format!(
         "notes/projects/PRJ-0001-toy-model/runs/{id}/run.sh"
@@ -6247,26 +6260,40 @@ fn on_a_host_the_laptop_drives_a_checkout_there_over_ssh() {
     // command here; yajna is not on its PATH
     let home = empty();
     let calls = home.root.join("ssh.log");
+    let nix_calls = home.root.join("nix.log");
     git(
         &home.root,
         &["clone", "-q", v.root.to_str().unwrap(), "my lab"],
     );
-    let (_bin, path) = fake_bin(&[(
-        "ssh",
-        &format!(
-            "while [ $# -gt 0 ]; do case \"$1\" in -t|-T) shift;; *) break;; esac; done\n\
-             echo \"$1\" >> '{}'\nshift\nexec sh -c \"$*\"",
-            calls.display()
+    let (_bin, path) = fake_bin(&[
+        (
+            "ssh",
+            &format!(
+                "echo \"$*\" >> '{}'\n\
+                 while [ $# -gt 0 ]; do case \"$1\" in -t|-T|-A) shift;; -o|-J|-p) shift 2;; *) break;; esac; done\n\
+                 shift\nexec sh -c \"$*\"",
+                calls.display()
+            ),
         ),
-    )]);
+        (
+            "nix",
+            &format!(
+                "echo \"nix $*\" >> '{}'\n\
+                 if [ \"$3\" = -c ]; then shift 3; exec \"$@\"; else exec \"${{SHELL:-sh}}\"; fi",
+                nix_calls.display()
+            ),
+        ),
+    ]);
     let cache = empty();
     let env = [
         ("PATH", path.as_str()),
         ("HOME", home.root.to_str().unwrap()),
         ("YAJNA_CACHE", cache.root.to_str().unwrap()),
+        ("SHELL", "/bin/sh"),
     ];
-    // the run's commit is newer than that checkout: --on fetches it
+    // the run's commit is newer than that checkout: --on fetches it; it has a flake
     fs::write(v.root.join("notes/projects/PRJ-0001-toy/extra.txt"), "x\n").unwrap();
+    fs::write(v.root.join("flake.nix"), "{ }\n").unwrap();
     git(&v.root, &["add", "-A"]);
     git(&v.root, &["commit", "-q", "-m", "after the clone"]);
     let head = git(&v.root, &["rev-parse", "HEAD"]).trim().to_string();
@@ -6297,10 +6324,10 @@ fn on_a_host_the_laptop_drives_a_checkout_there_over_ssh() {
     fs::create_dir_all(v.root.join(".yajna")).unwrap();
     fs::write(
         v.root.join(".yajna/hosts.toml"),
-        "[oppy]\nroot = \"~/my lab\"\n",
+        "[oppy]\nroot = \"~/my lab\"\nssh = \"-o BatchMode=yes\"\n",
     )
     .unwrap();
-    let out = shell(&["--on", "oppy"]);
+    let out = shell(&["--on", "oppy", "--ssh", "-J bastion -A"]);
     assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
     assert!(
         out.stdout.contains(&format!("at {head}\n")),
@@ -6318,7 +6345,44 @@ fn on_a_host_the_laptop_drives_a_checkout_there_over_ssh() {
         "{}",
         out.stderr
     );
-    assert!(v.read(&calls).starts_with("oppy\n"));
+    // the file's ssh options, then --ssh, on every ssh
+    let ssh_log = v.read(&calls);
+    assert!(
+        ssh_log.contains("-o BatchMode=yes -J bastion -A -T oppy "),
+        "{ssh_log}"
+    );
+    assert!(
+        !ssh_log
+            .lines()
+            .any(|l| l.starts_with("-T ") || l.starts_with("-t ")),
+        "an ssh without the options: {ssh_log}"
+    );
+    assert!(ssh_log.contains(" -T oppy "), "{ssh_log}");
+    // a shell starts in the run's directory, in nix's interactive bash: no -c
+    let out = v.run_with(
+        &["run", "shell", &id, "--on", "oppy", "--ssh", "-A"],
+        Some("pwd\n"),
+        &env,
+    );
+    assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
+    assert!(
+        out.stdout
+            .trim_end()
+            .ends_with(&format!("PRJ-0001-toy/runs/{id}")),
+        "{}",
+        out.stdout
+    );
+    let nix_log = v.read(&nix_calls);
+    let last = nix_log.lines().last().unwrap();
+    assert!(
+        last.starts_with("nix develop ") && !last.contains(" -c"),
+        "{nix_log}"
+    );
+    let ssh_log = v.read(&calls);
+    assert!(
+        ssh_log.lines().last().unwrap().contains(" -t oppy "),
+        "{ssh_log}"
+    );
 
     // alone, --on is the run's host; the new run's page and outputs land here
     set_field(&page, "host", "oppy");

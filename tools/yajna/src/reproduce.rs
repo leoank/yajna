@@ -37,17 +37,29 @@ pub fn run(vault: &Vault, action: &RunAction) -> Res<i32> {
             command,
             working_tree,
             on,
-        } => crate::rerun::shell(vault, run, command.as_deref(), *working_tree, on.as_deref()),
-        RunAction::Clean { run, force, on } => {
-            crate::rerun::clean(vault, run.as_deref(), *force, on.as_deref())
-        }
+            ssh,
+        } => crate::rerun::shell(
+            vault,
+            run,
+            command.as_deref(),
+            *working_tree,
+            on.as_deref(),
+            ssh,
+        ),
+        RunAction::Clean {
+            run,
+            force,
+            on,
+            ssh,
+        } => crate::rerun::clean(vault, run.as_deref(), *force, on.as_deref(), ssh),
         RunAction::Diff { a, b } => crate::rerun::diff(vault, a, b),
         RunAction::Reproduce {
             run,
             tolerance,
             out_root,
             on,
-        } => crate::rerun::reproduce(vault, run, *tolerance, out_root, on.as_deref()),
+            ssh,
+        } => crate::rerun::reproduce(vault, run, *tolerance, out_root, on.as_deref(), ssh),
     }
 }
 
