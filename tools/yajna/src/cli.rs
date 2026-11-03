@@ -470,6 +470,57 @@ pub enum RunAction {
         #[arg(long, num_args = 1.., value_name = "PATH")]
         outputs: Vec<PathBuf>,
     },
+    /// open a shell at the run's commit: a worktree in the cache with the run's directory
+    /// copied in from now, the project's dev shell, YAJNA_RUN, YAJNA_RUN_DIR,
+    /// YAJNA_RUN_COMMIT and the run's env
+    Shell {
+        /// RUN-…
+        run: String,
+        /// run this instead of an interactive shell
+        #[arg(short = 'c', long = "command")]
+        command: Option<String>,
+        /// copy the run's directory from the working tree instead of HEAD, to try an
+        /// uncommitted fix to its script
+        #[arg(long)]
+        working_tree: bool,
+        /// on another machine, over ssh, in its checkout named in .yajna/hosts.toml (alone:
+        /// the run's host)
+        #[arg(long, num_args = 0..=1, default_missing_value = "", value_name = "HOST")]
+        on: Option<String>,
+    },
+    /// remove run worktrees, all or one; one with changes outside the run's directory is
+    /// kept unless --force
+    Clean {
+        /// RUN-… (default: every run worktree of this notebook)
+        run: Option<String>,
+        #[arg(long)]
+        force: bool,
+    },
+    /// what differs between two runs: commit, host, env, outputs, metrics, the code between
+    /// their commits, their scripts and pages
+    Diff {
+        /// RUN-…
+        a: String,
+        /// RUN-…
+        b: String,
+    },
+    /// run a compute run's script again at its commit into a new run that `reproduces` it,
+    /// and compare the outputs' hashes and the metrics: verdict reproduced, differs or failed
+    Reproduce {
+        /// RUN-…
+        run: String,
+        /// relative difference allowed between numeric metrics (default: exact)
+        #[arg(long)]
+        tolerance: Option<f64>,
+        /// write what the run wrote under $VAR to this directory instead (required for
+        /// outputs outside the repo, which are never overwritten)
+        #[arg(long = "out-root", value_name = "VAR=DIR")]
+        out_root: Vec<String>,
+        /// on another machine, over ssh, in its checkout named in .yajna/hosts.toml (alone:
+        /// the run's host)
+        #[arg(long, num_args = 0..=1, default_missing_value = "", value_name = "HOST")]
+        on: Option<String>,
+    },
 }
 
 #[derive(Subcommand, Debug, Clone)]

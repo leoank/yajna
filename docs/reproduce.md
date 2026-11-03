@@ -1,8 +1,9 @@
 # Reproducing runs
 
 Status: design v0.1, 2026-10-26; steps 1 and 6 built in 0.21.0 (the fields, `run record`,
-the commit rule; the commit mapping in `graduate` and `--commits-only`), and manthan's and
-rc2s2's runs cleaned up with them. Companion to `architecture.md` (section 11,
+the commit rule; the commit mapping in `graduate` and `--commits-only`), with manthan's and
+rc2s2's runs cleaned up; steps 2 to 5 in 0.22.0 (`run shell`, `clean`, `diff`, `reproduce`,
+`--on`). Not yet done: step 5 by hand against oppy, and section 13's verification. Companion to `architecture.md` (section 11,
 Phase 1e) and `review.md`, whose commit resolution it shares. Decision: ADR-0031.
 
 ## 1. What it is for

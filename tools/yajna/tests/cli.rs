@@ -5795,3 +5795,470 @@ fn graduate_maps_the_commits_runs_name_to_the_split_ones() {
     let out = lab.run(&only);
     assert!(out.stdout.contains("commits: 0 mapped"), "{}", out.stdout);
 }
+
+/// A directory of stand-ins for tools a test cannot run for real, put first on PATH.
+fn fake_bin(tools: &[(&str, &str)]) -> (Vault, String) {
+    let bin = empty();
+    for (name, body) in tools {
+        let p = bin.root.join(name);
+        fs::write(&p, format!("#!/bin/sh\n{body}\n")).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&p, fs::Permissions::from_mode(0o755)).unwrap();
+        }
+    }
+    let path = format!("{}:{}", bin.root.display(), std::env::var("PATH").unwrap());
+    (bin, path)
+}
+
+fn set_field(page: &Path, key: &str, value: &str) {
+    let text = fs::read_to_string(page).unwrap();
+    let line = text
+        .lines()
+        .find(|l| l.starts_with(&format!("{key}:")))
+        .map(str::to_string);
+    let text = match line {
+        Some(l) => text.replacen(&l, &format!("{key}: {value}"), 1),
+        None => text.replacen("\ncreated:", &format!("\n{key}: {value}\ncreated:"), 1),
+    };
+    fs::write(page, text).unwrap();
+}
+
+fn executable(path: &Path, body: &str) {
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    fs::write(path, body).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn run_shell_opens_the_commit_with_the_run_directory_from_now() {
+    let v = git_lab();
+    fill_experiments(&v.root);
+    let prj = v.root.join("notes/projects/PRJ-0001-toy");
+    fs::write(prj.join("data.txt"), "v1\n").unwrap();
+    fs::write(v.root.join("flake.nix"), "{ }\n").unwrap();
+    let out = v.run(&[
+        "new",
+        "run",
+        "--experiment",
+        "EXP-20261021-000001",
+        "--kind",
+        "compute",
+    ]);
+    let id = v
+        .path(&out)
+        .file_stem()
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
+    git(&v.root, &["add", "-A"]);
+    git(&v.root, &["commit", "-q", "-m", "c1"]);
+    let c1 = git(&v.root, &["rev-parse", "HEAD"]).trim().to_string();
+    // the code moves on, the script is written after, and the project is renamed
+    fs::write(prj.join("data.txt"), "v2\n").unwrap();
+    executable(
+        &prj.join(format!("runs/{id}/run.sh")),
+        "#!/bin/sh\necho \"data $(cat notes/projects/PRJ-0001-toy/data.txt)\"\necho \"dir $YAJNA_RUN_DIR\"\n",
+    );
+    git(&v.root, &["add", "-A"]);
+    git(
+        &v.root,
+        &[
+            "mv",
+            "notes/projects/PRJ-0001-toy",
+            "notes/projects/PRJ-0001-toy-model",
+        ],
+    );
+    let page = v
+        .root
+        .join(format!("notes/projects/PRJ-0001-toy-model/runs/{id}.md"));
+    set_field(&page, "commit", &c1);
+    set_field(
+        &page,
+        "script",
+        &format!("notes/projects/PRJ-0001-toy-model/runs/{id}/run.sh"),
+    );
+    let text = v.read(&page);
+    fs::write(
+        &page,
+        text.replacen("\ncreated:", "\nenv:\n  DATA: /nowhere/data\ncreated:", 1),
+    )
+    .unwrap();
+    git(&v.root, &["add", "-A"]);
+    git(&v.root, &["commit", "-q", "-m", "later"]);
+
+    let cache = empty();
+    let (_bin, path) = fake_bin(&[(
+        "nix",
+        "echo \"fake nix develop $2\" >&2\nshift 3\nexec \"$@\"",
+    )]);
+    let env = [
+        ("PATH", path.as_str()),
+        ("YAJNA_CACHE", cache.root.to_str().unwrap()),
+    ];
+    let shell = |extra: &[&str]| {
+        let mut args = vec!["run", "shell", id.as_str()];
+        args.extend_from_slice(extra);
+        v.run_with(&args, None, &env)
+    };
+    let out = shell(&[
+        "-c",
+        "$YAJNA_RUN_DIR/run.sh; echo \"commit $YAJNA_RUN_COMMIT\"; echo \"env $DATA\"",
+    ]);
+    assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
+    assert!(
+        out.stdout.contains("data v1\n"),
+        "the code at the commit: {}",
+        out.stdout
+    );
+    assert!(
+        out.stdout
+            .contains(&format!("PRJ-0001-toy-model/runs/{id}\n")),
+        "the run's directory at its current path: {}",
+        out.stdout
+    );
+    assert!(
+        out.stdout.contains(&format!("commit {c1}\n")),
+        "{}",
+        out.stdout
+    );
+    assert!(out.stdout.contains("env /nowhere/data\n"), "{}", out.stdout);
+    for said in [
+        "is not at",
+        "did not exist at",
+        "fake nix develop",
+        "env DATA=/nowhere/data: no such path here",
+    ] {
+        assert!(out.stderr.contains(said), "{said}: {}", out.stderr);
+    }
+
+    // --working-tree takes an uncommitted fix to the script; without it, HEAD's
+    let script = v.root.join(format!(
+        "notes/projects/PRJ-0001-toy-model/runs/{id}/run.sh"
+    ));
+    executable(&script, "#!/bin/sh\necho fixed\n");
+    let out = shell(&["--working-tree", "-c", "$YAJNA_RUN_DIR/run.sh"]);
+    assert!(out.stdout.contains("fixed"), "{}{}", out.stdout, out.stderr);
+    let out = shell(&["-c", "$YAJNA_RUN_DIR/run.sh"]);
+    assert!(
+        out.stdout.contains("data v1"),
+        "{}{}",
+        out.stdout,
+        out.stderr
+    );
+
+    // clean keeps a worktree with changes outside the run's directory unless --force
+    let wt = fs::read_dir(cache.root.join("runs"))
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .path()
+        .join(&id);
+    fs::write(wt.join("stray.txt"), "x").unwrap();
+    let out = v.run_with(&["run", "clean"], None, &env);
+    assert_eq!(out.code, 1, "{}", out.stdout);
+    assert!(out.stderr.contains("stray.txt"), "{}", out.stderr);
+    assert!(wt.is_dir());
+    let out = v.run_with(&["run", "clean", &id, "--force"], None, &env);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(!wt.exists());
+    // a run without a commit has nothing to open
+    let out = v.run(&["new", "run", "--experiment", "EXP-20261021-000001"]);
+    let other = v
+        .path(&out)
+        .file_stem()
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
+    let out = v.run_with(&["run", "shell", &other, "-c", "true"], None, &env);
+    assert_eq!(out.code, 1);
+    assert!(out.stderr.contains("records no commit"), "{}", out.stderr);
+}
+
+/// A lab whose run RUN-20261021-000001 wrote `out.txt` beside its script from `SEED` and
+/// printed a loss, recorded with its env, output and results.tsv row, all committed.
+fn reproducible_lab() -> (Vault, String, PathBuf) {
+    let v = git_lab();
+    fill_experiments(&v.root);
+    let out = v.run(&[
+        "new",
+        "run",
+        "--experiment",
+        "EXP-20261021-000001",
+        "--kind",
+        "compute",
+    ]);
+    let page = v.path(&out);
+    let id = page.file_stem().unwrap().to_str().unwrap().to_string();
+    let dir = format!("notes/projects/PRJ-0001-toy/runs/{id}");
+    executable(
+        &v.root.join(&dir).join("run.sh"),
+        "#!/bin/sh\nout=\"${YAJNA_RUN_DIR:-$(dirname \"$0\")}\"\nmkdir -p \"$out\"\necho \"seed $SEED\" > \"$out/out.txt\"\necho '===RESULT=== {\"loss\": 0.5}'\n",
+    );
+    set_field(&page, "script", &format!("{dir}/run.sh"));
+    set_field(&page, "status", "done");
+    let ran = Command::new(v.root.join(&dir).join("run.sh"))
+        .current_dir(&v.root)
+        .env("SEED", "1")
+        .output()
+        .unwrap();
+    assert!(ran.status.success());
+    git(&v.root, &["add", "-A"]);
+    git(&v.root, &["commit", "-q", "-m", "code"]);
+    let out = v.run_with(
+        &[
+            "run",
+            "record",
+            &id,
+            "--env",
+            "SEED",
+            "--outputs",
+            v.root.join(&dir).join("out.txt").to_str().unwrap(),
+        ],
+        None,
+        &[("SEED", "1")],
+    );
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let tsv = v
+        .root
+        .join("notes/projects/PRJ-0001-toy/experiments/EXP-20261021-000001/results.tsv");
+    fs::create_dir_all(tsv.parent().unwrap()).unwrap();
+    fs::write(
+        &tsv,
+        format!("run\tfinished\tloss\r\n{id}\t2026-10-21T00:00+00:00\t0.5\r\n"),
+    )
+    .unwrap();
+    let exp = first_md(&v.root.join("notes/projects/PRJ-0001-toy/experiments"));
+    let text = v.read(&exp);
+    fs::write(
+        &exp,
+        text.replace("compute run, not yet described", "seed 1, loss 0.5"),
+    )
+    .unwrap();
+    git(&v.root, &["add", "-A"]);
+    git(&v.root, &["commit", "-q", "-m", "run"]);
+    assert_eq!(
+        v.run(&["validate"]).code,
+        0,
+        "{}",
+        v.run(&["validate"]).stdout
+    );
+    (v, id, tsv)
+}
+
+#[cfg(unix)]
+#[test]
+fn run_reproduce_compares_outputs_and_metrics_and_records_a_verdict() {
+    let (v, id, tsv) = reproducible_lab();
+    let cache = empty();
+    let env = [("YAJNA_CACHE", cache.root.to_str().unwrap())];
+    let out = v.run_with(&["run", "reproduce", &id], None, &env);
+    assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
+    assert!(out.stdout.contains(": reproduced"), "{}", out.stdout);
+    let page = v.path(&out);
+    let text = v.read(&page);
+    let new = page.file_stem().unwrap().to_str().unwrap().to_string();
+    for want in [
+        format!("reproduces: {id}\n"),
+        "verdict: reproduced\n".to_string(),
+        "env:\n  SEED: '1'\n".to_string(),
+        format!("  - path: notes/projects/PRJ-0001-toy/runs/{new}/out.txt\n"),
+        format!("## Reproduction\nReproduces [[{id}]] at "),
+    ] {
+        assert!(text.contains(&want), "{want}: {text}");
+    }
+    assert!(page.with_extension("").join("stdout.log").is_file());
+    let rows = v.read(&tsv);
+    assert!(rows.contains(&format!("{new}\t")), "{rows}");
+    let exp = first_md(&v.root.join("notes/projects/PRJ-0001-toy/experiments"));
+    assert!(
+        v.read(&exp)
+            .contains(&format!("- [[{new}]] reproduces [[{id}]]: reproduced")),
+        "{}",
+        v.read(&exp)
+    );
+    let out = v.run(&["validate"]);
+    assert_eq!(out.code, 0, "{}", out.stdout);
+
+    // a metric off by a little differs exactly, and agrees within a tolerance
+    fs::write(
+        &tsv,
+        v.read(&tsv).replacen("\t0.5\r\n", "\t0.5000001\r\n", 1),
+    )
+    .unwrap();
+    let out = v.run_with(&["run", "reproduce", &id], None, &env);
+    assert_eq!(out.code, 1, "{}", out.stdout);
+    assert!(
+        out.stdout
+            .contains(": differs\n  loss: recorded 0.5000001, now 0.5"),
+        "{}",
+        out.stdout
+    );
+    let out = v.run_with(
+        &["run", "reproduce", &id, "--tolerance", "0.001"],
+        None,
+        &env,
+    );
+    assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
+
+    // another seed writes another file
+    let orig = v
+        .root
+        .join(format!("notes/projects/PRJ-0001-toy/runs/{id}.md"));
+    fs::write(&orig, v.read(&orig).replace("SEED: '1'", "SEED: '2'")).unwrap();
+    let out = v.run_with(
+        &["run", "reproduce", &id, "--tolerance", "0.001"],
+        None,
+        &env,
+    );
+    assert_eq!(out.code, 1, "{}", out.stdout);
+    assert!(out.stdout.contains("out.txt`: recorded"), "{}", out.stdout);
+
+    // outputs outside the repo are not written over unless their root is redirected
+    let text = v.read(&orig).replace(
+        "outputs:\n",
+        &format!(
+            "outputs:\n  - path: $DATA/maps/a.png\n    sha256: {}\n",
+            "0".repeat(64)
+        ),
+    );
+    fs::write(&orig, text).unwrap();
+    let out = v.run_with(&["run", "reproduce", &id], None, &env);
+    assert_eq!(out.code, 1);
+    assert!(out.stderr.contains("--out-root"), "{}", out.stderr);
+    let scratch = empty();
+    let out = v.run_with(
+        &[
+            "run",
+            "reproduce",
+            &id,
+            "--out-root",
+            &format!("DATA={}", scratch.root.display()),
+        ],
+        None,
+        &env,
+    );
+    assert_eq!(out.code, 1, "{}", out.stdout);
+    assert!(
+        out.stdout
+            .contains("$DATA/maps/a.png`: recorded 000000000000, now missing"),
+        "{}",
+        out.stdout
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn run_diff_shows_what_differs_between_two_runs() {
+    let v = git_lab();
+    fill_experiments(&v.root);
+    let result = |seed: &str, loss: &str| {
+        let out = v.run_with(
+            &[
+                "result",
+                "--experiment",
+                "EXP-20261021-000001",
+                "--env",
+                "SEED",
+            ],
+            Some(&format!("===RESULT=== {{\"loss\": {loss}}}\n")),
+            &[("SEED", seed)],
+        );
+        assert_eq!(out.code, 0, "{}", out.stderr);
+        v.path(&out)
+            .file_stem()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_string()
+    };
+    let a = result("1", "0.1");
+    fs::write(
+        v.root.join("notes/projects/PRJ-0001-toy/model.txt"),
+        "two layers\n",
+    )
+    .unwrap();
+    git(&v.root, &["add", "-A"]);
+    git(&v.root, &["commit", "-q", "-m", "model"]);
+    let b = result("2", "0.2");
+    let out = v.run(&["run", "diff", &a, &b]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    for want in [
+        "metric loss",
+        "0.1",
+        "0.2 *",
+        "env SEED",
+        "model.txt",
+        "code, ",
+    ] {
+        assert!(out.stdout.contains(want), "{want}: {}", out.stdout);
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn on_a_host_runs_the_same_command_over_ssh_in_its_checkout() {
+    let (v, id, _) = reproducible_lab();
+    let calls = empty();
+    let log = calls.root.join("ssh.log");
+    let (_bin, path) = fake_bin(&[("ssh", &format!("printf '%s\\n' \"$@\" > {}", log.display()))]);
+    let env = [("PATH", path.as_str())];
+    let out = v.run_with(
+        &["run", "shell", &id, "-c", "echo hi", "--on", "oppy"],
+        None,
+        &env,
+    );
+    assert_eq!(out.code, 1);
+    assert!(
+        out.stderr
+            .contains("oppy has no checkout in .yajna/hosts.toml"),
+        "{}",
+        out.stderr
+    );
+    fs::create_dir_all(v.root.join(".yajna")).unwrap();
+    fs::write(
+        v.root.join(".yajna/hosts.toml"),
+        "[oppy]\nroot = \"~/work/my lab\"\n",
+    )
+    .unwrap();
+    let out = v.run_with(
+        &["run", "shell", &id, "-c", "echo hi", "--on", "oppy"],
+        None,
+        &env,
+    );
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let args = v.read(&log);
+    assert!(args.starts_with("-t\noppy\n"), "{args}");
+    assert!(
+        args.contains(&format!(
+            "cd ~/'work/my lab' && {{ git fetch -q || echo 'yajna: git fetch failed' >&2; yajna run shell {id} -c 'echo hi'; }}"
+        )),
+        "{args}"
+    );
+    // alone, --on is the run's host
+    let page = v
+        .root
+        .join(format!("notes/projects/PRJ-0001-toy/runs/{id}.md"));
+    set_field(&page, "host", "oppy");
+    let out = v.run_with(
+        &["run", "reproduce", &id, "--tolerance", "0.01", "--on"],
+        None,
+        &env,
+    );
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(
+        v.read(&log)
+            .contains(&format!("yajna run reproduce {id} --tolerance 0.01;")),
+        "{}",
+        v.read(&log)
+    );
+}

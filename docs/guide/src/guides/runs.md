@@ -77,7 +77,9 @@ A good run script:
    (`nix develop ./code/<slug> -c <script>`),
 2. pins or derives every input: data paths, seeds, model and tool versions, environment
    variables,
-3. writes its outputs beside itself,
+3. writes its outputs to `$YAJNA_RUN_DIR` when yajna runs it, and beside itself otherwise
+   (the stub's `out="${YAJNA_RUN_DIR:-$(dirname "$0")}"` line), and nothing outside the
+   repository except under a root named in `env`,
 4. for metric runs, prints one `===RESULT===` line (below).
 
 What the script cannot control (hardware, network, time of day) goes under *Reproduce* on
@@ -115,6 +117,59 @@ RUN-20261022-d1a9p0 2026-10-22T15:02 0.42	3000	baseline
 ```
 
 `--desc` sorts the other way.
+
+## Running a run again
+
+A run page says how to re-create the run; yajna can do it for you.
+
+```console
+$ yajna run shell RUN-20261022-d1a9p0
+yajna: RUN-20261022-d1a9p0 at 4f1c2e9 2026-10-22 feat(toy): the second training loop
+yajna: ~/.cache/yajna/runs/…/RUN-20261022-d1a9p0 with notes/projects/PRJ-0001-yeast-heat-shock/runs/RUN-20261022-d1a9p0 copied in from HEAD
+yajna: the script notes/projects/…/runs/RUN-20261022-d1a9p0/run.sh did not exist at 4f1c2e9
+yajna: dev shell: nix develop ~/.cache/yajna/runs/…/RUN-20261022-d1a9p0/code/toy
+```
+
+`run shell` makes a git worktree at the run's `commit` (kept in the cache and reused), copies
+the run's page and directory into it from HEAD, at their current paths, because the script
+is usually committed after the code it ran, and opens the project's dev shell there with
+`YAJNA_RUN`, `YAJNA_RUN_DIR`, `YAJNA_RUN_COMMIT` and the run's `env` set. It says what does
+not line up: the script that did not exist at the commit, a project directory named
+otherwise then, another host, an `env` path missing on this machine. `-c "<command>"` runs one
+command instead of a shell; `--working-tree` copies the run's directory from your working
+tree, to try an uncommitted fix to its script.
+
+```console
+$ yajna run reproduce RUN-20261022-d1a9p0
+notes/projects/PRJ-0001-yeast-heat-shock/runs/RUN-20261103-f0a2k1.md
+RUN-20261103-f0a2k1: reproduced
+```
+
+`run reproduce` runs a compute run's script in that worktree into a new run, which
+`reproduces` the original, with its output and logs beside its page. It compares each
+recorded output's sha256 and the original's metrics in `results.tsv` (exactly, or within
+`--tolerance 0.01` relative for numbers), and records a `verdict`: `reproduced`, `differs`
+with a table of what did not agree, or `failed` when the script exits non-zero. Files written
+that the original did not list are reported. A recorded output under an `env` root, such as
+`$VPI_DATA/results/…`, would be written over, so reproduce refuses unless `--out-root
+VPI_DATA=/scratch/me` sends what is written there to a scratch directory.
+
+`yajna run diff RUN-a RUN-b` shows what differs between two runs: commit, host, `env`,
+outputs, metrics, the code between their commits, their scripts and their pages. `yajna run
+clean` removes the worktrees; one with changes outside the run's directory is kept unless
+`--force`.
+
+When the data is on another machine, `--on oppy` runs `run shell` or `run reproduce` there
+over `ssh -t`, in the checkout named for it in `.yajna/hosts.toml`, a file of your own that
+is not committed:
+
+```toml
+[oppy]
+root = "~/workspace/mylab"
+```
+
+`--on` alone means the run's `host`. yajna must be on the remote's PATH; the remote fetches
+first, so the commit is there.
 
 ## Runs by agents
 

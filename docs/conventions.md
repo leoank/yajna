@@ -179,11 +179,29 @@ an executable, relative to the repo root, that reproduces it: `yajna new run ...
 notes/projects/PRJ-xxxx-<slug>/runs/RUN-<id>/run.sh` records the path and writes a stub there
 when the file is missing. The script runs from the repo root inside the project's dev shell
 (`nix develop ./code/<slug> -c <script>`) at the page's `commit`, pins its inputs
-(data paths, seeds, versions), writes its outputs beside itself and, for metric runs,
-prints the `===RESULT===` line. What the script cannot control (hardware, network, time)
+(data paths, seeds, versions), writes its outputs to `$YAJNA_RUN_DIR` when yajna runs it
+and beside itself otherwise (the stub does this), and, for metric runs, prints the
+`===RESULT===` line. What the script cannot control (hardware, network, time)
 goes under `Reproduce` on the page. `yajna validate` fails when `script` points at a
 missing file. A run recorded by an agent always has a script; a human's interactive
 session may leave `script: null` and say why under `Notes`.
+
+**Running a run again.** `yajna run shell RUN-…` opens the project's dev shell (the flake
+in its code directory, else the root's) in a git worktree at the run's `commit`, kept in
+the cache, with the run's page and directory copied in from HEAD at their current paths
+(`--working-tree`: from the working tree), and `YAJNA_RUN`, `YAJNA_RUN_DIR`,
+`YAJNA_RUN_COMMIT` and the run's `env` set; `-c <command>` runs one command instead. It
+says what does not line up: a script that did not exist at the commit, a project directory
+named otherwise then, another host, an `env` path missing here. `yajna run reproduce RUN-…`
+runs a compute run's script there into a new run with `reproduces` and a `verdict`
+(`reproduced`, `differs` or `failed`), comparing the `outputs` hashes and the metrics in
+`results.tsv` (`--tolerance <rel>` for numbers); it refuses outputs under an `env` root
+unless `--out-root VAR=<scratch dir>` redirects them, so it never writes over the
+original's. `yajna run diff RUN-a RUN-b` shows what differs between two runs, and `yajna run
+clean` removes the worktrees. `--on <host>` (alone: the run's `host`) runs `shell` or
+`reproduce` over `ssh -t` in the checkout named in the machine-local `.yajna/hosts.toml`
+(`[oppy] root = "~/workspace/manthan"`), after a `git fetch`; yajna must be on the remote's
+PATH.
 
 **The author of a run is whoever executed it.** An agent records its runs, log lines and
 session pages as `agent:<name>`: `export YAJNA_AUTHOR=agent:claude` for the session, or

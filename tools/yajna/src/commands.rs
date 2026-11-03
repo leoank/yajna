@@ -414,7 +414,7 @@ pub fn create(
 
 /// Append `- [[id]] what` to the `## <section>` of the page `parent`, adding the section
 /// when it is missing.
-fn list_on(vault: &Vault, parent: &str, section: &str, id: &str, what: &str) -> Res<()> {
+pub(crate) fn list_on(vault: &Vault, parent: &str, section: &str, id: &str, what: &str) -> Res<()> {
     let page = vault.find(parent)?;
     let text = crate::vault::read_text(&page.path).map_err(|e| e.to_string())?;
     let item = format!("- [[{id}]] {}", what.trim());
@@ -758,7 +758,7 @@ fn cmd_result(
 }
 
 /// Append a row, adding columns as new keys appear, the way Python's csv module writes it.
-fn append_tsv(tsv: &Path, row: &[(String, Value)]) -> Res<()> {
+pub(crate) fn append_tsv(tsv: &Path, row: &[(String, Value)]) -> Res<()> {
     if let Some(parent) = tsv.parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }

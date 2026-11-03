@@ -69,9 +69,9 @@ open items with the rest.
 - [ ] Phase 1d verified: ank reviews a real agent branch in manthan from the browser and Neovim, the agent addresses the threads, `review merge` brings it into main
 - [x] Phase 1e designed: reproducing runs, `docs/reproduce.md` (ADR-0031)
 - [x] Phase 1e: `host`, `env`, `outputs` on runs, full SHAs, `run record`; a `done` compute run's commit must resolve; manthan's and rc2s2's runs cleaned up (0.21.0)
-- [ ] Phase 1e: `yajna run shell` and `run clean`
-- [ ] Phase 1e: `yajna run diff` and `run reproduce`
-- [ ] Phase 1e: `--on <host>`
+- [x] Phase 1e: `yajna run shell` and `run clean` (0.22.0)
+- [x] Phase 1e: `yajna run diff` and `run reproduce` (0.22.0)
+- [x] Phase 1e: `--on <host>` (0.22.0; tested against a fake ssh, not yet against oppy)
 - [x] Phase 1e: `graduate` remaps run and review commits; rc2s2 remapped with `--commits-only` (0.21.0)
 - [ ] Phase 1e verified: RUN-20261023-g78vwy reproduced from a fresh clone gives the manifest hash it recorded
 - [x] From anywhere designed: todos and log lines into any notebook on the machine, `docs/from-anywhere.md` (ADR-0032)
