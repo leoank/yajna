@@ -28,7 +28,9 @@ then runs the checked-out source through `cargo run`, so edits take effect immed
   repos, also embedded in the binary and written by `yajna skill` and `yajna init`; it
   restates `docs/conventions.md` for an agent, so change both together. `commands/` are
   the `/yajna:project` family. `claude plugin validate --strict plugins/yajna` and
-  `claude plugin validate .` must pass; bump `version` in `plugin.json` on a change.
+  `claude plugin validate .` must pass. `version` in `plugin.json` is the CLI's
+  (`tools/yajna/Cargo.toml`), bumped with it every round, so the plugin says which CLI
+  its skill describes; a test fails when they differ.
 - `tools/yajna.nvim/` is the Neovim plugin (plain Lua, no binary). Its headless tests run
   with `nvim --headless -u NONE --cmd "set rtp^=tools/yajna.nvim" -l tools/yajna.nvim/tests/run.lua`
   and as `checks.yajna-nvim`.

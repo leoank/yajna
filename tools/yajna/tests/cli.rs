@@ -6514,3 +6514,18 @@ fn on_a_host_without_the_checkout_it_is_cloned_from_origin() {
     assert_eq!(out.code, 0, "{}", out.stderr);
     assert!(!out.stderr.contains("cloning"), "{}", out.stderr);
 }
+
+#[test]
+fn the_plugin_carries_the_cli_version() {
+    // one skill, shipped in the binary and in the plugin: their versions say which CLI it
+    // describes, so they move together
+    let manifest = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../plugins/yajna/.claude-plugin/plugin.json");
+    let plugin: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&manifest).unwrap()).unwrap();
+    assert_eq!(
+        plugin["version"],
+        env!("CARGO_PKG_VERSION"),
+        "plugins/yajna/.claude-plugin/plugin.json carries the CLI's version"
+    );
+}
