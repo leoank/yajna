@@ -108,6 +108,22 @@ yajna --help
 Run `yajna` inside a notebook with no arguments for an interactive menu. Outside one it
 says it cannot find `yajna.toml`; the [Quickstart](quickstart.md) makes one.
 
+## Shell completion
+
+yajna completes its subcommands and flags, and the IDs an argument takes from the notebook
+you are in: `yajna run shell RUN-<Tab>` lists the runs, each with what its experiment says
+about it; `--project`, `--experiment`, `yajna show` and the review commands do the same for
+theirs. Load it at shell startup, so it always matches the yajna on your PATH:
+
+```sh
+# zsh, in ~/.zshrc (with compinit loaded)
+source <(COMPLETE=zsh yajna)
+# bash, in ~/.bashrc
+source <(COMPLETE=bash yajna)
+# fish, in ~/.config/fish/config.fish
+COMPLETE=fish yajna | source
+```
+
 ## Optional companions
 
 - **git** is how the notebook keeps its history; yajna assumes the notebook is a git

@@ -2,6 +2,7 @@ mod adopt;
 mod anywhere;
 mod cli;
 mod commands;
+mod complete;
 mod conventions;
 mod export;
 mod import;
@@ -75,6 +76,8 @@ fn run() -> Result<i32, String> {
 }
 
 fn main() {
+    // `COMPLETE=zsh yajna` prints the shell's hook; the shell then asks for candidates here
+    clap_complete::CompleteEnv::with_factory(<Cli as clap::CommandFactory>::command).complete();
     // `yajna tree | head` must not panic when the reader goes away: die quietly on EPIPE.
     #[cfg(unix)]
     unsafe {

@@ -89,6 +89,8 @@ impl Vault {
             .env_remove("EDITOR")
             .env_remove("VISUAL")
             .env_remove("YAJNA_ANSWERS")
+            // an agent's session exports its handle; the tests are the human's unless they say
+            .env_remove("YAJNA_AUTHOR")
             .env("YAJNA_CACHE", self.root.join(".cache"))
             // the user registry (ADR-0032) stays out of the real home
             .env("XDG_STATE_HOME", self.root.join(".cache/state"))
@@ -6294,4 +6296,42 @@ fn on_a_host_runs_the_same_command_over_ssh_in_its_checkout() {
         "{}",
         v.read(&log)
     );
+}
+
+#[test]
+fn ids_complete_from_the_notebook_with_their_titles() {
+    let (v, id, _) = reproducible_lab();
+    // the shell calls back with the words typed so far; the notebook is the one it is in
+    let complete = |index: &str, words: &[&str]| {
+        let out = Command::new(env!("CARGO_BIN_EXE_yajna"))
+            .current_dir(&v.root)
+            .env("COMPLETE", "zsh")
+            .env("_CLAP_IFS", "\n")
+            .env("_CLAP_COMPLETE_INDEX", index)
+            .env("XDG_STATE_HOME", v.root.join(".cache/state"))
+            .arg("--")
+            .args(words)
+            .output()
+            .unwrap();
+        String::from_utf8_lossy(&out.stdout).into_owned()
+    };
+    let runs = complete("3", &["yajna", "run", "shell", "RUN-"]);
+    assert_eq!(runs, format!("{id}:done: seed 1, loss 0.5"));
+    let projects = complete("4", &["yajna", "new", "experiment", "--project", ""]);
+    assert!(projects.starts_with("PRJ-0001:"), "{projects}");
+    let experiments = complete("2", &["yajna", "runs", "EXP"]);
+    assert!(
+        experiments.starts_with("EXP-20261021-000001:"),
+        "{experiments}"
+    );
+    let any = complete("2", &["yajna", "show", ""]);
+    for want in ["PRJ-0001:", "EXP-20261021-000001:", &format!("{id}:")] {
+        assert!(any.contains(want), "{want}: {any}");
+    }
+    // and the hook a shell sources
+    let out = Command::new(env!("CARGO_BIN_EXE_yajna"))
+        .env("COMPLETE", "zsh")
+        .output()
+        .unwrap();
+    assert!(String::from_utf8_lossy(&out.stdout).starts_with("#compdef yajna"));
 }

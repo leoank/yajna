@@ -3,6 +3,7 @@
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
+use clap_complete::ArgValueCandidates;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -37,9 +38,11 @@ pub enum Cmd {
         /// PRJ-xxxx the page belongs to: required for experiments, runs, analyses and
         /// artifacts (implied in a project repo), optional for builds and docs
         #[arg(long)]
+        #[arg(add = ArgValueCandidates::new(crate::complete::projects))]
         project: Option<String>,
         /// EXP-xxxx the run belongs to; implies --project
         #[arg(long)]
+        #[arg(add = ArgValueCandidates::new(crate::complete::experiments))]
         experiment: Option<String>,
         /// run: bench (default), compute, assembly, calibration. material: reagent (default),
         /// strain, plasmid, cell_line, stock, library, antibody, dataset, model, checkpoint,
@@ -82,9 +85,11 @@ pub enum Cmd {
         kind: Option<String>,
         /// PRJ-xxxx the page belongs to, as for `yajna new`
         #[arg(long)]
+        #[arg(add = ArgValueCandidates::new(crate::complete::projects))]
         project: Option<String>,
         /// EXP-xxxx, for a run
         #[arg(long)]
+        #[arg(add = ArgValueCandidates::new(crate::complete::experiments))]
         experiment: Option<String>,
         /// author handle (default: $YAJNA_AUTHOR, else .yajna/author, else yajna.toml)
         #[arg(long)]
@@ -122,6 +127,7 @@ pub enum Cmd {
     ResultCmd {
         /// EXP-xxxx the run belongs to
         #[arg(long)]
+        #[arg(add = ArgValueCandidates::new(crate::complete::experiments))]
         experiment: String,
         /// output file to scan (default stdin)
         file: Option<PathBuf>,
@@ -146,7 +152,8 @@ pub enum Cmd {
         #[arg(long, num_args = 1.., value_name = "PATH")]
         outputs: Vec<PathBuf>,
     },
-    /// work with compute runs: record what they ran with (docs/reproduce.md)
+    /// work with compute runs: record what they ran with, open one at its commit, compare two,
+    /// run one again (docs/reproduce.md)
     Run {
         #[command(subcommand)]
         action: RunAction,
@@ -217,6 +224,7 @@ pub enum Cmd {
     /// every page changed since the last export recorded in notes/exports.tsv
     Export {
         /// export these IDs only
+        #[arg(add = ArgValueCandidates::new(crate::complete::any))]
         ids: Vec<String>,
         /// export every page
         #[arg(long)]
@@ -247,6 +255,7 @@ pub enum Cmd {
         #[command(subcommand)]
         action: Option<SyncAction>,
         /// only these IDs
+        #[arg(add = ArgValueCandidates::new(crate::complete::any))]
         ids: Vec<String>,
         /// say what would happen, offline
         #[arg(long)]
@@ -270,6 +279,7 @@ pub enum Cmd {
     /// reference (resolves a branch collision)
     Renumber {
         /// the ID to replace, e.g. PRJ-0004
+        #[arg(add = ArgValueCandidates::new(crate::complete::any))]
         old: String,
         /// the new ID (default: the next free one from the counter)
         new: Option<String>,
@@ -277,6 +287,7 @@ pub enum Cmd {
     /// start a branch <project-slug>/<topic> in its own git worktree with its own agent author
     Worktree {
         /// PRJ-xxxx the work belongs to
+        #[arg(add = ArgValueCandidates::new(crate::complete::projects))]
         project: String,
         /// what the branch is for, a few words
         topic: String,
@@ -302,6 +313,7 @@ pub enum Cmd {
     /// review covers)
     Approve {
         #[arg(required = true)]
+        #[arg(add = ArgValueCandidates::new(crate::complete::any))]
         ids: Vec<String>,
         #[arg(long)]
         author: Option<String>,
@@ -316,21 +328,25 @@ pub enum Cmd {
     /// one entity: frontmatter, links out, links in, log mentions
     Show {
         /// any page's ID
+        #[arg(add = ArgValueCandidates::new(crate::complete::any))]
         id: String,
     },
     /// everything that happened to an entity, in date order: log mentions, pages that link it, runs
     Timeline {
         /// any page's ID, such as a material's
+        #[arg(add = ArgValueCandidates::new(crate::complete::any))]
         id: String,
     },
     /// a project's experiments by theme with status, outcome, runs and influence
     Tree {
         /// PRJ-xxxx; omitted in a project repo
+        #[arg(add = ArgValueCandidates::new(crate::complete::projects))]
         project: Option<String>,
     },
     /// an experiment's runs with their metrics from results.tsv
     Runs {
         /// EXP-xxxx
+        #[arg(add = ArgValueCandidates::new(crate::complete::experiments))]
         experiment: String,
         /// metric to sort by (ascending; --desc for descending)
         #[arg(long)]
@@ -382,6 +398,7 @@ pub enum Cmd {
     /// move a code-bearing project into its own repo, notebook included (ADR-0018)
     Graduate {
         /// PRJ-xxxx of the project
+        #[arg(add = ArgValueCandidates::new(crate::complete::projects))]
         project: String,
         /// where the new repo will live, e.g. github:leoank/rc2s2
         #[arg(long, required_unless_present = "commits_only")]
@@ -412,6 +429,7 @@ pub enum SyncAction {
     /// changes, three-way merged with the repo; conflicts are left as markers to resolve
     Pull {
         /// only these IDs
+        #[arg(add = ArgValueCandidates::new(crate::complete::any))]
         ids: Vec<String>,
     },
 }
@@ -426,6 +444,7 @@ pub enum ImportSource {
         paths: Vec<PathBuf>,
         /// PRJ-xxxx the imported notebook entries belong to
         #[arg(long)]
+        #[arg(add = ArgValueCandidates::new(crate::complete::projects))]
         project: Option<String>,
         /// material kind for GenBank records
         #[arg(long, default_value = "plasmid")]
@@ -445,6 +464,7 @@ pub enum PhaseAction {
     /// base of a review of the phase
     Start {
         /// PRJ-xxxx
+        #[arg(add = ArgValueCandidates::new(crate::complete::projects))]
         project: String,
         /// words from the item's text
         item: Vec<String>,
@@ -457,6 +477,7 @@ pub enum RunAction {
     /// machine as `host` (when the page has none), `env` and `outputs`
     Record {
         /// RUN-…
+        #[arg(add = ArgValueCandidates::new(crate::complete::runs))]
         run: String,
         /// the commit it ran at (default HEAD when the page has none), or `unknown`
         #[arg(long)]
@@ -475,6 +496,7 @@ pub enum RunAction {
     /// YAJNA_RUN_COMMIT and the run's env
     Shell {
         /// RUN-…
+        #[arg(add = ArgValueCandidates::new(crate::complete::runs))]
         run: String,
         /// run this instead of an interactive shell
         #[arg(short = 'c', long = "command")]
@@ -492,6 +514,7 @@ pub enum RunAction {
     /// kept unless --force
     Clean {
         /// RUN-… (default: every run worktree of this notebook)
+        #[arg(add = ArgValueCandidates::new(crate::complete::runs))]
         run: Option<String>,
         #[arg(long)]
         force: bool,
@@ -500,14 +523,17 @@ pub enum RunAction {
     /// their commits, their scripts and pages
     Diff {
         /// RUN-…
+        #[arg(add = ArgValueCandidates::new(crate::complete::runs))]
         a: String,
         /// RUN-…
+        #[arg(add = ArgValueCandidates::new(crate::complete::runs))]
         b: String,
     },
     /// run a compute run's script again at its commit into a new run that `reproduces` it,
     /// and compare the outputs' hashes and the metrics: verdict reproduced, differs or failed
     Reproduce {
         /// RUN-…
+        #[arg(add = ArgValueCandidates::new(crate::complete::runs))]
         run: String,
         /// relative difference allowed between numeric metrics (default: exact)
         #[arg(long)]
@@ -530,6 +556,7 @@ pub enum ReviewAction {
     /// project's phase (PRJ-xxxx --phase "<item>")
     Open {
         /// a branch, A..B, or an ID
+        #[arg(add = ArgValueCandidates::new(crate::complete::any))]
         target: String,
         /// the branch a branch review is against
         #[arg(long, default_value = "main")]
@@ -545,9 +572,11 @@ pub enum ReviewAction {
         title: Option<String>,
         /// PRJ-xxxx the review belongs to (default: the page's, or the branch's <slug>/)
         #[arg(long)]
+        #[arg(add = ArgValueCandidates::new(crate::complete::projects))]
         project: Option<String>,
         /// the pages the review is about: experiments, runs, a project (its phase)
         #[arg(long, num_args = 1..)]
+        #[arg(add = ArgValueCandidates::new(crate::complete::any))]
         about: Vec<String>,
         /// author handle (default: $YAJNA_AUTHOR, else .yajna/author, else yajna.toml)
         #[arg(long)]
@@ -555,8 +584,10 @@ pub enum ReviewAction {
     },
     /// add pages to what a review is about
     About {
+        #[arg(add = ArgValueCandidates::new(crate::complete::reviews))]
         review: String,
         #[arg(required = true)]
+        #[arg(add = ArgValueCandidates::new(crate::complete::any))]
         ids: Vec<String>,
     },
     /// the reviews in this checkout and the repo's other worktrees
@@ -570,6 +601,7 @@ pub enum ReviewAction {
     },
     /// move a review's head to where its target is now and re-anchor its threads
     Update {
+        #[arg(add = ArgValueCandidates::new(crate::complete::reviews))]
         review: String,
         /// a commit range's new head: a commit after its current one
         #[arg(long, value_name = "COMMIT")]
@@ -577,6 +609,7 @@ pub enum ReviewAction {
     },
     /// a review's threads, or with --diff the changes under review
     Show {
+        #[arg(add = ArgValueCandidates::new(crate::complete::reviews))]
         review: String,
         #[arg(long)]
         diff: bool,
@@ -591,6 +624,7 @@ pub enum ReviewAction {
     /// start a thread: on lines (--at path:from-to), a heading (--at path#Heading), or the
     /// whole review
     Comment {
+        #[arg(add = ArgValueCandidates::new(crate::complete::reviews))]
         review: String,
         /// <path>:<from>[-<to>] or <path>#<heading>, at the review's head; omit for a general thread
         #[arg(long)]
@@ -604,6 +638,7 @@ pub enum ReviewAction {
     },
     /// answer in a thread
     Reply {
+        #[arg(add = ArgValueCandidates::new(crate::complete::reviews))]
         review: String,
         /// T<n>
         thread: String,
@@ -613,6 +648,7 @@ pub enum ReviewAction {
     },
     /// mark a thread addressed by a commit (on the branch, for a branch review)
     Address {
+        #[arg(add = ArgValueCandidates::new(crate::complete::reviews))]
         review: String,
         thread: String,
         /// the commit that addresses it (default HEAD)
@@ -625,6 +661,7 @@ pub enum ReviewAction {
     },
     /// resolve a thread; humans only
     Resolve {
+        #[arg(add = ArgValueCandidates::new(crate::complete::reviews))]
         review: String,
         thread: String,
         text: Vec<String>,
@@ -633,6 +670,7 @@ pub enum ReviewAction {
     },
     /// reopen an addressed or resolved thread
     Reopen {
+        #[arg(add = ArgValueCandidates::new(crate::complete::reviews))]
         review: String,
         thread: String,
         text: Vec<String>,
@@ -642,6 +680,7 @@ pub enum ReviewAction {
     /// approve a review once no thread is open or addressed (a human only); for a page
     /// target, also clears `review: pending` on the page
     Approve {
+        #[arg(add = ArgValueCandidates::new(crate::complete::reviews))]
         review: String,
         text: Vec<String>,
         #[arg(long)]
@@ -649,6 +688,7 @@ pub enum ReviewAction {
     },
     /// ask for changes before the review can be approved
     RequestChanges {
+        #[arg(add = ArgValueCandidates::new(crate::complete::reviews))]
         review: String,
         text: Vec<String>,
         #[arg(long)]
@@ -657,6 +697,7 @@ pub enum ReviewAction {
     /// merge an approved branch review into the branch checked out here, with --no-ff,
     /// after validating the branch against it (a human only)
     Merge {
+        #[arg(add = ArgValueCandidates::new(crate::complete::reviews))]
         review: String,
         /// merge although threads are open or the review is not approved; the page says so
         #[arg(long)]
