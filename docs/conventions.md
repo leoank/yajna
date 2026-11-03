@@ -200,10 +200,11 @@ runs a compute run's script there into a new run with `reproduces` and a `verdic
 writes: `run record --outputs` first), and outputs under an `env` root
 unless `--out-root VAR=<scratch dir>` redirects them, so it never writes over the
 original's. `yajna run diff RUN-a RUN-b` shows what differs between two runs, and `yajna run
-clean` removes the worktrees. `--on <host>` (alone: the run's `host`) runs `shell` or
-`reproduce` over `ssh -t` in the checkout named in the machine-local `.yajna/hosts.toml`
-(`[oppy] root = "~/workspace/manthan"`), after a `git fetch`; yajna must be on the remote's
-PATH.
+clean` removes the worktrees. `--on <host>` (alone: the run's `host`) does `shell`,
+`reproduce` or `clean` on another machine, driven from here over ssh (ADR-0033): the
+worktree is made in the checkout named in the machine-local `.yajna/hosts.toml` (`[oppy]
+root = "~/workspace/manthan"`) after a `git fetch`, and a reproduction's page, logs and
+outputs come back here. That machine needs git, tar and Nix, not yajna.
 
 **The author of a run is whoever executed it.** An agent records its runs, log lines and
 session pages as `agent:<name>`: `export YAJNA_AUTHOR=agent:claude` for the session, or

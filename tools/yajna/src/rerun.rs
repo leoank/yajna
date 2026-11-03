@@ -2,7 +2,9 @@
 //! shell` opens the project's dev shell in a worktree at the run's commit with the run's
 //! directory copied in from now, `run clean` removes those worktrees, `run diff` says what
 //! differs between two runs, `run reproduce` runs the script there into a new run and
-//! compares, and `--on <host>` does it on another machine over ssh.
+//! compares, and `--on <host>` does it on another machine: the worktree is made there over
+//! ssh and the run's page is written here, so that machine needs git, tar and Nix, not yajna
+//! (ADR-0033).
 
 use std::collections::hash_map::DefaultHasher;
 use std::collections::{BTreeMap, BTreeSet};
@@ -22,16 +24,587 @@ use crate::reproduce::{host, put_fields};
 use crate::review::rev;
 use crate::vault::{iso_minutes, rel, Page, Res, Vault};
 
-/// The worktree of one run, ready to run something in.
+/// Another machine to run on (section 9, as amended by ADR-0033): reached over ssh, with a
+/// checkout of this repository at `root`. It needs git, tar and Nix; yajna stays here.
+struct Remote {
+    host: String,
+    /// the notebook's root there, as written in `.yajna/hosts.toml`
+    root: String,
+    /// `$HOME/.cache/yajna/runs/<hash>`, where its run worktrees live there
+    trees: String,
+}
+
+/// The worktree of one run, here or on a remote, ready to run something in.
 struct Tree {
-    /// the notebook's root inside the worktree: the cwd of everything run there
-    root: PathBuf,
-    /// the run's directory inside the worktree
-    run_dir: PathBuf,
+    remote: Option<Remote>,
+    /// the worktree's top level (a path on the remote when there is one)
+    wt: PathBuf,
+    /// the notebook's path inside the repository: `""` or `sub/dir/`
+    prefix: String,
+    /// the run's directory, relative to the top level, ending in `/`
+    dir_rel: String,
     commit: String,
-    flake: Option<PathBuf>,
+    /// the flake's directory, relative to the top level (`.` for the top level)
+    flake: Option<String>,
     env: Vec<(String, String)>,
     banner: Vec<String>,
+}
+
+impl Tree {
+    /// The notebook's root in the worktree: where everything runs.
+    fn root(&self) -> PathBuf {
+        if self.prefix.is_empty() {
+            self.wt.clone()
+        } else {
+            self.wt.join(self.prefix.trim_end_matches('/'))
+        }
+    }
+
+    fn run_dir(&self) -> PathBuf {
+        self.wt.join(self.dir_rel.trim_end_matches('/'))
+    }
+
+    /// `argv` at the notebook's root in the worktree, in the flake's dev shell when there is
+    /// one, with `env` exported: here, or over ssh (`tty` for an interactive shell).
+    fn command(&self, argv: &[String], env: &[(String, String)], tty: bool) -> Res<Command> {
+        let flake = self.flake.as_ref().map(|f| self.wt.join(f));
+        let Some(remote) = &self.remote else {
+            let mut cmd = match &flake {
+                Some(f) => {
+                    let mut c = Command::new("nix");
+                    c.arg("develop").arg(f).arg("-c").args(argv);
+                    c
+                }
+                None => {
+                    let mut c = Command::new(&argv[0]);
+                    c.args(&argv[1..]);
+                    c
+                }
+            };
+            cmd.current_dir(self.root())
+                .envs(env.iter().map(|(k, v)| (k.as_str(), v.as_str())));
+            return Ok(cmd);
+        };
+        let mut words = vec![
+            "cd".to_string(),
+            q(&self.root().to_string_lossy())?,
+            "&&".into(),
+            "exec".into(),
+            "env".into(),
+        ];
+        for (k, v) in env {
+            words.push(q(&format!("{k}={v}"))?);
+        }
+        if let Some(f) = &flake {
+            words.extend([
+                "nix".into(),
+                "develop".into(),
+                q(&f.to_string_lossy())?,
+                "-c".into(),
+            ]);
+        }
+        for a in argv {
+            words.push(q(a)?);
+        }
+        let mut cmd = Command::new("ssh");
+        cmd.arg(if tty { "-t" } else { "-T" })
+            .arg(&remote.host)
+            .arg(words.join(" "));
+        Ok(cmd)
+    }
+
+    /// Run a script through `sh` on the remote and return its stdout; its stderr is shown.
+    fn sh(&self, script: &str, stdin: Option<Stdio>) -> Res<String> {
+        let remote = self.remote.as_ref().expect("a remote tree");
+        remote_sh(&remote.host, script, stdin)
+    }
+}
+
+/// sh: `changes <worktree>` lists what changed in a remote worktree outside the files
+/// copied in (named in `<worktree>.overlay`), as `changes()` does here.
+const CHANGES_SH: &str = r#"changes() {
+  git -C "$1" status --porcelain --untracked-files=all | cut -c4- | { if [ -s "$1.overlay" ]; then grep -v -F -f "$1.overlay"; else cat; fi; } || true
+}
+"#;
+
+/// `s` quoted for sh.
+fn q(s: &str) -> Res<String> {
+    shlex::try_quote(s)
+        .map(|c| c.into_owned())
+        .map_err(|e| format!("{s:?}: {e}"))
+}
+
+/// A path from `.yajna/hosts.toml` quoted for sh, `~/` left for the remote to expand.
+fn q_home(path: &str) -> Res<String> {
+    match path.strip_prefix("~/") {
+        Some(rest) => Ok(format!("~/{}", q(rest)?)),
+        None => q(path),
+    }
+}
+
+fn remote_sh(host: &str, script: &str, stdin: Option<Stdio>) -> Res<String> {
+    let out = Command::new("ssh")
+        .args(["-T", host, script])
+        .stdin(stdin.unwrap_or(Stdio::null()))
+        .stderr(Stdio::inherit())
+        .output()
+        .map_err(|e| format!("ssh {host}: {e}"))?;
+    if !out.status.success() {
+        return Err(format!(
+            "on {host}: the command failed (exit {}); see above",
+            out.status.code().unwrap_or(-1)
+        ));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
+/// The machine `--on` names; alone, the run's `host`.
+fn host_of(page: &Page, on: &str) -> Res<String> {
+    if !on.is_empty() {
+        return Ok(on.to_string());
+    }
+    page.field("host").map(str::to_string).ok_or_else(|| {
+        format!(
+            "{} records no host; name one: --on <host>",
+            page.id().unwrap_or("")
+        )
+    })
+}
+
+/// A machine and its checkout of this notebook, from `.yajna/hosts.toml`.
+fn remote_of(vault: &Vault, host: &str) -> Res<Remote> {
+    let host = host.to_string();
+    let file = vault.root.join(".yajna").join("hosts.toml");
+    let hosts: toml::Table = fs::read_to_string(&file)
+        .ok()
+        .and_then(|t| t.parse().ok())
+        .unwrap_or_default();
+    let root = hosts
+        .get(&host)
+        .and_then(|h| h.get("root"))
+        .and_then(|r| r.as_str())
+        .ok_or_else(|| {
+            format!(
+                "{host} has no checkout in {}: add [{host}] root = \"<path to this notebook there>\"",
+                rel(&file, &vault.root)
+            )
+        })?
+        .to_string();
+    let mut h = DefaultHasher::new();
+    (&host, &root).hash(&mut h);
+    let trees = format!("\"$HOME\"/.cache/yajna/runs/{:016x}", h.finish());
+    Ok(Remote { host, root, trees })
+}
+
+/// Section 3: a worktree at the run's commit, with the run's page and directory copied in
+/// from HEAD (or the working tree) at their current paths, and section 5's flake and env;
+/// here, or on `remote`.
+fn open_tree(vault: &Vault, page: &Page, working_tree: bool, remote: Option<Remote>) -> Res<Tree> {
+    let id = page.id().unwrap_or("").to_string();
+    let commit = commit_of(vault, page)?;
+    let (top, prefix) = repo_of(vault)?;
+    let top = top.canonicalize().map_err(|e| e.to_string())?;
+    let page_rel = page
+        .path
+        .canonicalize()
+        .map_err(|e| e.to_string())?
+        .strip_prefix(&top)
+        .map_err(|_| format!("{id}: the page is outside the repository"))?
+        .to_string_lossy()
+        .replace('\\', "/");
+    let dir_rel = format!("{}/", page_rel.trim_end_matches(".md"));
+    let mut banner = Vec::new();
+
+    // what lines up and what does not, from this repository's history
+    let project_rel = Path::new(&page_rel)
+        .parent()
+        .and_then(Path::parent)
+        .map(|p| p.to_string_lossy().replace('\\', "/"))
+        .unwrap_or_default();
+    if !project_rel.is_empty() && !exists_at(&top, &commit, &project_rel) {
+        banner.push(format!(
+            "{project_rel}/ is not at {} (renamed or added since); the run's directory is copied in at its current path",
+            &commit[..7]
+        ));
+    }
+    if let Some(s) = page.field("script") {
+        if !exists_at(&top, &commit, &format!("{prefix}{s}")) {
+            banner.push(format!("the script {s} did not exist at {}", &commit[..7]));
+        }
+    }
+
+    // the files copied in: path from the top level, bytes, executable
+    let mut overlay: Vec<(String, Vec<u8>, bool)> = Vec::new();
+    if working_tree {
+        let mut files = vec![page.path.clone()];
+        files_under(&top.join(&dir_rel), &mut files);
+        for f in files {
+            let r = f
+                .strip_prefix(&top)
+                .unwrap_or(&f)
+                .to_string_lossy()
+                .replace('\\', "/");
+            let bytes = fs::read(&f).map_err(|e| e.to_string())?;
+            overlay.push((r, bytes, is_executable(&f)));
+        }
+    } else {
+        let listing = git(
+            &top,
+            &[
+                "ls-tree",
+                "-r",
+                "HEAD",
+                "--",
+                &page_rel,
+                dir_rel.trim_end_matches('/'),
+            ],
+        )?;
+        for line in listing.lines() {
+            let Some((meta, path)) = line.split_once('\t') else {
+                continue;
+            };
+            let bytes = blob(&top, &format!("HEAD:{path}"))?;
+            overlay.push((path.to_string(), bytes, meta.starts_with("100755")));
+        }
+        if overlay.is_empty() {
+            banner.push(format!(
+                "{id} is not committed, so nothing was copied in; --working-tree copies it from the working tree"
+            ));
+        }
+    }
+
+    // the flake at the commit: the project's code directory, else the notebook's root, else
+    // the repository's
+    let mut candidates = Vec::new();
+    if !vault.is_project() {
+        if let Some(code) = page
+            .field("project")
+            .and_then(|p| vault.find(p).ok())
+            .and_then(|p| p.field("code").map(str::to_string))
+            .filter(|c| !c.contains(':'))
+        {
+            let code = code.trim_end_matches('/').to_string();
+            candidates.push(format!("{prefix}{code}"));
+            // the name before ADR-0020 renamed projects/ to code/
+            if let Some(rest) = code.strip_prefix("code/") {
+                candidates.push(format!("{prefix}projects/{rest}"));
+            }
+        }
+    }
+    candidates.push(prefix.trim_end_matches('/').to_string());
+    candidates.push(String::new());
+    let flake = candidates
+        .into_iter()
+        .find(|d| {
+            let f = if d.is_empty() {
+                "flake.nix".to_string()
+            } else {
+                format!("{d}/flake.nix")
+            };
+            exists_at(&top, &commit, &f)
+        })
+        .map(|d| if d.is_empty() { ".".to_string() } else { d });
+
+    let env = env_of_page(page);
+    let overlay_paths = [page_rel.clone(), dir_rel.clone()];
+    let wt = match &remote {
+        None => {
+            let wt = trees_dir(vault).join(&id);
+            if wt.join(".git").exists() {
+                let at = git(&wt, &["rev-parse", "HEAD"]).unwrap_or_default();
+                let changed = changes(&wt, &overlay_paths);
+                if at != commit {
+                    if !changed.is_empty() {
+                        return Err(format!(
+                            "{}: the worktree is at {} with changes ({}), and {id} now names {}; \
+                             commit or drop them, or yajna run clean {id} --force",
+                            wt.display(),
+                            &at[..at.len().min(7)],
+                            changed.join(", "),
+                            &commit[..7]
+                        ));
+                    }
+                    git(
+                        &top,
+                        &["worktree", "remove", "--force", &wt.to_string_lossy()],
+                    )?;
+                } else if !changed.is_empty() {
+                    banner.push(format!("the worktree has changes: {}", changed.join(", ")));
+                }
+            }
+            if !wt.join(".git").exists() {
+                fs::create_dir_all(wt.parent().unwrap()).map_err(|e| e.to_string())?;
+                let _ = git(&top, &["worktree", "prune"]);
+                git(
+                    &top,
+                    &[
+                        "worktree",
+                        "add",
+                        "-q",
+                        "--detach",
+                        &wt.to_string_lossy(),
+                        &commit,
+                    ],
+                )?;
+            }
+            for (path, bytes, exec) in &overlay {
+                write_file(&wt.join(path), bytes, *exec)?;
+            }
+            fs::write(
+                trees_dir(vault).join(format!("{id}.overlay")),
+                overlay_paths.join("\n"),
+            )
+            .map_err(|e| e.to_string())?;
+            for (k, v) in &env {
+                if (v.starts_with('/') || v.starts_with("~/")) && !Path::new(v).exists() {
+                    banner.push(format!("env {k}={v}: no such path here"));
+                }
+            }
+            if let (Some(then), Some(now)) = (page.field("host"), host()) {
+                if then != now {
+                    banner.push(format!("{id} ran on {then}; this is {now}"));
+                }
+            }
+            wt
+        }
+        Some(r) => {
+            // the overlay goes over as a tar stream, staged here
+            let stage = trees_dir(vault).join(format!(".stage-{id}"));
+            let _ = fs::remove_dir_all(&stage);
+            fs::create_dir_all(&stage).map_err(|e| e.to_string())?;
+            for (path, bytes, exec) in &overlay {
+                write_file(&stage.join(path), bytes, *exec)?;
+            }
+            let mut checks = String::new();
+            for (k, v) in &env {
+                if v.starts_with('/') || v.starts_with("~/") {
+                    checks.push_str(&format!(
+                        "[ -e {p} ] || echo {msg} >&2\n",
+                        p = q_home(v)?,
+                        msg = q(&format!("yajna: env {k}={v}: no such path on {}", r.host))?
+                    ));
+                }
+            }
+            let script = format!(
+                r#"set -e
+cd {root}
+git fetch -q || echo 'yajna: git fetch failed; using what is there' >&2
+if ! git cat-file -e {commit}^{{commit}} 2>/dev/null; then
+  echo {not_there} >&2; exit 3
+fi
+wt={trees}/{id}
+{changes}if [ -e "$wt/.git" ] && [ "$(git -C "$wt" rev-parse HEAD)" != {commit} ]; then
+  if [ -n "$(changes "$wt")" ]; then
+    echo "yajna: $wt has changes at another commit; yajna run clean {id} --on {host} --force" >&2; exit 3
+  fi
+  git worktree remove --force "$wt"
+fi
+if [ ! -e "$wt/.git" ]; then
+  mkdir -p "$(dirname "$wt")"; git worktree prune; git worktree add -q --detach "$wt" {commit}
+fi
+tar -xf - -C "$wt"
+printf '%s\n' {page_q} {dir_q} > "$wt.overlay"
+mkdir -p "$wt"/{dir_q}
+{checks}cd "$wt" && pwd
+"#,
+                root = q_home(&r.root)?,
+                trees = r.trees,
+                host = q(&r.host)?,
+                changes = CHANGES_SH,
+                not_there = q(&format!(
+                    "yajna: {} is not in the checkout on {}; push it first",
+                    &commit[..7],
+                    r.host
+                ))?,
+                page_q = q(&page_rel)?,
+                dir_q = q(&dir_rel)?,
+            );
+            let tar = Command::new("tar")
+                .args(["-cf", "-", "-C"])
+                .arg(&stage)
+                .arg(".")
+                .stdout(Stdio::piped())
+                .spawn()
+                .map_err(|e| format!("tar: {e}"))?;
+            let out = remote_sh(&r.host, &script, Some(Stdio::from(tar.stdout.unwrap())));
+            let _ = fs::remove_dir_all(&stage);
+            let wt = out?
+                .lines()
+                .last()
+                .map(str::trim)
+                .filter(|l| l.starts_with('/'))
+                .map(PathBuf::from)
+                .ok_or_else(|| format!("on {}: no worktree path came back", r.host))?;
+            banner.push(format!("on {}, in the checkout at {}", r.host, r.root));
+            wt
+        }
+    };
+    if remote.is_none() {
+        fs::create_dir_all(wt.join(dir_rel.trim_end_matches('/'))).map_err(|e| e.to_string())?;
+    }
+
+    let subject = git(&top, &["log", "-1", "--format=%h %cs %s", &commit]).unwrap_or_default();
+    banner.insert(0, format!("{id} at {subject}"));
+    banner.insert(
+        1,
+        format!(
+            "{} with {} copied in from {}",
+            wt.display(),
+            dir_rel.trim_end_matches('/'),
+            if working_tree {
+                "the working tree"
+            } else {
+                "HEAD"
+            }
+        ),
+    );
+    match &flake {
+        Some(f) => banner.push(format!("dev shell: nix develop {}", wt.join(f).display())),
+        None => banner.push(format!(
+            "no flake.nix at {}: a plain shell, not the project's environment",
+            &commit[..7]
+        )),
+    }
+    Ok(Tree {
+        remote,
+        wt,
+        prefix,
+        dir_rel,
+        commit,
+        flake,
+        env,
+        banner,
+    })
+}
+
+fn is_executable(path: &Path) -> bool {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::metadata(path).is_ok_and(|m| m.permissions().mode() & 0o111 != 0)
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = path;
+        false
+    }
+}
+
+pub(crate) fn shell(
+    vault: &Vault,
+    id: &str,
+    command: Option<&str>,
+    working_tree: bool,
+    on: Option<&str>,
+) -> Res<i32> {
+    let page = run_page(vault, id)?;
+    let remote = on
+        .map(|h| remote_of(vault, &host_of(&page, h)?))
+        .transpose()?;
+    let tree = open_tree(vault, &page, working_tree, remote)?;
+    for line in &tree.banner {
+        eprintln!("yajna: {line}");
+    }
+    let argv: Vec<String> = match command {
+        Some(c) => vec!["sh".into(), "-c".into(), c.into()],
+        // the user's shell here; the login shell there
+        None if tree.remote.is_some() => {
+            vec!["sh".into(), "-c".into(), "exec \"${SHELL:-sh}\"".into()]
+        }
+        None => vec![std::env::var("SHELL").unwrap_or_else(|_| "sh".to_string())],
+    };
+    let mut env = tree.env.clone();
+    env.extend([
+        ("YAJNA_RUN".to_string(), page.id().unwrap_or(id).to_string()),
+        (
+            "YAJNA_RUN_DIR".to_string(),
+            tree.run_dir().to_string_lossy().into_owned(),
+        ),
+        ("YAJNA_RUN_COMMIT".to_string(), tree.commit.clone()),
+    ]);
+    let status = tree
+        .command(&argv, &env, command.is_none())?
+        .status()
+        .map_err(|e| format!("{}: {e}", argv[0]))?;
+    Ok(status.code().unwrap_or(1))
+}
+
+pub(crate) fn clean(vault: &Vault, id: Option<&str>, force: bool, on: Option<&str>) -> Res<i32> {
+    if let Some(on) = on {
+        if on.is_empty() {
+            return Err("run clean --on needs the host's name".to_string());
+        }
+        let r = remote_of(vault, on)?;
+        let pattern = match id {
+            Some(i) => q(&vault.canonical_id(i))?,
+            None => "RUN-*".to_string(),
+        };
+        let script = format!(
+            r#"cd {root} || exit 3
+{changes}kept=0
+for wt in {trees}/{pattern}; do
+  [ -e "$wt/.git" ] || continue
+  if [ -z {force} ] && [ -n "$(changes "$wt")" ]; then
+    echo "yajna: kept $wt, with changes; --force removes it" >&2; kept=1; continue
+  fi
+  git worktree remove --force "$wt" && rm -f "$wt.overlay" && echo "removed $wt on {host}"
+done
+exit $kept
+"#,
+            root = q_home(&r.root)?,
+            trees = r.trees,
+            force = if force { "yes" } else { "''" },
+            changes = CHANGES_SH,
+            host = r.host,
+        );
+        print!("{}", remote_sh(&r.host, &script, None)?);
+        return Ok(0);
+    }
+    let dir = trees_dir(vault);
+    let ids: Vec<String> = match id {
+        Some(i) => vec![vault.canonical_id(i)],
+        None => fs::read_dir(&dir)
+            .map(|rd| {
+                rd.flatten()
+                    .filter(|e| e.path().join(".git").exists())
+                    .map(|e| e.file_name().to_string_lossy().to_string())
+                    .collect()
+            })
+            .unwrap_or_default(),
+    };
+    let (top, _) = repo_of(vault)?;
+    let mut kept = Vec::new();
+    for id in &ids {
+        let wt = dir.join(id);
+        if !wt.join(".git").exists() {
+            return Err(format!("{id} has no worktree"));
+        }
+        let sidecar = dir.join(format!("{id}.overlay"));
+        let overlay: Vec<String> = fs::read_to_string(&sidecar)
+            .unwrap_or_default()
+            .lines()
+            .map(str::to_string)
+            .collect();
+        let changed = changes(&wt, &overlay);
+        if !changed.is_empty() && !force {
+            kept.push(format!("{id} ({})", changed.join(", ")));
+            continue;
+        }
+        git(
+            &top,
+            &["worktree", "remove", "--force", &wt.to_string_lossy()],
+        )?;
+        let _ = fs::remove_file(sidecar);
+        println!("removed {}", wt.display());
+    }
+    if kept.is_empty() {
+        Ok(0)
+    } else {
+        Err(format!(
+            "kept, with changes outside the run's directory: {}; --force removes them",
+            kept.join("; ")
+        ))
+    }
 }
 
 /// The repository's top level and the notebook's path inside it (`""` or `sub/dir/`).
@@ -164,300 +737,6 @@ fn files_under(dir: &Path, out: &mut Vec<PathBuf>) {
         } else {
             out.push(p);
         }
-    }
-}
-
-/// Section 3: a worktree at the run's commit, with the run's page and directory copied in
-/// from HEAD (or the working tree) at their current paths, and section 5's flake and env.
-fn open_tree(vault: &Vault, page: &Page, working_tree: bool) -> Res<Tree> {
-    let id = page.id().unwrap_or("").to_string();
-    let commit = commit_of(vault, page)?;
-    let (top, prefix) = repo_of(vault)?;
-    let top = top.canonicalize().map_err(|e| e.to_string())?;
-    let page_rel = page
-        .path
-        .canonicalize()
-        .map_err(|e| e.to_string())?
-        .strip_prefix(&top)
-        .map_err(|_| format!("{id}: the page is outside the repository"))?
-        .to_string_lossy()
-        .replace('\\', "/");
-    let dir_rel = format!("{}/", page_rel.trim_end_matches(".md"));
-    let overlay = vec![page_rel.clone(), dir_rel.clone()];
-    let mut banner = Vec::new();
-
-    // the worktree, made or reused
-    let wt = trees_dir(vault).join(&id);
-    if wt.join(".git").exists() {
-        let at = git(&wt, &["rev-parse", "HEAD"]).unwrap_or_default();
-        let changed = changes(&wt, &overlay);
-        if at != commit {
-            if !changed.is_empty() {
-                return Err(format!(
-                    "{}: the worktree is at {} with changes ({}), and {id} now names {}; \
-                     commit or drop them, or yajna run clean {id} --force",
-                    wt.display(),
-                    &at[..at.len().min(7)],
-                    changed.join(", "),
-                    &commit[..7]
-                ));
-            }
-            git(
-                &top,
-                &["worktree", "remove", "--force", &wt.to_string_lossy()],
-            )?;
-        } else if !changed.is_empty() {
-            banner.push(format!("the worktree has changes: {}", changed.join(", ")));
-        }
-    }
-    if !wt.join(".git").exists() {
-        fs::create_dir_all(wt.parent().unwrap()).map_err(|e| e.to_string())?;
-        let _ = git(&top, &["worktree", "prune"]);
-        git(
-            &top,
-            &[
-                "worktree",
-                "add",
-                "-q",
-                "--detach",
-                &wt.to_string_lossy(),
-                &commit,
-            ],
-        )?;
-    }
-
-    // what lines up and what does not
-    let project_rel = Path::new(&page_rel)
-        .parent()
-        .and_then(Path::parent)
-        .map(|p| p.to_string_lossy().replace('\\', "/"))
-        .unwrap_or_default();
-    if !project_rel.is_empty() && !exists_at(&top, &commit, &project_rel) {
-        banner.push(format!(
-            "{project_rel}/ is not at {} (renamed or added since); the run's directory is copied in at its current path",
-            &commit[..7]
-        ));
-    }
-    let script = page.field("script").map(str::to_string);
-    if let Some(s) = &script {
-        if !exists_at(&top, &commit, &format!("{prefix}{s}")) {
-            banner.push(format!("the script {s} did not exist at {}", &commit[..7]));
-        }
-    }
-
-    // the overlay
-    if working_tree {
-        let mut files = vec![page.path.clone()];
-        files_under(&top.join(&dir_rel), &mut files);
-        for f in files {
-            let r = f.strip_prefix(&top).unwrap_or(&f);
-            let bytes = fs::read(&f).map_err(|e| e.to_string())?;
-            write_file(&wt.join(r), &bytes, is_executable(&f))?;
-        }
-    } else {
-        let listing = git(
-            &top,
-            &[
-                "ls-tree",
-                "-r",
-                "HEAD",
-                "--",
-                &page_rel,
-                dir_rel.trim_end_matches('/'),
-            ],
-        )?;
-        let mut copied = 0;
-        for line in listing.lines() {
-            let Some((meta, path)) = line.split_once('\t') else {
-                continue;
-            };
-            let bytes = blob(&top, &format!("HEAD:{path}"))?;
-            write_file(&wt.join(path), &bytes, meta.starts_with("100755"))?;
-            copied += 1;
-        }
-        if copied == 0 {
-            banner.push(format!(
-                "{id} is not committed, so nothing was copied in; --working-tree copies it from the working tree"
-            ));
-        }
-    }
-    fs::write(
-        trees_dir(vault).join(format!("{id}.overlay")),
-        overlay.join("\n"),
-    )
-    .map_err(|e| e.to_string())?;
-
-    let root = if prefix.is_empty() {
-        wt.clone()
-    } else {
-        wt.join(prefix.trim_end_matches('/'))
-    };
-    let run_dir = wt.join(dir_rel.trim_end_matches('/'));
-    fs::create_dir_all(&run_dir).map_err(|e| e.to_string())?;
-    let subject = git(&top, &["log", "-1", "--format=%h %cs %s", &commit]).unwrap_or_default();
-    banner.insert(0, format!("{id} at {subject}"));
-    banner.insert(
-        1,
-        format!(
-            "{} with {} copied in from {}",
-            wt.display(),
-            dir_rel.trim_end_matches('/'),
-            if working_tree {
-                "the working tree"
-            } else {
-                "HEAD"
-            }
-        ),
-    );
-
-    // the flake: the project's code directory, else the notebook's root, else the repo's
-    let mut candidates = Vec::new();
-    if !vault.is_project() {
-        if let Some(code) = page
-            .field("project")
-            .and_then(|p| vault.find(p).ok())
-            .and_then(|p| p.field("code").map(str::to_string))
-            .filter(|c| !c.contains(':'))
-        {
-            let code = code.trim_end_matches('/').to_string();
-            candidates.push(root.join(&code));
-            // the name before ADR-0020 renamed projects/ to code/
-            if let Some(rest) = code.strip_prefix("code/") {
-                candidates.push(root.join("projects").join(rest));
-            }
-        }
-    }
-    candidates.push(root.clone());
-    candidates.push(wt.clone());
-    let flake = candidates
-        .into_iter()
-        .find(|d| d.join("flake.nix").is_file());
-    match &flake {
-        Some(f) => banner.push(format!("dev shell: nix develop {}", f.display())),
-        None => banner.push(format!(
-            "no flake.nix at {}: a plain shell, not the project's environment",
-            &commit[..7]
-        )),
-    }
-
-    let env = env_of_page(page);
-    for (k, v) in &env {
-        if (v.starts_with('/') || v.starts_with("~/")) && !Path::new(v).exists() {
-            banner.push(format!("env {k}={v}: no such path here"));
-        }
-    }
-    if let (Some(then), Some(now)) = (page.field("host"), host()) {
-        if then != now {
-            banner.push(format!("{id} ran on {then}; this is {now}"));
-        }
-    }
-    Ok(Tree {
-        root,
-        run_dir,
-        commit,
-        flake,
-        env,
-        banner,
-    })
-}
-
-fn is_executable(path: &Path) -> bool {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::metadata(path).is_ok_and(|m| m.permissions().mode() & 0o111 != 0)
-    }
-    #[cfg(not(unix))]
-    {
-        let _ = path;
-        false
-    }
-}
-
-/// `argv` run in the tree: inside `nix develop` on its flake when it has one.
-fn in_tree(tree: &Tree, argv: &[String]) -> Command {
-    let mut cmd = match &tree.flake {
-        Some(f) => {
-            let mut c = Command::new("nix");
-            c.arg("develop").arg(f).arg("-c").args(argv);
-            c
-        }
-        None => {
-            let mut c = Command::new(&argv[0]);
-            c.args(&argv[1..]);
-            c
-        }
-    };
-    cmd.current_dir(&tree.root)
-        .env("YAJNA_RUN_COMMIT", &tree.commit)
-        .envs(tree.env.iter().map(|(k, v)| (k.as_str(), v.as_str())));
-    cmd
-}
-
-fn shell(vault: &Vault, id: &str, command: Option<&str>, working_tree: bool) -> Res<i32> {
-    let page = run_page(vault, id)?;
-    let tree = open_tree(vault, &page, working_tree)?;
-    for line in &tree.banner {
-        eprintln!("yajna: {line}");
-    }
-    let sh = std::env::var("SHELL").unwrap_or_else(|_| "sh".to_string());
-    let argv: Vec<String> = match command {
-        Some(c) => vec!["sh".into(), "-c".into(), c.into()],
-        None => vec![sh],
-    };
-    let status = in_tree(&tree, &argv)
-        .env("YAJNA_RUN", page.id().unwrap_or(id))
-        .env("YAJNA_RUN_DIR", &tree.run_dir)
-        .status()
-        .map_err(|e| format!("{}: {e}", argv[0]))?;
-    Ok(status.code().unwrap_or(1))
-}
-
-pub(crate) fn clean(vault: &Vault, id: Option<&str>, force: bool) -> Res<i32> {
-    let dir = trees_dir(vault);
-    let ids: Vec<String> = match id {
-        Some(i) => vec![vault.canonical_id(i)],
-        None => fs::read_dir(&dir)
-            .map(|rd| {
-                rd.flatten()
-                    .filter(|e| e.path().join(".git").exists())
-                    .map(|e| e.file_name().to_string_lossy().to_string())
-                    .collect()
-            })
-            .unwrap_or_default(),
-    };
-    let (top, _) = repo_of(vault)?;
-    let mut kept = Vec::new();
-    for id in &ids {
-        let wt = dir.join(id);
-        if !wt.join(".git").exists() {
-            return Err(format!("{id} has no worktree"));
-        }
-        let sidecar = dir.join(format!("{id}.overlay"));
-        let overlay: Vec<String> = fs::read_to_string(&sidecar)
-            .unwrap_or_default()
-            .lines()
-            .map(str::to_string)
-            .collect();
-        let changed = changes(&wt, &overlay);
-        if !changed.is_empty() && !force {
-            kept.push(format!("{id} ({})", changed.join(", ")));
-            continue;
-        }
-        git(
-            &top,
-            &["worktree", "remove", "--force", &wt.to_string_lossy()],
-        )?;
-        let _ = fs::remove_file(sidecar);
-        println!("removed {}", wt.display());
-    }
-    if kept.is_empty() {
-        Ok(0)
-    } else {
-        Err(format!(
-            "kept, with changes outside the run's directory: {}; --force removes them",
-            kept.join("; ")
-        ))
     }
 }
 
@@ -701,7 +980,13 @@ fn cell(v: &Value) -> String {
     }
 }
 
-fn reproduce(vault: &Vault, id: &str, tolerance: Option<f64>, out_roots: &[String]) -> Res<i32> {
+pub(crate) fn reproduce(
+    vault: &Vault,
+    id: &str,
+    tolerance: Option<f64>,
+    out_roots: &[String],
+    on: Option<&str>,
+) -> Res<i32> {
     let page = run_page(vault, id)?;
     let id = page.id().unwrap_or(id).to_string();
     if page.field("kind") != Some("compute") {
@@ -717,23 +1002,39 @@ fn reproduce(vault: &Vault, id: &str, tolerance: Option<f64>, out_roots: &[Strin
         .field("experiment")
         .ok_or_else(|| format!("{id} belongs to no experiment"))?
         .to_string();
-    let mut roots: BTreeMap<String, PathBuf> = BTreeMap::new();
+    let remote = on
+        .map(|h| remote_of(vault, &host_of(&page, h)?))
+        .transpose()?;
+    // the scratch roots, on the machine that runs: made and resolved here, made there
+    let mut roots: BTreeMap<String, String> = BTreeMap::new();
     for r in out_roots {
         let (var, dir) = r
             .split_once('=')
             .ok_or_else(|| format!("--out-root {r}: expected VAR=DIR"))?;
-        fs::create_dir_all(dir).map_err(|e| format!("--out-root {r}: {e}"))?;
-        roots.insert(
-            var.to_string(),
-            Path::new(dir).canonicalize().map_err(|e| e.to_string())?,
-        );
+        let dir = if remote.is_some() {
+            if !dir.starts_with('/') {
+                return Err(format!("--out-root {r}: an absolute path on the remote"));
+            }
+            dir.to_string()
+        } else {
+            fs::create_dir_all(dir).map_err(|e| format!("--out-root {r}: {e}"))?;
+            Path::new(dir)
+                .canonicalize()
+                .map_err(|e| e.to_string())?
+                .to_string_lossy()
+                .into_owned()
+        };
+        roots.insert(var.to_string(), dir);
     }
     let outputs = outputs_of_page(&page);
     // a verdict needs something to compare, and the recorded outputs are the only way to
     // know where the script writes
     if outputs.is_empty() && metrics(vault, &page).is_empty() {
         return Err(format!(
-            "{id} records no outputs and has no row in results.tsv: a reproduction would have              nothing to compare, and nothing says where its script writes, so it could write              over the original's results outside the repo. Record what the result rests on              first: yajna run record {id} --outputs <file>… [--env <VAR>…]"
+            "{id} records no outputs and has no row in results.tsv: a reproduction would have \
+             nothing to compare, and nothing says where its script writes, so it could write \
+             over the original's results outside the repo. Record what the result rests on \
+             first: yajna run record {id} --outputs <file>… [--env <VAR>…]"
         ));
     }
     // never over what the original wrote outside the repo
@@ -758,27 +1059,27 @@ fn reproduce(vault: &Vault, id: &str, tolerance: Option<f64>, out_roots: &[Strin
         ));
     }
 
-    let tree = open_tree(vault, &page, false)?;
+    let tree = open_tree(vault, &page, false, remote)?;
     for line in &tree.banner {
         eprintln!("yajna: {line}");
     }
-    let script_in_tree = tree.root.join(&script);
-    if !script_in_tree.is_file() {
+    let script_in_tree = tree.root().join(&script);
+    if tree.remote.is_none() && !script_in_tree.is_file() {
         return Err(format!(
             "{script}: not in the worktree, so there is nothing to run"
         ));
     }
-    // the original's results copied in with its directory are not this run's
     let orig_dir = rel(&page.path, &vault.root)
         .trim_end_matches(".md")
         .replace('\\', "/");
-    for (p, _) in &outputs {
-        if let Some(rest) = p.strip_prefix(&format!("{orig_dir}/")) {
-            let _ = fs::remove_file(tree.run_dir.join(rest));
-        }
-    }
+    // the original's results copied in with its directory are not this run's
+    let stale: Vec<PathBuf> = outputs
+        .iter()
+        .filter_map(|(p, _)| p.strip_prefix(&format!("{orig_dir}/")))
+        .map(|rest| tree.run_dir().join(rest))
+        .collect();
 
-    // the new run
+    // the new run, written here
     let path = crate::commands::create(
         vault,
         "run",
@@ -797,19 +1098,28 @@ fn reproduce(vault: &Vault, id: &str, tolerance: Option<f64>, out_roots: &[Strin
         .unwrap_or_default();
     let new_dir = path.with_extension("");
     fs::create_dir_all(&new_dir).map_err(|e| e.to_string())?;
+    let new_rel = rel(&new_dir, &vault.root).replace('\\', "/");
+    // where the script writes: beside the new page here, at the same path in a remote tree
+    let out_dir = match &tree.remote {
+        None => new_dir.clone(),
+        Some(_) => tree.root().join(&new_rel),
+    };
     let mut env = tree.env.clone();
     for (k, v) in env.iter_mut() {
         if let Some(r) = roots.get(k) {
-            *v = r.to_string_lossy().to_string();
+            *v = r.clone();
         }
     }
     for (k, r) in &roots {
         if !env.iter().any(|(e, _)| e == k) {
-            env.push((k.clone(), r.to_string_lossy().to_string()));
+            env.push((k.clone(), r.clone()));
         }
     }
     let started = iso_minutes(&vault.now());
-    let this_host = host();
+    let runs_on = match &tree.remote {
+        Some(r) => Some(r.host.clone()),
+        None => host(),
+    };
     let text = crate::vault::read_text(&path).map_err(|e| e.to_string())?;
     let text = edit_frontmatter(&text, |fm| {
         set_field(fm, "status", "in_progress");
@@ -817,15 +1127,48 @@ fn reproduce(vault: &Vault, id: &str, tolerance: Option<f64>, out_roots: &[Strin
         set_field(fm, "commit", &tree.commit);
         set_field(fm, "script", &script);
         set_field(fm, "reproduces", &id);
-        put_fields(fm, this_host.as_deref(), &env, &[]);
+        put_fields(fm, runs_on.as_deref(), &env, &[]);
     });
     fs::write(&path, text).map_err(|e| e.to_string())?;
+    match &tree.remote {
+        None => {
+            for f in &stale {
+                let _ = fs::remove_file(f);
+            }
+        }
+        Some(_) => {
+            // the new run's directory there is reproduce's, so clean leaves it out of changes
+            let mut prep = format!(
+                "printf '%s\\n' {} >> {}\nmkdir -p {}",
+                q(&format!("{}{new_rel}/", tree.prefix))?,
+                q(&format!("{}.overlay", tree.wt.to_string_lossy()))?,
+                q(&out_dir.to_string_lossy())?
+            );
+            for r in roots.values() {
+                prep.push_str(&format!(" {}", q(r)?));
+            }
+            for f in &stale {
+                prep.push_str(&format!("\nrm -f {}", q(&f.to_string_lossy())?));
+            }
+            tree.sh(&prep, None)?;
+        }
+    }
     eprintln!("yajna: {new_id} reproduces {id}; running {script}");
 
-    let mut cmd = in_tree(&tree, &[script_in_tree.to_string_lossy().to_string()]);
-    cmd.envs(env.iter().map(|(k, v)| (k.as_str(), v.as_str())))
-        .env("YAJNA_RUN", &new_id)
-        .env("YAJNA_RUN_DIR", &new_dir);
+    let mut run_env = env.clone();
+    run_env.extend([
+        ("YAJNA_RUN".to_string(), new_id.clone()),
+        (
+            "YAJNA_RUN_DIR".to_string(),
+            out_dir.to_string_lossy().into_owned(),
+        ),
+        ("YAJNA_RUN_COMMIT".to_string(), tree.commit.clone()),
+    ]);
+    let cmd = tree.command(
+        &[script_in_tree.to_string_lossy().into_owned()],
+        &run_env,
+        false,
+    )?;
     let (stdout, ok) = capture(
         cmd,
         &new_dir.join("stdout.log"),
@@ -833,59 +1176,126 @@ fn reproduce(vault: &Vault, id: &str, tolerance: Option<f64>, out_roots: &[Strin
     )?;
     let finished = iso_minutes(&vault.now());
 
+    // the outputs in the repo, gathered beside the new page: what the script wrote in the
+    // new run's directory, else beside itself (older scripts), else at the recorded path
+    let mut gathered: Vec<(String, String, String)> = Vec::new(); // (recorded, source, into)
+    let mut elsewhere: Vec<(String, String)> = Vec::new(); // ($VAR path, where it is now)
+    for (p, _) in &outputs {
+        if let Some(rest) = p.strip_prefix('$') {
+            let (var, rest) = rest.split_once('/').unwrap_or((rest, ""));
+            elsewhere.push((p.clone(), format!("{}/{rest}", roots[var])));
+        } else if let Some(rest) = p.strip_prefix(&format!("{orig_dir}/")) {
+            gathered.push((
+                p.clone(),
+                tree.run_dir().join(rest).to_string_lossy().into_owned(),
+                rest.to_string(),
+            ));
+        } else {
+            let name = Path::new(p)
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .into_owned();
+            gathered.push((
+                p.clone(),
+                tree.root().join(p).to_string_lossy().into_owned(),
+                name,
+            ));
+        }
+    }
+    let mut far: BTreeMap<String, String> = BTreeMap::new(); // path there -> sha256
+    match &tree.remote {
+        None => {
+            for (_, src, into) in &gathered {
+                let (src, to) = (Path::new(src), new_dir.join(into));
+                if !to.is_file() && src.is_file() {
+                    let _ = fs::create_dir_all(to.parent().unwrap());
+                    let _ = fs::copy(src, &to);
+                }
+            }
+            for (_, at) in &elsewhere {
+                if let Some(s) = sha_of(Path::new(at)) {
+                    far.insert(at.clone(), s);
+                }
+            }
+        }
+        Some(_) => {
+            // copied into the new run's directory there, then streamed back here
+            let mut s = format!("cd {} || exit 3\n", q(&out_dir.to_string_lossy())?);
+            for (_, src, into) in &gathered {
+                let (src, into) = (q(src)?, q(into)?);
+                s.push_str(&format!(
+                    "[ -f {into} ] || {{ [ -f {src} ] && mkdir -p \"$(dirname {into})\" && cp {src} {into}; }}\n"
+                ));
+            }
+            s.push_str("tar -cf - .\n");
+            let remote = tree.remote.as_ref().unwrap();
+            let mut ssh = Command::new("ssh")
+                .args(["-T", &remote.host, &s])
+                .stdout(Stdio::piped())
+                .spawn()
+                .map_err(|e| format!("ssh: {e}"))?;
+            let untar = Command::new("tar")
+                .args(["-xf", "-", "-C"])
+                .arg(&new_dir)
+                .stdin(Stdio::from(ssh.stdout.take().unwrap()))
+                .status()
+                .map_err(|e| format!("tar: {e}"))?;
+            let _ = ssh.wait();
+            if !untar.success() {
+                return Err(format!(
+                    "the outputs did not come back from {}",
+                    remote.host
+                ));
+            }
+            if !elsewhere.is_empty() {
+                let mut s = String::new();
+                for (_, at) in &elsewhere {
+                    let at = q(at)?;
+                    s.push_str(&format!(
+                        "[ -f {at} ] && {{ sha256sum {at} 2>/dev/null || shasum -a 256 {at}; }}\n"
+                    ));
+                }
+                s.push_str("true\n");
+                for line in tree.sh(&s, None)?.lines() {
+                    if let Some((sha, at)) = line.split_once("  ") {
+                        far.insert(at.to_string(), sha.to_string());
+                    }
+                }
+            }
+        }
+    }
+
     // compare
     let tol = tolerance.unwrap_or(0.0);
     let mut table: Vec<(String, String, String, bool)> = Vec::new();
     let mut own: Vec<(String, String)> = Vec::new();
     let mut matched: BTreeSet<PathBuf> = BTreeSet::new();
-    let new_rel = rel(&new_dir, &vault.root).replace('\\', "/");
-    for (p, sha) in &outputs {
-        let (found, recorded_as) = if let Some(rest) = p.strip_prefix('$') {
-            let (var, rest) = rest.split_once('/').unwrap_or((rest, ""));
-            (Some(roots[var].join(rest)), p.clone())
-        } else if let Some(rest) = p.strip_prefix(&format!("{orig_dir}/")) {
-            let here = new_dir.join(rest);
-            let beside = tree.run_dir.join(rest);
-            let f = if here.is_file() { here } else { beside };
-            if f.is_file() && !f.starts_with(&new_dir) {
-                let to = new_dir.join(rest);
-                let _ = fs::create_dir_all(to.parent().unwrap());
-                let _ = fs::copy(&f, &to);
-            }
-            (Some(new_dir.join(rest)), format!("{new_rel}/{rest}"))
-        } else {
-            let f = tree.root.join(p);
-            let name = Path::new(p).file_name().unwrap_or_default().to_owned();
-            if f.is_file() {
-                let _ = fs::copy(&f, new_dir.join(&name));
-            }
-            (
-                Some(new_dir.join(&name)),
-                format!("{new_rel}/{}", name.to_string_lossy()),
-            )
-        };
-        let now = found.as_ref().and_then(|f| sha_of(f));
-        if let Some(f) = &found {
-            matched.insert(f.clone());
-        }
+    let recorded: BTreeMap<&str, &str> = outputs
+        .iter()
+        .map(|(p, s)| (p.as_str(), s.as_str()))
+        .collect();
+    for (p, _, into) in &gathered {
+        let f = new_dir.join(into);
+        let now = sha_of(&f);
+        matched.insert(f);
         if let Some(s) = &now {
-            own.push((recorded_as, s.clone()));
+            own.push((format!("{new_rel}/{into}"), s.clone()));
         }
-        table.push((
-            format!("`{p}`"),
-            sha[..12].to_string(),
-            now.as_deref()
-                .map(|s| s[..12].to_string())
-                .unwrap_or("missing".into()),
-            now.as_deref() == Some(sha.as_str()),
-        ));
+        table.push(row(p, recorded[p.as_str()], now.as_deref()));
+    }
+    for (p, at) in &elsewhere {
+        let now = far.get(at).cloned();
+        if let Some(s) = &now {
+            own.push((p.clone(), s.clone()));
+        }
+        table.push(row(p, recorded[p.as_str()], now.as_deref()));
     }
     let result: Option<serde_json::Map<String, Value>> = stdout
         .lines()
         .rfind(|l| l.starts_with(RESULT_MARK))
         .and_then(|l| serde_json::from_str(l[RESULT_MARK.len()..].trim()).ok());
-    let original = metrics(vault, &page);
-    for (k, v) in &original {
+    for (k, v) in &metrics(vault, &page) {
         let now = result.as_ref().and_then(|r| r.get(k)).map(cell);
         let ok = now.as_deref().is_some_and(|n| agrees(v, n, tol));
         table.push((k.clone(), v.clone(), now.unwrap_or("missing".into()), ok));
@@ -911,7 +1321,7 @@ fn reproduce(vault: &Vault, id: &str, tolerance: Option<f64>, out_roots: &[Strin
     let mut body = format!(
         "\n## Reproduction\nReproduces [[{id}]] at {} on {}: **{verdict}**{}.\n\n",
         &tree.commit[..7],
-        this_host.as_deref().unwrap_or("this machine"),
+        runs_on.as_deref().unwrap_or("this machine"),
         if tolerance.is_some() {
             format!(", metrics within {tol} relative")
         } else {
@@ -976,101 +1386,12 @@ fn reproduce(vault: &Vault, id: &str, tolerance: Option<f64>, out_roots: &[Strin
     Ok(if verdict == "reproduced" { 0 } else { 1 })
 }
 
-// --- --on <host> -------------------------------------------------------------------------
-
-/// Run `yajna run <args>` on `host` over `ssh -t`, in its checkout named in
-/// `.yajna/hosts.toml`, after a `git fetch` so the commit is there.
-fn on_host(vault: &Vault, id: &str, host: &str, args: &[String]) -> Res<i32> {
-    let host = if host.is_empty() {
-        run_page(vault, id)?
-            .field("host")
-            .map(str::to_string)
-            .ok_or_else(|| format!("{id} records no host; name one: --on <host>"))?
-    } else {
-        host.to_string()
-    };
-    let file = vault.root.join(".yajna").join("hosts.toml");
-    let hosts: toml::Table = fs::read_to_string(&file)
-        .ok()
-        .and_then(|t| t.parse().ok())
-        .unwrap_or_default();
-    let root = hosts
-        .get(&host)
-        .and_then(|h| h.get("root"))
-        .and_then(|r| r.as_str())
-        .ok_or_else(|| {
-            format!(
-                "{host} has no checkout in {}: add [{host}] root = \"<path to this notebook there>\"",
-                rel(&file, &vault.root)
-            )
-        })?;
-    // ~ is the remote's home, so it stays outside the quotes
-    let root = match root.strip_prefix("~/") {
-        Some(rest) => format!("~/{}", shlex::try_quote(rest).map_err(|e| e.to_string())?),
-        None => shlex::try_quote(root)
-            .map_err(|e| e.to_string())?
-            .into_owned(),
-    };
-    let words: Vec<String> = args
-        .iter()
-        .map(|a| {
-            shlex::try_quote(a)
-                .map(|q| q.into_owned())
-                .map_err(|e| e.to_string())
-        })
-        .collect::<Res<_>>()?;
-    let remote = format!(
-        "cd {root} && {{ git fetch -q || echo 'yajna: git fetch failed' >&2; yajna run {}; }}",
-        words.join(" ")
-    );
-    eprintln!("yajna: on {host}: {remote}");
-    let status = Command::new("ssh")
-        .args(["-t", &host, &remote])
-        .status()
-        .map_err(|e| format!("ssh: {e}"))?;
-    Ok(status.code().unwrap_or(1))
-}
-
-pub(crate) fn shell_cmd(
-    vault: &Vault,
-    id: &str,
-    command: Option<&str>,
-    working_tree: bool,
-    on: Option<&str>,
-) -> Res<i32> {
-    match on {
-        Some(h) => {
-            let mut args = vec!["shell".to_string(), id.to_string()];
-            if let Some(c) = command {
-                args.extend(["-c".to_string(), c.to_string()]);
-            }
-            if working_tree {
-                args.push("--working-tree".into());
-            }
-            on_host(vault, id, h, &args)
-        }
-        None => shell(vault, id, command, working_tree),
-    }
-}
-
-pub(crate) fn reproduce_cmd(
-    vault: &Vault,
-    id: &str,
-    tolerance: Option<f64>,
-    out_roots: &[String],
-    on: Option<&str>,
-) -> Res<i32> {
-    match on {
-        Some(h) => {
-            let mut args = vec!["reproduce".to_string(), id.to_string()];
-            if let Some(t) = tolerance {
-                args.extend(["--tolerance".to_string(), t.to_string()]);
-            }
-            for r in out_roots {
-                args.extend(["--out-root".to_string(), r.clone()]);
-            }
-            on_host(vault, id, h, &args)
-        }
-        None => reproduce(vault, id, tolerance, out_roots),
-    }
+/// A row of the comparison for an output: its path, the recorded and the new hash.
+fn row(path: &str, recorded: &str, now: Option<&str>) -> (String, String, String, bool) {
+    (
+        format!("`{path}`"),
+        recorded[..12.min(recorded.len())].to_string(),
+        now.map(|s| s[..12].to_string()).unwrap_or("missing".into()),
+        now == Some(recorded),
+    )
 }

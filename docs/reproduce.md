@@ -3,7 +3,8 @@
 Status: design v0.1, 2026-10-26; steps 1 and 6 built in 0.21.0 (the fields, `run record`,
 the commit rule; the commit mapping in `graduate` and `--commits-only`), with manthan's and
 rc2s2's runs cleaned up; steps 2 to 5 in 0.22.0 (`run shell`, `clean`, `diff`, `reproduce`,
-`--on`). Not yet done: step 5 by hand against oppy, and section 13's verification. Companion to `architecture.md` (section 11,
+`--on`); `--on` driven from the laptop in 0.23.0 (ADR-0033). Not yet done: step 5 by hand
+against oppy, and section 13's verification. Companion to `architecture.md` (section 11,
 Phase 1e) and `review.md`, whose commit resolution it shares. Decision: ADR-0031.
 
 ## 1. What it is for
@@ -181,11 +182,17 @@ under another layout) and become `unknown` with a note.
 ## 9. `--on <host>`
 
 The data a run needs is often only on the machine it ran on. `--on oppy` (or `--on` alone,
-for the run's `host`) runs the same command there over `ssh -t`, in the checkout named for
-that host in `.yajna/hosts.toml` (machine-local, not committed: `[oppy] root =
-"~/workspace/manthan"`), after a `git fetch` so the commit is there. yajna must be on the
-remote's PATH. Nothing is copied back by `run shell`; `run reproduce` writes its new run page
-on the remote, to be committed and pushed from there like any run.
+for the run's `host`) does the same there, driven from here over ssh (ADR-0033, amending
+the first version, which ran yajna on the remote). The checkout there is named in
+`.yajna/hosts.toml` (machine-local, not committed: `[oppy] root = "~/workspace/manthan"`).
+yajna fetches in it so the commit is there (it must be pushed), makes or reuses the
+worktree in `~/.cache/yajna/runs/` on that machine with git, streams the run's page and
+directory over as a tar archive from this repository's HEAD (or working tree), and runs
+`nix develop` there; `run shell --on` is an `ssh -t` session in it. `run reproduce --on`
+captures the script's output through ssh, copies the outputs in the repository back beside
+the new run's page here, and hashes the ones under an `env` root there, so the new run is
+written and committed here. `run clean --on oppy` removes the worktrees there. The remote
+needs ssh, git, tar and Nix, not yajna.
 
 ## 10. What it does not do
 

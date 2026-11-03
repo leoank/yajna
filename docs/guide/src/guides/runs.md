@@ -161,17 +161,21 @@ outputs, metrics, the code between their commits, their scripts and their pages.
 clean` removes the worktrees; one with changes outside the run's directory is kept unless
 `--force`.
 
-When the data is on another machine, `--on oppy` runs `run shell` or `run reproduce` there
-over `ssh -t`, in the checkout named for it in `.yajna/hosts.toml`, a file of your own that
-is not committed:
+When the data is on another machine, `--on oppy` does `run shell`, `run reproduce` or `run
+clean` there, driven from your machine over ssh. That machine is only a runner: it needs a
+checkout of the notebook, git, tar and Nix, not yajna. Name its checkout in
+`.yajna/hosts.toml`, a file of your own that is not committed:
 
 ```toml
 [oppy]
 root = "~/workspace/mylab"
 ```
 
-`--on` alone means the run's `host`. yajna must be on the remote's PATH; the remote fetches
-first, so the commit is there.
+`--on` alone means the run's `host`. yajna fetches in that checkout first, so push the
+commit the run names; it makes the worktree there with git, sends the run's directory over
+from your checkout, and runs the project's dev shell there. A reproduction's page, logs and
+outputs in the repository come back to your checkout, to commit with the rest; outputs under
+an `env` root stay on that machine and are hashed there.
 
 ## Runs by agents
 

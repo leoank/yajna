@@ -1,6 +1,6 @@
 # ADR-0031: Reproducing runs: `yajna run shell`, `reproduce` and `diff`, and run commits that survive graduation
 
-Status: accepted
+Status: accepted; `--on` amended by ADR-0033
 Date: 2026-10-26
 Phase: 1e
 Source: `docs/reproduce.md`

@@ -505,8 +505,8 @@ pub enum RunAction {
         /// uncommitted fix to its script
         #[arg(long)]
         working_tree: bool,
-        /// on another machine, over ssh, in its checkout named in .yajna/hosts.toml (alone:
-        /// the run's host)
+        /// on another machine: the worktree is made there over ssh, in its checkout named in
+        /// .yajna/hosts.toml (alone: the run's host); it needs git, tar and Nix, not yajna
         #[arg(long, num_args = 0..=1, default_missing_value = "", value_name = "HOST")]
         on: Option<String>,
     },
@@ -518,6 +518,9 @@ pub enum RunAction {
         run: Option<String>,
         #[arg(long)]
         force: bool,
+        /// the worktrees on that machine, made by --on there
+        #[arg(long, value_name = "HOST")]
+        on: Option<String>,
     },
     /// what differs between two runs: commit, host, env, outputs, metrics, the code between
     /// their commits, their scripts and pages
@@ -542,8 +545,8 @@ pub enum RunAction {
         /// outputs outside the repo, which are never overwritten)
         #[arg(long = "out-root", value_name = "VAR=DIR")]
         out_root: Vec<String>,
-        /// on another machine, over ssh, in its checkout named in .yajna/hosts.toml (alone:
-        /// the run's host)
+        /// on another machine: it runs there over ssh, in its checkout named in
+        /// .yajna/hosts.toml (alone: the run's host), and the new run's page is written here
         #[arg(long, num_args = 0..=1, default_missing_value = "", value_name = "HOST")]
         on: Option<String>,
     },

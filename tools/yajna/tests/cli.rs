@@ -6241,17 +6241,52 @@ fn run_diff_shows_what_differs_between_two_runs() {
 
 #[cfg(unix)]
 #[test]
-fn on_a_host_runs_the_same_command_over_ssh_in_its_checkout() {
+fn on_a_host_the_laptop_drives_a_checkout_there_over_ssh() {
     let (v, id, _) = reproducible_lab();
-    let calls = empty();
-    let log = calls.root.join("ssh.log");
-    let (_bin, path) = fake_bin(&[("ssh", &format!("printf '%s\\n' \"$@\" > {}", log.display()))]);
-    let env = [("PATH", path.as_str())];
-    let out = v.run_with(
-        &["run", "shell", &id, "-c", "echo hi", "--on", "oppy"],
-        None,
-        &env,
+    // "oppy": a clone of the notebook in another home, reached through an ssh that runs the
+    // command here; yajna is not on its PATH
+    let home = empty();
+    let calls = home.root.join("ssh.log");
+    git(
+        &home.root,
+        &["clone", "-q", v.root.to_str().unwrap(), "my lab"],
     );
+    let (_bin, path) = fake_bin(&[(
+        "ssh",
+        &format!(
+            "while [ $# -gt 0 ]; do case \"$1\" in -t|-T) shift;; *) break;; esac; done\n\
+             echo \"$1\" >> '{}'\nshift\nexec sh -c \"$*\"",
+            calls.display()
+        ),
+    )]);
+    let cache = empty();
+    let env = [
+        ("PATH", path.as_str()),
+        ("HOME", home.root.to_str().unwrap()),
+        ("YAJNA_CACHE", cache.root.to_str().unwrap()),
+    ];
+    // the run's commit is newer than that checkout: --on fetches it
+    fs::write(v.root.join("notes/projects/PRJ-0001-toy/extra.txt"), "x\n").unwrap();
+    git(&v.root, &["add", "-A"]);
+    git(&v.root, &["commit", "-q", "-m", "after the clone"]);
+    let head = git(&v.root, &["rev-parse", "HEAD"]).trim().to_string();
+    let page = v
+        .root
+        .join(format!("notes/projects/PRJ-0001-toy/runs/{id}.md"));
+    set_field(&page, "commit", &head);
+
+    let shell = |extra: &[&str]| {
+        let mut args = vec![
+            "run",
+            "shell",
+            id.as_str(),
+            "-c",
+            "echo \"at $YAJNA_RUN_COMMIT\"; pwd; ls \"$YAJNA_RUN_DIR\"",
+        ];
+        args.extend_from_slice(extra);
+        v.run_with(&args, None, &env)
+    };
+    let out = shell(&["--on", "oppy"]);
     assert_eq!(out.code, 1);
     assert!(
         out.stderr
@@ -6262,40 +6297,59 @@ fn on_a_host_runs_the_same_command_over_ssh_in_its_checkout() {
     fs::create_dir_all(v.root.join(".yajna")).unwrap();
     fs::write(
         v.root.join(".yajna/hosts.toml"),
-        "[oppy]\nroot = \"~/work/my lab\"\n",
+        "[oppy]\nroot = \"~/my lab\"\n",
     )
     .unwrap();
-    let out = v.run_with(
-        &["run", "shell", &id, "-c", "echo hi", "--on", "oppy"],
-        None,
-        &env,
-    );
-    assert_eq!(out.code, 0, "{}", out.stderr);
-    let args = v.read(&log);
-    assert!(args.starts_with("-t\noppy\n"), "{args}");
+    let out = shell(&["--on", "oppy"]);
+    assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
     assert!(
-        args.contains(&format!(
-            "cd ~/'work/my lab' && {{ git fetch -q || echo 'yajna: git fetch failed' >&2; yajna run shell {id} -c 'echo hi'; }}"
-        )),
-        "{args}"
-    );
-    // alone, --on is the run's host
-    let page = v
-        .root
-        .join(format!("notes/projects/PRJ-0001-toy/runs/{id}.md"));
-    set_field(&page, "host", "oppy");
-    let out = v.run_with(
-        &["run", "reproduce", &id, "--tolerance", "0.01", "--on"],
-        None,
-        &env,
-    );
-    assert_eq!(out.code, 0, "{}", out.stderr);
-    assert!(
-        v.read(&log)
-            .contains(&format!("yajna run reproduce {id} --tolerance 0.01;")),
+        out.stdout.contains(&format!("at {head}\n")),
         "{}",
-        v.read(&log)
+        out.stdout
     );
+    assert!(out.stdout.contains("/.cache/yajna/runs/"), "{}", out.stdout);
+    assert!(
+        out.stdout.contains("run.sh\n"),
+        "the run's directory went over: {}",
+        out.stdout
+    );
+    assert!(
+        out.stderr.contains("on oppy, in the checkout at ~/my lab"),
+        "{}",
+        out.stderr
+    );
+    assert!(v.read(&calls).starts_with("oppy\n"));
+
+    // alone, --on is the run's host; the new run's page and outputs land here
+    set_field(&page, "host", "oppy");
+    let out = v.run_with(&["run", "reproduce", &id, "--on"], None, &env);
+    assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
+    assert!(out.stdout.contains(": reproduced"), "{}", out.stdout);
+    let new = v.path(&out);
+    assert!(new.starts_with(&v.root), "{}", new.display());
+    let text = v.read(&new);
+    assert!(
+        text.contains("\nhost: oppy\n") && text.contains("verdict: reproduced\n"),
+        "{text}"
+    );
+    assert!(new.with_extension("").join("out.txt").is_file());
+    assert!(new.with_extension("").join("stdout.log").is_file());
+
+    // and its worktrees there are removed from here
+    let out = v.run_with(&["run", "clean", "--on", "oppy"], None, &env);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(
+        out.stdout.contains(&format!("{id} on oppy")),
+        "{}",
+        out.stdout
+    );
+    let left: Vec<_> = fs::read_dir(home.root.join(".cache/yajna/runs"))
+        .unwrap()
+        .flatten()
+        .flat_map(|d| fs::read_dir(d.path()).unwrap().flatten())
+        .filter(|e| e.path().join(".git").exists())
+        .collect();
+    assert!(left.is_empty(), "{left:?}");
 }
 
 #[test]
