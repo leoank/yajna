@@ -729,6 +729,13 @@ fn reproduce(vault: &Vault, id: &str, tolerance: Option<f64>, out_roots: &[Strin
         );
     }
     let outputs = outputs_of_page(&page);
+    // a verdict needs something to compare, and the recorded outputs are the only way to
+    // know where the script writes
+    if outputs.is_empty() && metrics(vault, &page).is_empty() {
+        return Err(format!(
+            "{id} records no outputs and has no row in results.tsv: a reproduction would have              nothing to compare, and nothing says where its script writes, so it could write              over the original's results outside the repo. Record what the result rests on              first: yajna run record {id} --outputs <file>… [--env <VAR>…]"
+        ));
+    }
     // never over what the original wrote outside the repo
     let outside: Vec<&str> = outputs
         .iter()
@@ -911,20 +918,14 @@ fn reproduce(vault: &Vault, id: &str, tolerance: Option<f64>, out_roots: &[Strin
             String::new()
         }
     );
-    if table.is_empty() {
+    body.push_str(
+        "| What | Recorded | This run | Agrees |\n|------|----------|----------|--------|\n",
+    );
+    for (what, a, b, same) in &table {
         body.push_str(&format!(
-            "{id} recorded no outputs and no metrics, so there was nothing to compare.\n"
+            "| {what} | {a} | {b} | {} |\n",
+            if *same { "yes" } else { "no" }
         ));
-    } else {
-        body.push_str(
-            "| What | Recorded | This run | Agrees |\n|------|----------|----------|--------|\n",
-        );
-        for (what, a, b, same) in &table {
-            body.push_str(&format!(
-                "| {what} | {a} | {b} | {} |\n",
-                if *same { "yes" } else { "no" }
-            ));
-        }
     }
     if !unlisted.is_empty() {
         body.push_str(&format!(

@@ -6123,6 +6123,39 @@ fn run_reproduce_compares_outputs_and_metrics_and_records_a_verdict() {
     assert_eq!(out.code, 1, "{}", out.stdout);
     assert!(out.stdout.contains("out.txt`: recorded"), "{}", out.stdout);
 
+    // a run that recorded nothing to compare is not run again
+    let out = v.run(&[
+        "new",
+        "run",
+        "--experiment",
+        "EXP-20261021-000001",
+        "--kind",
+        "compute",
+    ]);
+    let bare = v.path(&out);
+    let head = git(&v.root, &["rev-parse", "HEAD"]).trim().to_string();
+    set_field(&bare, "commit", &head);
+    set_field(
+        &bare,
+        "script",
+        &format!("notes/projects/PRJ-0001-toy/runs/{id}/run.sh"),
+    );
+    let bare_id = bare.file_stem().unwrap().to_str().unwrap().to_string();
+    let runs_before = fs::read_dir(bare.parent().unwrap()).unwrap().count();
+    let out = v.run_with(&["run", "reproduce", &bare_id], None, &env);
+    assert_eq!(out.code, 1);
+    assert!(
+        out.stderr
+            .contains("records no outputs and has no row in results.tsv"),
+        "{}",
+        out.stderr
+    );
+    assert_eq!(
+        fs::read_dir(bare.parent().unwrap()).unwrap().count(),
+        runs_before,
+        "no run was made"
+    );
+
     // outputs outside the repo are not written over unless their root is redirected
     let text = v.read(&orig).replace(
         "outputs:\n",

@@ -150,7 +150,9 @@ RUN-20261103-f0a2k1: reproduced
 recorded output's sha256 and the original's metrics in `results.tsv` (exactly, or within
 `--tolerance 0.01` relative for numbers), and records a `verdict`: `reproduced`, `differs`
 with a table of what did not agree, or `failed` when the script exits non-zero. Files written
-that the original did not list are reported. A recorded output under an `env` root, such as
+that the original did not list are reported. A run that recorded neither outputs nor a
+`results.tsv` row is refused: there would be nothing to compare, and nothing would say where
+its script writes, so record them first with `yajna run record --outputs`. A recorded output under an `env` root, such as
 `$VPI_DATA/results/…`, would be written over, so reproduce refuses unless `--out-root
 VPI_DATA=/scratch/me` sends what is written there to a scratch directory.
 

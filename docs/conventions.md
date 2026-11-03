@@ -195,7 +195,9 @@ says what does not line up: a script that did not exist at the commit, a project
 named otherwise then, another host, an `env` path missing here. `yajna run reproduce RUN-…`
 runs a compute run's script there into a new run with `reproduces` and a `verdict`
 (`reproduced`, `differs` or `failed`), comparing the `outputs` hashes and the metrics in
-`results.tsv` (`--tolerance <rel>` for numbers); it refuses outputs under an `env` root
+`results.tsv` (`--tolerance <rel>` for numbers). It refuses a run that recorded neither
+`outputs` nor a `results.tsv` row (nothing to compare, and nothing says where its script
+writes: `run record --outputs` first), and outputs under an `env` root
 unless `--out-root VAR=<scratch dir>` redirects them, so it never writes over the
 original's. `yajna run diff RUN-a RUN-b` shows what differs between two runs, and `yajna run
 clean` removes the worktrees. `--on <host>` (alone: the run's `host`) runs `shell` or
