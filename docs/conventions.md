@@ -270,7 +270,13 @@ When a code-bearing project is ready for its own repository (ADR-0018):
 empty repo first (default `../rc2s2` next to the lab, or `--into <path>`; the namespace
 defaults to the last segment of `--to`). It splits the code directory with its history
 into that checkout, imports the notebook there, edits the lab page, removes the flake
-input and registers the namespace in `[repos]`. Left to you: `nix flake lock` here, the
+input and registers the namespace in `[repos]`. The split rewrites every commit, so the
+lab commits the moved pages name (a run's `commit`, a review's `base`, `head` and anchors,
+`(since …)` in Progress items) are mapped to the split commit with the same code; a run
+keeps the lab's as `origin_commit: <lab>@<sha>`. What has no match is reported: give such
+a run `commit: unknown` and the reason under `Notes`. For a project that graduated before
+this, `yajna graduate PRJ-0002 --commits-only --into <checkout>` does the mapping alone.
+Left to you: `nix flake lock` here, the
 commits in both repos, the remote and push of the new one, and the log line.
 
 ## Protocols

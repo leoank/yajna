@@ -5656,3 +5656,142 @@ fn runs_record_commit_host_env_and_outputs_and_their_commit_resolves() {
         out.stdout
     );
 }
+
+#[test]
+fn graduate_maps_the_commits_runs_name_to_the_split_ones() {
+    let lab = lab_with_project();
+    for _ in 0..3 {
+        let out = lab.run(&[
+            "new",
+            "run",
+            "--experiment",
+            "EXP-20261021-000001",
+            "--kind",
+            "compute",
+        ]);
+        assert_eq!(out.code, 0, "{}", out.stderr);
+    }
+    let run = |n: u32| {
+        lab.root.join(format!(
+            "notes/projects/PRJ-0002-toy-model/runs/RUN-20261021-00000{n}.md"
+        ))
+    };
+    // c0 has no code; c1 and c2 change it; c3 changes only the notebook
+    git(&lab.root, &["init", "-q", "-b", "main"]);
+    git(&lab.root, &["add", "yajna.toml"]);
+    git(&lab.root, &["commit", "-q", "-m", "c0"]);
+    let c0 = git(&lab.root, &["rev-parse", "HEAD"]).trim().to_string();
+    git(&lab.root, &["add", "-A"]);
+    git(&lab.root, &["commit", "-q", "-m", "c1"]);
+    let c1 = git(&lab.root, &["rev-parse", "HEAD"]).trim().to_string();
+    let readme = lab.root.join("code/toy-model/README.md");
+    fs::write(&readme, lab.read(&readme) + "\nMore.\n").unwrap();
+    git(&lab.root, &["commit", "-q", "-am", "c2"]);
+    let c2 = git(&lab.root, &["rev-parse", "HEAD"]).trim().to_string();
+    fs::write(lab.root.join("notes/tasks.md"), "# Tasks\n").unwrap();
+    git(&lab.root, &["commit", "-q", "-am", "c3"]);
+    let c3 = git(&lab.root, &["rev-parse", "HEAD"]).trim().to_string();
+    let set = |p: &Path, c: &str| {
+        let text = lab.read(p);
+        fs::write(
+            p,
+            text.replacen("\ncreated:", &format!("\ncommit: '{c}'\ncreated:"), 1),
+        )
+        .unwrap();
+    };
+    set(&run(2), &c1[..7]);
+    set(&run(3), &c3[..7]);
+    set(&run(4), &c0[..7]);
+    let prj = lab.root.join("notes/projects/PRJ-0002-toy-model/README.md");
+    fs::write(
+        &prj,
+        lab.read(&prj) + &format!("\n- [ ] Phase 2 (since {})\n", &c2[..7]),
+    )
+    .unwrap();
+    git(&lab.root, &["commit", "-q", "-am", "runs"]);
+
+    let into = empty();
+    git(&into.root, &["init", "-q", "-b", "main"]);
+    let out = lab.run(&[
+        "graduate",
+        "PRJ-0002",
+        "--to",
+        "github:leoank/toy",
+        "--into",
+        into.root.to_str().unwrap(),
+    ]);
+    assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
+    // the split commits, newest first: c2's code and c1's
+    let split: Vec<String> = git(&into.root, &["rev-list", "HEAD"])
+        .lines()
+        .map(str::to_string)
+        .collect();
+    assert_eq!(split.len(), 2);
+    let page = |n: u32| {
+        into.read(
+            &into
+                .root
+                .join(format!("notes/runs/RUN-20261021-00000{n}.md")),
+        )
+    };
+    assert!(
+        page(2).contains(&format!(
+            "commit: {}\norigin_commit: yajna@{c1}\n",
+            split[1]
+        )),
+        "{}\n{}",
+        page(2),
+        out.stdout
+    );
+    // a commit that changed no code maps to the latest split commit with its code
+    assert!(
+        page(3).contains(&format!(
+            "commit: {}\norigin_commit: yajna@{c3}\n",
+            split[0]
+        )),
+        "{}",
+        page(3)
+    );
+    // one from before the code existed keeps its value, the lab's as origin_commit, and is reported
+    assert!(
+        page(4).contains(&format!(
+            "commit: '{}'\norigin_commit: yajna@{c0}\n",
+            &c0[..7]
+        )),
+        "{}",
+        page(4)
+    );
+    assert!(
+        out.stdout
+            .contains("no split commit has the code of: RUN-20261021-000004"),
+        "{}",
+        out.stdout
+    );
+    let readme = into.read(&into.root.join("notes/README.md"));
+    assert!(
+        readme.contains(&format!("(since {})", split[0])),
+        "{readme}"
+    );
+
+    // --commits-only maps what a graduated repo still names, and changes nothing twice
+    let p2 = into.root.join("notes/runs/RUN-20261021-000002.md");
+    fs::write(&p2, page(2).replace(&split[1], &format!("'{}'", &c1[..7]))).unwrap();
+    let only = [
+        "graduate",
+        "PRJ-0002",
+        "--commits-only",
+        "--into",
+        into.root.to_str().unwrap(),
+    ];
+    let out = lab.run(&only);
+    assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
+    assert!(out.stdout.contains("commits: 1 mapped"), "{}", out.stdout);
+    assert_eq!(page(2).matches("origin_commit:").count(), 1, "{}", page(2));
+    assert!(
+        page(2).contains(&format!("commit: {}\n", split[1])),
+        "{}",
+        page(2)
+    );
+    let out = lab.run(&only);
+    assert!(out.stdout.contains("commits: 0 mapped"), "{}", out.stdout);
+}

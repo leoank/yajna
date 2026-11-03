@@ -384,14 +384,18 @@ pub enum Cmd {
         /// PRJ-xxxx of the project
         project: String,
         /// where the new repo will live, e.g. github:leoank/rc2s2
-        #[arg(long)]
-        to: String,
+        #[arg(long, required_unless_present = "commits_only")]
+        to: Option<String>,
         /// the new repo's checkout (default: ../<namespace> next to this repo)
         #[arg(long)]
         into: Option<PathBuf>,
         /// the new repo's namespace (default: the last path segment of --to)
         #[arg(long)]
         namespace: Option<String>,
+        /// for a project that has graduated already: only map the lab commits its pages name
+        /// to the new repo's commits with the same code
+        #[arg(long)]
+        commits_only: bool,
     },
 }
 

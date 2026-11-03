@@ -193,10 +193,24 @@ pub fn run(vault: &Vault, cmd: &Cmd, prompter: &mut dyn Prompter) -> Res<i32> {
         Cmd::Skill { print } => cmd_skill(vault, *print),
         Cmd::Graduate {
             project,
+            to: _,
+            into,
+            namespace,
+            commits_only: true,
+        } => crate::init::graduate_commits(vault, project, into.as_deref(), namespace.as_deref()),
+        Cmd::Graduate {
+            project,
             to,
             into,
             namespace,
-        } => crate::init::graduate(vault, project, to, into.as_deref(), namespace.as_deref()),
+            commits_only: false,
+        } => crate::init::graduate(
+            vault,
+            project,
+            to.as_deref().unwrap_or_default(),
+            into.as_deref(),
+            namespace.as_deref(),
+        ),
         Cmd::Init { .. } => unreachable!("init runs before a vault is opened"),
     }
 }

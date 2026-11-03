@@ -96,12 +96,20 @@ yajna graduate PRJ-0002 --to github:you/rc2s2
    files follow the new layout (`notes/projects/PRJ-0002-rc2s2/runs/…` becomes
    `notes/runs/…`, and `code/rc2s2` the repo root, so a run's `script` and its `run.sh`
    still work); reading notes and the bibliography entries it cites come along,
-3. marks the lab's page `status: moved` with `continued_in: rc2s2/PRJ-0001`,
-4. removes the project from the lab's root flake and adds `rc2s2` to `[repos]`.
+3. maps the lab commits the copied pages name to the new repository's: the split gives
+   every commit a new ID, so a run's `commit` becomes the split commit with the same code,
+   and the lab's is kept as `origin_commit: mylab@<sha>`; a commit with no counterpart
+   (one from before the code directory existed under its name) is reported, and the run
+   then needs `commit: unknown` with the reason under *Notes*,
+4. marks the lab's page `status: moved` with `continued_in: rc2s2/PRJ-0001`,
+5. removes the project from the lab's root flake and adds `rc2s2` to `[repos]`.
 
 `--into <path>` names a checkout elsewhere, `--namespace` a different namespace than the
 last part of `--to`. Left to you: `nix flake lock`, the commits in both repositories, the
 push, and a log line in the lab. The lab's copy of the project directory stays as history.
+
+A project that graduated before step 3 existed gets it with
+`yajna graduate PRJ-0002 --commits-only --into ../rc2s2`, run in the lab.
 
 To do the notebook half by hand, run
 `yajna init project --from ../mylab PRJ-0002` at the root of the new repository.

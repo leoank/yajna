@@ -4,14 +4,17 @@
 //! writes them for a run it creates; `yajna run record` fills them on one made by `yajna new
 //! run`.
 
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::LazyLock;
 
+use regex::Regex;
 
 use sha2::{Digest, Sha256};
 
 use crate::cli::RunAction;
-use crate::init::{edit_frontmatter, set_field};
+use crate::init::{edit_frontmatter, insert_after, set_field};
 use crate::parallel::git;
 use crate::review::rev;
 use crate::vault::{Res, Vault};
@@ -225,3 +228,173 @@ fn record(
     Ok(0)
 }
 
+// --- commits across graduation ----------------------------------------------------------
+
+static SINCE_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\(since ([0-9a-f]{7,40})\)").unwrap());
+/// A review's `base` and `head`, and the commit of a thread's anchor.
+static REVIEW_SHA_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?m)(?:^(?:base|head): |^### T\d+ .* @ )([0-9a-f]{7,40})\b").unwrap()
+});
+
+/// Where a lab commit named in a moved page is in the project's repository.
+#[derive(Clone)]
+enum Mapped {
+    /// it is a commit of the project's repository already
+    Here,
+    /// the split commit with the same code tree, and the lab commit in full
+    To(String, String),
+    /// a lab commit no split commit has the tree of
+    Unmatched(String),
+    /// a commit of neither repository
+    Nowhere,
+}
+
+struct Mapper<'a> {
+    lab: &'a Path,
+    into: &'a Path,
+    /// the code directory in the lab, then its name before ADR-0020 renamed projects/ to code/
+    dirs: Vec<String>,
+    /// root tree -> the latest commit of the project's repository with it
+    trees: HashMap<String, String>,
+    seen: HashMap<String, Mapped>,
+}
+
+impl Mapper<'_> {
+    fn map(&mut self, sha: &str) -> Mapped {
+        if let Some(m) = self.seen.get(sha) {
+            return m.clone();
+        }
+        let m = if rev(self.into, sha).is_ok() {
+            Mapped::Here
+        } else if let Ok(full) = rev(self.lab, sha) {
+            self.dirs
+                .iter()
+                .find_map(|d| {
+                    git(
+                        self.lab,
+                        &["rev-parse", "-q", "--verify", &format!("{full}:{d}")],
+                    )
+                    .ok()
+                })
+                .and_then(|tree| self.trees.get(&tree).cloned())
+                .map(|to| Mapped::To(to, full.clone()))
+                .unwrap_or(Mapped::Unmatched(full))
+        } else {
+            Mapped::Nowhere
+        };
+        self.seen.insert(sha.to_string(), m.clone());
+        m
+    }
+}
+
+/// `git subtree split` writes new commits, so the lab commits that the moved pages name are
+/// not in the project's repository. Each is replaced by the latest split commit whose root
+/// tree is the code directory's tree at that commit (docs/reproduce.md section 8): a run's
+/// `commit`, keeping the lab's as `origin_commit: <lab>@<sha>`, a review's `base`, `head` and
+/// anchors, and `(since …)` in Progress items. What does not map is reported and kept.
+pub(crate) fn remap_commits(lab: &Vault, code: &str, into: &Path) -> Res<()> {
+    let lab_ns = lab.namespace()?.to_string();
+    let target = Vault::open(into.to_path_buf())?;
+    let mut trees = HashMap::new();
+    for line in git(into, &["log", "--all", "--format=%T %H"])
+        .unwrap_or_default()
+        .lines()
+    {
+        if let Some((tree, commit)) = line.split_once(' ') {
+            trees
+                .entry(tree.to_string())
+                .or_insert_with(|| commit.to_string());
+        }
+    }
+    let mut dirs = vec![code.to_string()];
+    if let Some(rest) = code.strip_prefix("code/") {
+        dirs.push(format!("projects/{rest}"));
+    }
+    let mut m = Mapper {
+        lab: &lab.root,
+        into,
+        dirs,
+        trees,
+        seen: HashMap::new(),
+    };
+    let (mut mapped, mut unmatched, mut nowhere) = (0, Vec::new(), Vec::new());
+    for page in target.pages()? {
+        let id = page.id().unwrap_or("").to_string();
+        let text = crate::vault::read_text(&page.path).map_err(|e| e.to_string())?;
+        let mut out = text.clone();
+        if page.field("type") == Some("run") {
+            if let Some(c) = page.field("commit").filter(|c| *c != "unknown") {
+                let (commit, origin) = match m.map(c) {
+                    Mapped::Here => (None, None),
+                    Mapped::To(to, full) => {
+                        mapped += 1;
+                        println!("{id}: commit {c} -> {}", &to[..12]);
+                        (Some(to), Some(full))
+                    }
+                    Mapped::Unmatched(full) => {
+                        unmatched.push(format!("{id} ({c})"));
+                        (None, Some(full))
+                    }
+                    Mapped::Nowhere => {
+                        nowhere.push(format!("{id} ({c})"));
+                        (None, None)
+                    }
+                };
+                out = edit_frontmatter(&out, |fm| {
+                    if let Some(to) = &commit {
+                        set_field(fm, "commit", to);
+                    }
+                    if let Some(full) = &origin {
+                        fm.retain(|l| !l.starts_with("origin_commit:"));
+                        insert_after(fm, "commit", &format!("origin_commit: {lab_ns}@{full}"));
+                    }
+                });
+            }
+        }
+        let mut replace = |re: &Regex, text: &str| -> String {
+            re.replace_all(text, |caps: &regex::Captures| {
+                let sha = &caps[1];
+                match m.map(sha) {
+                    Mapped::To(to, _) => {
+                        mapped += 1;
+                        println!("{id}: {sha} -> {}", &to[..12]);
+                        caps[0].replacen(sha, &to, 1)
+                    }
+                    Mapped::Unmatched(_) => {
+                        unmatched.push(format!("{id} ({sha})"));
+                        caps[0].to_string()
+                    }
+                    Mapped::Nowhere => {
+                        nowhere.push(format!("{id} ({sha})"));
+                        caps[0].to_string()
+                    }
+                    Mapped::Here => caps[0].to_string(),
+                }
+            })
+            .into_owned()
+        };
+        if page.field("type") == Some("review") {
+            out = replace(&REVIEW_SHA_RE, &out);
+        }
+        out = replace(&SINCE_RE, &out);
+        if out != text {
+            fs::write(&page.path, out).map_err(|e| e.to_string())?;
+        }
+    }
+    println!("commits: {mapped} mapped to {}", into.display());
+    if !unmatched.is_empty() {
+        println!(
+            "no split commit has the code of: {}; a run keeps the lab's as origin_commit, \
+             and needs `commit: unknown` with the reason under Notes",
+            unmatched.join(", ")
+        );
+    }
+    if !nowhere.is_empty() {
+        println!(
+            "in neither repository: {}; set `commit: unknown` with the reason under Notes",
+            nowhere.join(", ")
+        );
+    }
+    Ok(())
+}

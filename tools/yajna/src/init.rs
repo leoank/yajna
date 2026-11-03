@@ -446,6 +446,46 @@ pub(crate) fn insert_after(lines: &mut Vec<String>, key: &str, line: &str) {
 
 // --- graduate --------------------------------------------------------------------------
 
+/// `graduate --commits-only`: map the lab commits named in a graduated project's pages to
+/// its repository's. The code directory is the one `yajna new project --code` made,
+/// `code/<slug>`, under its name before ADR-0020 too.
+pub fn graduate_commits(
+    vault: &Vault,
+    prj: &str,
+    into: Option<&Path>,
+    ns: Option<&str>,
+) -> Res<i32> {
+    let page = vault.find(prj)?;
+    if page.field("status") != Some("moved") {
+        return Err(format!("{prj} has not graduated; graduate it first"));
+    }
+    let ns = match ns {
+        Some(n) => n.to_string(),
+        None => page
+            .field("continued_in")
+            .and_then(|c| c.split_once('/'))
+            .map(|(n, _)| n.to_string())
+            .ok_or_else(|| format!("{prj} names no continued_in; pass --namespace"))?,
+    };
+    let into = into
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| vault.root.join("..").join(&ns));
+    let into =
+        canonical(&into).map_err(|_| format!("{}: not found; pass --into", into.display()))?;
+    let dir = vault.project_dir(prj)?;
+    let name = dir
+        .file_name()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let slug = name.splitn(3, '-').nth(2).unwrap_or(&name);
+    crate::reproduce::remap_commits(vault, &format!("code/{slug}"), &into)?;
+    println!(
+        "next: review the changes in {} and commit them there",
+        into.display()
+    );
+    Ok(0)
+}
+
 /// ADR-0018 steps 2 and 3: split the code directory into the repo checked out at `into`,
 /// import the notebook there, and mark the lab's page moved.
 pub fn graduate(
@@ -550,6 +590,9 @@ pub fn graduate(
         &vault.author,
         remote_url(&vault.root),
     )?;
+
+    // The lab commits its pages name become the new repo's.
+    crate::reproduce::remap_commits(vault, &code, &into)?;
 
     // 3. The lab page points onward and is frozen; its loose todos go along.
     let continued = format!("{ns}/{SOLE_PROJECT}");
