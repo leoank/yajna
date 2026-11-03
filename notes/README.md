@@ -75,6 +75,7 @@ open items with the rest.
 - [x] Phase 1e: `graduate` remaps run and review commits; rc2s2 remapped with `--commits-only` (0.21.0) (since 0e8c27f)
 - [x] Phase 1e: `--on <host>` driven from the laptop: the other machine needs git and Nix, not yajna, and the new run's page is written here (ADR-0033) (since 2c88d86) (0.23.0; tested against an ssh that runs locally on a second clone, not yet against oppy)
 - [x] Shell completion: subcommands, flags, and IDs from the notebook with their titles (zsh, bash, fish) (since 2c88d86) (0.23.0)
+- [x] Phase 1e: `run record --host` and `--env NAME=VALUE` for a run that ran elsewhere; `--on` clones the host's checkout when it is missing (since 742f1fc) (0.24.0)
 - [ ] Phase 1e verified: RUN-20261023-g78vwy reproduced from a fresh clone gives the manifest hash it recorded (since 42ae68f)
 - [x] From anywhere designed: todos and log lines into any notebook on the machine, `docs/from-anywhere.md` (ADR-0032)
 - [x] From anywhere: the per-user config and state registry, `yajna repos`, `--in` and `--pick`

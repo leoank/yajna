@@ -184,7 +184,9 @@ under another layout) and become `unknown` with a note.
 The data a run needs is often only on the machine it ran on. `--on oppy` (or `--on` alone,
 for the run's `host`) does the same there, driven from here over ssh (ADR-0033, amending
 the first version, which ran yajna on the remote). The checkout there is named in
-`.yajna/hosts.toml` (machine-local, not committed: `[oppy] root = "~/workspace/manthan"`).
+`.yajna/hosts.toml` (machine-local, not committed: `[oppy] root = "~/workspace/manthan"`);
+when nothing is at `root`, this repository's `origin` is cloned there. An existing checkout
+is used as it is: only fetched in, and given worktrees.
 yajna fetches in it so the commit is there (it must be pushed), makes or reuses the
 worktree in `~/.cache/yajna/runs/` on that machine with git, streams the run's page and
 directory over as a tar archive from this repository's HEAD (or working tree), and runs

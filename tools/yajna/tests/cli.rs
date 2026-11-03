@@ -6435,3 +6435,82 @@ fn a_run_on_another_machine_is_recorded_with_its_host_and_values() {
         out.stderr
     );
 }
+
+#[cfg(unix)]
+#[test]
+fn on_a_host_without_the_checkout_it_is_cloned_from_origin() {
+    let (v, id, _) = reproducible_lab();
+    git(
+        &v.root,
+        &["remote", "add", "origin", v.root.to_str().unwrap()],
+    );
+    let home = empty();
+    let (_bin, path) = fake_bin(&[(
+        "ssh",
+        "while [ $# -gt 0 ]; do case \"$1\" in -t|-T) shift;; *) break;; esac; done\nshift\nexec sh -c \"$*\"",
+    )]);
+    let cache = empty();
+    let env = [
+        ("PATH", path.as_str()),
+        ("HOME", home.root.to_str().unwrap()),
+        ("YAJNA_CACHE", cache.root.to_str().unwrap()),
+    ];
+    fs::create_dir_all(v.root.join(".yajna")).unwrap();
+    fs::write(
+        v.root.join(".yajna/hosts.toml"),
+        "[oppy]\nroot = \"~/repos/lab\"\n[gpu2]\nroot = \"~/elsewhere\"\n",
+    )
+    .unwrap();
+    // nothing to clean on a host without the checkout
+    let out = v.run_with(&["run", "clean", "--on", "gpu2"], None, &env);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(
+        out.stdout.contains("no checkout at ~/elsewhere on gpu2"),
+        "{}",
+        out.stdout
+    );
+    assert!(!home.root.join("elsewhere").exists());
+
+    let out = v.run_with(
+        &[
+            "run",
+            "shell",
+            &id,
+            "--on",
+            "oppy",
+            "-c",
+            "echo \"at $YAJNA_RUN_COMMIT\"",
+        ],
+        None,
+        &env,
+    );
+    assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
+    assert!(
+        out.stderr
+            .contains("no checkout at ~/repos/lab on oppy; cloning"),
+        "{}",
+        out.stderr
+    );
+    assert!(home.root.join("repos/lab/yajna.toml").is_file());
+    let page = v.read(
+        &v.root
+            .join(format!("notes/projects/PRJ-0001-toy/runs/{id}.md")),
+    );
+    let commit = page
+        .lines()
+        .find_map(|l| l.strip_prefix("commit: "))
+        .unwrap();
+    assert!(
+        out.stdout.contains(&format!("at {commit}\n")),
+        "{}",
+        out.stdout
+    );
+    // the next time it is there, and is not cloned again
+    let out = v.run_with(
+        &["run", "shell", &id, "--on", "oppy", "-c", "true"],
+        None,
+        &env,
+    );
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(!out.stderr.contains("cloning"), "{}", out.stderr);
+}

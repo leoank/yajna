@@ -180,8 +180,10 @@ checkout of the notebook, git, tar and Nix, not yajna. Name its checkout in
 root = "~/workspace/mylab"
 ```
 
-`--on` alone means the run's `host`. yajna fetches in that checkout first, so push the
-commit the run names; it makes the worktree there with git, sends the run's directory over
+`--on` alone means the run's `host`. When there is nothing at `root` yet, yajna clones your
+repository's `origin` there first; an existing checkout is used as it is, on whatever branch,
+and only gains worktrees. yajna fetches in that checkout first, so push the commit the run
+names; it makes the worktree there with git, sends the run's directory over
 from your checkout, and runs the project's dev shell there. A reproduction's page, logs and
 outputs in the repository come back to your checkout, to commit with the rest; outputs under
 an `env` root stay on that machine and are hashed there.

@@ -205,8 +205,8 @@ original's. `yajna run diff RUN-a RUN-b` shows what differs between two runs, an
 clean` removes the worktrees. `--on <host>` (alone: the run's `host`) does `shell`,
 `reproduce` or `clean` on another machine, driven from here over ssh (ADR-0033): the
 worktree is made in the checkout named in the machine-local `.yajna/hosts.toml` (`[oppy]
-root = "~/workspace/manthan"`) after a `git fetch`, and a reproduction's page, logs and
-outputs come back here. That machine needs git, tar and Nix, not yajna.
+root = "~/workspace/manthan"`, cloned from this repository's `origin` when it is missing)
+after a `git fetch`, and a reproduction's page, logs and outputs come back here. That machine needs git, tar and Nix, not yajna.
 
 **The author of a run is whoever executed it.** An agent records its runs, log lines and
 session pages as `agent:<name>`: `export YAJNA_AUTHOR=agent:claude` for the session, or

@@ -158,6 +158,38 @@ fn remote_sh(host: &str, script: &str, stdin: Option<Stdio>) -> Res<String> {
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
+/// sh: when the host has no checkout at its root, clone this repository's `origin` there,
+/// to the root less the notebook's path inside the repository.
+fn clone_sh(top: &Path, prefix: &str, r: &Remote) -> Res<String> {
+    let Ok(url) = git(top, &["remote", "get-url", "origin"]) else {
+        // nothing to clone from: the cd that follows says the checkout is missing
+        return Ok(String::new());
+    };
+    let inner = prefix.trim_end_matches('/');
+    let repo = if inner.is_empty() {
+        r.root.trim_end_matches('/').to_string()
+    } else {
+        match r
+            .root
+            .trim_end_matches('/')
+            .strip_suffix(&format!("/{inner}"))
+        {
+            Some(repo) => repo.to_string(),
+            None => return Ok(String::new()),
+        }
+    };
+    Ok(format!(
+        "if [ ! -e {root} ]; then\n  echo {say} >&2\n  mkdir -p \"$(dirname {repo})\"\n  git clone -q {url} {repo}\nfi\n",
+        root = q_home(&r.root)?,
+        repo = q_home(&repo)?,
+        url = q(&url)?,
+        say = q(&format!(
+            "yajna: no checkout at {} on {}; cloning {url} there",
+            r.root, r.host
+        ))?,
+    ))
+}
+
 /// The machine `--on` names; alone, the run's `host`.
 fn host_of(page: &Page, on: &str) -> Res<String> {
     if !on.is_empty() {
@@ -387,7 +419,7 @@ fn open_tree(vault: &Vault, page: &Page, working_tree: bool, remote: Option<Remo
             }
             let script = format!(
                 r#"set -e
-cd {root}
+{clone}cd {root}
 git fetch -q || echo 'yajna: git fetch failed; using what is there' >&2
 if ! git cat-file -e {commit}^{{commit}} 2>/dev/null; then
   echo {not_there} >&2; exit 3
@@ -407,6 +439,7 @@ printf '%s\n' {page_q} {dir_q} > "$wt.overlay"
 mkdir -p "$wt"/{dir_q}
 {checks}cd "$wt" && pwd
 "#,
+                clone = clone_sh(&top, &prefix, r)?,
                 root = q_home(&r.root)?,
                 trees = r.trees,
                 host = q(&r.host)?,
@@ -540,7 +573,8 @@ pub(crate) fn clean(vault: &Vault, id: Option<&str>, force: bool, on: Option<&st
             None => "RUN-*".to_string(),
         };
         let script = format!(
-            r#"cd {root} || exit 3
+            r#"[ -e {root} ] || {{ echo {none}; exit 0; }}
+cd {root} || exit 3
 {changes}kept=0
 for wt in {trees}/{pattern}; do
   [ -e "$wt/.git" ] || continue
@@ -552,6 +586,10 @@ done
 exit $kept
 "#,
             root = q_home(&r.root)?,
+            none = q(&format!(
+                "no checkout at {} on {}, so no worktrees",
+                r.root, r.host
+            ))?,
             trees = r.trees,
             force = if force { "yes" } else { "''" },
             changes = CHANGES_SH,
