@@ -42,6 +42,7 @@ pub fn check(vault: &Vault, since: Option<&str>) -> Res<Vec<String>> {
         vault,
         since,
         today: date_of(&vault.now()),
+        history: crate::review::history_available(&vault.root),
         out: Vec::new(),
     };
     let by_id: BTreeMap<&str, &Page> = pages.iter().filter_map(|p| Some((p.id()?, p))).collect();
@@ -51,6 +52,9 @@ pub fn check(vault: &Vault, since: Option<&str>) -> Res<Vec<String>> {
             continue;
         };
         c.pins(page, &by_id);
+        if kind == "run" {
+            c.env(page);
+        }
         if !c.in_scope(page) {
             continue;
         }
@@ -74,6 +78,8 @@ struct Checks<'a> {
     vault: &'a Vault,
     since: Option<&'a str>,
     today: String,
+    /// whether commits can be resolved: a checkout with its history, not a shallow clone
+    history: bool,
     out: Vec<String>,
 }
 
@@ -287,16 +293,42 @@ impl Checks<'_> {
         }
     }
 
+    /// A run's `env` holds data roots and flags, never a credential.
+    fn env(&mut self, page: &Page) {
+        let Some(Value::Object(env)) = page.meta.as_ref().and_then(|m| m.get("env")) else {
+            return;
+        };
+        for name in env.keys() {
+            if crate::reproduce::credential_like(name) {
+                self.add(
+                    &page.path,
+                    format!("env {name}: looks like a credential, which never goes in a page"),
+                );
+            }
+        }
+    }
+
     fn run(&mut self, page: &Page, by_id: &BTreeMap<&str, &Page>) {
         let id = page.id().unwrap_or("");
         if page.field("kind") == Some("compute") {
             let in_git = self.vault.root.join(".git").exists()
                 || git(&self.vault.root, &["rev-parse", "--git-dir"]).is_ok();
-            if in_git && page.field("status") == Some("done") && str_of(page, "commit").is_none() {
-                self.add(
+            match str_of(page, "commit").as_deref() {
+                None if in_git && page.field("status") == Some("done") => self.add(
                     &page.path,
-                    "a done compute run records the commit it ran at",
-                );
+                    "a done compute run records the commit it ran at, or `commit: unknown` with the reason under Notes",
+                ),
+                Some("unknown") if section(&page.body, "Notes").is_empty() => self.add(
+                    &page.path,
+                    "commit: unknown needs the reason under Notes",
+                ),
+                Some("unknown") | None => {}
+                Some(c) if self.history => {
+                    if let Err(e) = crate::review::rev(&self.vault.root, c) {
+                        self.add(&page.path, format!("commit {e}"));
+                    }
+                }
+                Some(_) => {}
             }
             let agent = page.field("author").unwrap_or("").starts_with("agent:");
             match str_of(page, "script") {

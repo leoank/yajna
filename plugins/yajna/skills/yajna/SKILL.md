@@ -35,6 +35,7 @@ tree). The `yajna` binary creates and checks pages; never write a page by hand.
 yajna new experiment "<question>" --project PRJ-xxxx      # curated; fill Question, Hypothesis, Plan, Success criteria
 yajna new run --experiment EXP-xxxx --kind compute --script notes/projects/PRJ-xxxx-*/runs/RUN-<id>/run.sh
 yajna result --experiment EXP-xxxx run.log --script <path>   # metric runs: ===RESULT=== line -> RUN page + results.tsv
+yajna run record RUN-… --env <VAR>… --outputs <file>…      # commit, host, env and output hashes on a run from `new run`
 yajna log "<what you did and learned, with [[IDs]]>"       # your own file for the day
 yajna new agent "<task>"                                   # the AGS page for this session
 yajna show <ID> | timeline <ID> | tree PRJ-xxxx | runs EXP-xxxx --by <metric>
@@ -182,7 +183,11 @@ the doc's edits, `yajna sync` refuses to publish over the rest, and choosing
 
 Every `compute` run you record must be re-creatable by someone who has only the repo:
 
-1. Record `commit` (the repo commit the run executed at; `yajna result` fills it) and
+1. Record `commit` (the full SHA the run executed at), `host`, `env` and `outputs`:
+   `yajna result` fills them, `yajna run record RUN-…` does for a run from `yajna new run`.
+   `--env` takes the names of variables the run needed outside git (data roots, offline
+   flags; never a credential), `--outputs` the files its result rests on, hashed. If the
+   commit cannot be found, `--commit unknown` and say why under `Notes`. Also record
    `script` in the run's frontmatter. `yajna new run --script <path>` writes a stub at
    that path if it does not exist, under `runs/RUN-<id>/run.sh` beside the page.
 2. The script runs from the repo root inside the project's dev shell

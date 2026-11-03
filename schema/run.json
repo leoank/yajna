@@ -116,7 +116,59 @@
     },
     "commit": {
       "type": "string",
-      "pattern": "^[0-9a-f]{7,40}$"
+      "pattern": "^([0-9a-f]{7,40}|unknown)$",
+      "description": "The commit the run executed at, a full SHA; `unknown` with the reason under Notes"
+    },
+    "host": {
+      "type": "string",
+      "description": "The machine the run executed on"
+    },
+    "env": {
+      "type": "object",
+      "description": "Variables the run depended on that git does not hold (data roots, offline flags), never credentials",
+      "propertyNames": {
+        "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+      },
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "outputs": {
+      "type": "array",
+      "description": "The files the result rests on: relative to the repo root, or $VAR/... under a root named in env",
+      "items": {
+        "type": "object",
+        "required": [
+          "path",
+          "sha256"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "origin_commit": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*@[0-9a-f]{7,40}$",
+      "description": "The commit in the lab repo before graduation, as <namespace>@<sha>"
+    },
+    "reproduces": {
+      "type": "string",
+      "pattern": "^([a-z][a-z0-9_-]*/)?RUN-\\d{8}-[0-9a-z]{4}([0-9a-z]{2})?$"
+    },
+    "verdict": {
+      "enum": [
+        "reproduced",
+        "differs",
+        "failed"
+      ]
     },
     "flake_rev": {
       "type": "string"

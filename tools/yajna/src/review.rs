@@ -465,7 +465,7 @@ pub fn problems(vault: &Vault, page: &Page) -> Vec<String> {
 }
 
 /// Whether commits can be checked: a git checkout with its history (not CI's shallow clone).
-fn history_available(root: &Path) -> bool {
+pub(crate) fn history_available(root: &Path) -> bool {
     git(root, &["rev-parse", "--is-shallow-repository"]).is_ok_and(|s| s == "false")
 }
 
@@ -545,7 +545,7 @@ struct Resolved {
     note: Option<String>,
 }
 
-fn rev(root: &Path, r: &str) -> Res<String> {
+pub(crate) fn rev(root: &Path, r: &str) -> Res<String> {
     git(
         root,
         &["rev-parse", "--verify", "-q", &format!("{r}^{{commit}}")],

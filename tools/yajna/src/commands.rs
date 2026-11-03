@@ -4,7 +4,6 @@
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use serde_json::Value;
 
@@ -89,6 +88,8 @@ pub fn run(vault: &Vault, cmd: &Cmd, prompter: &mut dyn Prompter) -> Res<i32> {
             author,
             note,
             script,
+            env,
+            outputs,
         } => cmd_result(
             vault,
             experiment,
@@ -97,7 +98,10 @@ pub fn run(vault: &Vault, cmd: &Cmd, prompter: &mut dyn Prompter) -> Res<i32> {
             author.as_deref(),
             note.as_deref(),
             script.as_deref(),
+            env,
+            outputs,
         ),
+        Cmd::Run { action } => crate::reproduce::run(vault, action),
         Cmd::Ref { key, note } => cmd_ref(vault, key, *note),
         Cmd::Validate { against, since } => {
             cmd_validate(vault, against.as_deref(), since.as_deref())
@@ -600,23 +604,7 @@ pub fn scaffold_code(vault: &Vault, slug: &str, id: &str, title: &str) -> Res<Pa
 
 // --- result --------------------------------------------------------------------------
 
-fn git_commit(root: &Path) -> Option<String> {
-    let out = Command::new("git")
-        .args(["rev-parse", "--short", "HEAD"])
-        .current_dir(root)
-        .output()
-        .ok()?;
-    if !out.status.success() {
-        return None;
-    }
-    let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
-    if s.is_empty() {
-        None
-    } else {
-        Some(s)
-    }
-}
-
+#[allow(clippy::too_many_arguments)]
 fn cmd_result(
     vault: &Vault,
     experiment: &str,
@@ -625,7 +613,12 @@ fn cmd_result(
     author: Option<&str>,
     note: Option<&str>,
     script: Option<&str>,
+    env: &[String],
+    outputs: &[PathBuf],
 ) -> Res<i32> {
+    // what the page will record is checked before the run's ID is allocated
+    let env = crate::reproduce::env_of(env)?;
+    let outputs = crate::reproduce::outputs_of(vault, outputs, &env)?;
     let source = match file {
         Some(f) => fs::read_to_string(f).map_err(|e| format!("{}: {e}", f.display()))?,
         None => {
@@ -674,8 +667,11 @@ fn cmd_result(
                 .into(),
         ),
     ];
-    if let Some(commit) = git_commit(&vault.root) {
+    if let Some(commit) = crate::reproduce::head(&vault.root) {
         meta.push(("commit", Value::String(commit)));
+    }
+    if let Some(host) = crate::reproduce::host() {
+        meta.push(("host", Value::String(host)));
     }
     if let Some(script) = script {
         if !vault.root.join(script).is_file() {
@@ -710,6 +706,13 @@ fn cmd_result(
         .join("runs")
         .join(format!("{ident}.md"));
     vault.write_page(&path, &meta, &body)?;
+    if !env.is_empty() || !outputs.is_empty() {
+        let text = crate::vault::read_text(&path).map_err(|e| e.to_string())?;
+        let text = crate::init::edit_frontmatter(&text, |fm| {
+            crate::reproduce::put_fields(fm, None, &env, &outputs)
+        });
+        fs::write(&path, text).map_err(|e| e.to_string())?;
+    }
     let shown: Vec<String> = result
         .iter()
         .map(|(k, v)| match v {

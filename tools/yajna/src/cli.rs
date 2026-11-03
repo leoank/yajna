@@ -137,6 +137,19 @@ pub enum Cmd {
         /// the executable that re-created this run, relative to the repo root
         #[arg(long)]
         script: Option<String>,
+        /// variables the run depended on (data roots, offline flags), recorded with their
+        /// values from this environment as `env`; names that look like credentials are refused
+        #[arg(long, num_args = 1.., value_name = "NAME")]
+        env: Vec<String>,
+        /// files the result rests on, recorded with their sha256 as `outputs`: inside the
+        /// repo, or under the value of a variable given to --env
+        #[arg(long, num_args = 1.., value_name = "PATH")]
+        outputs: Vec<PathBuf>,
+    },
+    /// work with compute runs: record what they ran with (docs/reproduce.md)
+    Run {
+        #[command(subcommand)]
+        action: RunAction,
     },
     /// list open checkboxes across the vault, numbered for `yajna todo done`; overdue first,
     /// then by priority (p:1-3) and due date (due:YYYY-MM-DD)
@@ -431,6 +444,27 @@ pub enum PhaseAction {
         project: String,
         /// words from the item's text
         item: Vec<String>,
+    },
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum RunAction {
+    /// fill in what a run created by `yajna new run` ran with: the full commit, this
+    /// machine as `host` (when the page has none), `env` and `outputs`
+    Record {
+        /// RUN-…
+        run: String,
+        /// the commit it ran at (default HEAD when the page has none), or `unknown`
+        #[arg(long)]
+        commit: Option<String>,
+        /// variables the run depended on, recorded with their values from this environment;
+        /// names that look like credentials are refused
+        #[arg(long, num_args = 1.., value_name = "NAME")]
+        env: Vec<String>,
+        /// files the result rests on, recorded with their sha256: inside the repo, or under
+        /// the value of a variable given to --env
+        #[arg(long, num_args = 1.., value_name = "PATH")]
+        outputs: Vec<PathBuf>,
     },
 }
 

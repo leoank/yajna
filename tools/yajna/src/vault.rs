@@ -71,11 +71,14 @@ pub const VOLUME_PREFIXES: &[&str] = &["RUN", "ART", "AGS", "REV"];
 /// Curated entities that take date IDs instead of counter IDs (ADR-0022): the ones created
 /// on branches, where a shared counter collides.
 pub const DATED_PREFIXES: &[&str] = &["EXP", "ANA", "DOC"];
-/// Frontmatter fields whose IDs are not links: paths (an ID there is a directory name) and
-/// `previous_id`, the counter ID a page had before `yajna migrate-ids`.
+/// Frontmatter fields whose IDs are not links: paths (an ID there is a directory name), a
+/// run's `env` and `outputs`, which hold paths, and `previous_id`, the counter ID a page had
+/// before `yajna migrate-ids`.
 pub const PATH_FIELDS: &[&str] = &[
     "code",
     "script",
+    "env",
+    "outputs",
     "path",
     "paths",
     "previous_id",

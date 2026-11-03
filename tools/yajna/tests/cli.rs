@@ -5432,3 +5432,227 @@ fn today() -> String {
         .unwrap();
     String::from_utf8_lossy(&out.stdout).trim().to_string()
 }
+
+#[test]
+fn runs_record_commit_host_env_and_outputs_and_their_commit_resolves() {
+    let v = git_lab();
+    fill_experiments(&v.root);
+    let data = empty();
+    fs::create_dir_all(data.root.join("maps")).unwrap();
+    fs::write(data.root.join("maps/a.png"), "pixels").unwrap();
+    let dir = v.root.join("notes/projects/PRJ-0001-toy");
+    fs::write(dir.join("manifest.tsv"), "a\t1\n").unwrap();
+    git(&v.root, &["add", "-A"]);
+    git(&v.root, &["commit", "-q", "-m", "filled"]);
+    let head = git(&v.root, &["rev-parse", "HEAD"]).trim().to_string();
+    let data_root = data.root.to_str().unwrap();
+    let env = [("VPI_DATA", data_root), ("API_TOKEN", "x")];
+
+    // result writes the full commit and this host, and env and outputs when asked
+    let out = v.run_with(
+        &[
+            "result",
+            "--experiment",
+            "EXP-20261021-000001",
+            "--env",
+            "VPI_DATA",
+            "--outputs",
+            dir.join("manifest.tsv").to_str().unwrap(),
+            data.root.join("maps/a.png").to_str().unwrap(),
+        ],
+        Some("===RESULT=== {\"loss\": 0.1}\n"),
+        &env,
+    );
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let page = v.read(&v.path(&out));
+    assert!(page.contains(&format!("commit: {head}\n")), "{page}");
+    assert!(page.contains("\nhost: "), "{page}");
+    assert!(
+        page.contains(&format!("env:\n  VPI_DATA: {data_root}\n")),
+        "{page}"
+    );
+    assert!(
+        page.contains(
+            "outputs:\n  - path: notes/projects/PRJ-0001-toy/manifest.tsv\n    sha256: \
+             9493985885f1acd67f91eb1c725fe4c30a6d46aff62b1e80d42dfb490bb84d4d\n"
+        ),
+        "{page}"
+    );
+    assert!(
+        page.contains(
+            "  - path: $VPI_DATA/maps/a.png\n    sha256: \
+             6ec9c2b0eb14010746c8bce8939303b382344b296206612eb8a907a37b2b2f37\n"
+        ),
+        "{page}"
+    );
+    // credentials and files outside the repo and every root are refused
+    let refused = v.run_with(
+        &[
+            "result",
+            "--experiment",
+            "EXP-20261021-000001",
+            "--env",
+            "API_TOKEN",
+        ],
+        Some("===RESULT=== {\"loss\": 0.1}\n"),
+        &env,
+    );
+    assert_eq!(refused.code, 1);
+    assert!(
+        refused.stderr.contains("looks like a credential"),
+        "{}",
+        refused.stderr
+    );
+    let refused = v.run_with(
+        &[
+            "result",
+            "--experiment",
+            "EXP-20261021-000001",
+            "--outputs",
+            data.root.join("maps/a.png").to_str().unwrap(),
+        ],
+        Some("===RESULT=== {\"loss\": 0.1}\n"),
+        &env,
+    );
+    assert_eq!(refused.code, 1);
+    assert!(
+        refused.stderr.contains("under no variable"),
+        "{}",
+        refused.stderr
+    );
+    let out = v.run(&["validate"]);
+    assert_eq!(out.code, 0, "{}", out.stdout);
+
+    // run record fills a run made by new run; a short commit is written in full
+    let out = v.run(&[
+        "new",
+        "run",
+        "--experiment",
+        "EXP-20261021-000001",
+        "--kind",
+        "compute",
+    ]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let run = v.path(&out);
+    let id = run.file_stem().unwrap().to_str().unwrap().to_string();
+    let out = v.run_with(
+        &[
+            "run",
+            "record",
+            &id,
+            "--commit",
+            &head[..7],
+            "--env",
+            "VPI_DATA",
+            "--outputs",
+            dir.join("manifest.tsv").to_str().unwrap(),
+        ],
+        None,
+        &env,
+    );
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let page = v.read(&run);
+    assert!(page.contains(&format!("commit: {head}\n")), "{page}");
+    assert!(page.contains("\nhost: "), "{page}");
+    assert!(
+        page.contains("  - path: notes/projects/PRJ-0001-toy/manifest.tsv\n"),
+        "{page}"
+    );
+    // recorded again, the blocks are replaced, not repeated
+    let out = v.run_with(
+        &[
+            "run",
+            "record",
+            &id,
+            "--outputs",
+            data.root.join("maps/a.png").to_str().unwrap(),
+            "--env",
+            "VPI_DATA",
+        ],
+        None,
+        &env,
+    );
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let page = v.read(&run);
+    assert_eq!(page.matches("outputs:").count(), 1, "{page}");
+    assert_eq!(page.matches("env:").count(), 1, "{page}");
+    assert!(!page.contains("manifest.tsv"), "{page}");
+    assert!(page.contains("  - path: $VPI_DATA/maps/a.png\n"), "{page}");
+    assert_eq!(
+        v.run(&["validate"]).code,
+        0,
+        "{}",
+        v.run(&["validate"]).stdout
+    );
+
+    // a commit that is not in the repository fails, unless the clone is shallow
+    let set_commit = |c: &str| {
+        let text = v.read(&run);
+        let line = text
+            .lines()
+            .find(|l| l.starts_with("commit:"))
+            .unwrap()
+            .to_string();
+        fs::write(&run, text.replace(&line, &format!("commit: {c}"))).unwrap();
+    };
+    set_commit("d071239");
+    let out = v.run(&["validate"]);
+    assert_eq!(out.code, 1);
+    assert!(
+        out.stdout.contains("commit d071239: not a commit here"),
+        "{}",
+        out.stdout
+    );
+    git(&v.root, &["add", "-A"]);
+    git(&v.root, &["commit", "-q", "-m", "runs"]);
+    let shallow = empty();
+    let url = format!("file://{}", v.root.display());
+    let clone = shallow.root.join("c");
+    git(
+        &shallow.root,
+        &["clone", "-q", "--depth", "1", &url, clone.to_str().unwrap()],
+    );
+    let out = Command::new(env!("CARGO_BIN_EXE_yajna"))
+        .args(["--root", clone.to_str().unwrap(), "validate"])
+        .env("YAJNA_CACHE", shallow.root.join(".cache"))
+        .env("XDG_STATE_HOME", shallow.root.join(".cache/state"))
+        .env("XDG_CONFIG_HOME", shallow.root.join(".cache/config"))
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+
+    // `unknown` needs the reason under Notes
+    let out = v.run(&["run", "record", &id, "--commit", "unknown"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let out = v.run(&["validate"]);
+    assert_eq!(out.code, 1);
+    assert!(
+        out.stdout
+            .contains("commit: unknown needs the reason under Notes"),
+        "{}",
+        out.stdout
+    );
+    let text = v.read(&run);
+    fs::write(
+        &run,
+        text.replacen("## Notes\n", "## Notes\nRan from an uncommitted tree.\n", 1),
+    )
+    .unwrap();
+    assert_eq!(v.run(&["validate"]).code, 0);
+
+    // a credential written into env by hand fails validation
+    let text = v.read(&run);
+    fs::write(&run, text.replace("env:\n", "env:\n  API_TOKEN: x\n")).unwrap();
+    let out = v.run(&["validate"]);
+    assert_eq!(out.code, 1);
+    assert!(
+        out.stdout
+            .contains("env API_TOKEN: looks like a credential"),
+        "{}",
+        out.stdout
+    );
+}

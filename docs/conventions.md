@@ -11,7 +11,9 @@ too (`nix flake check`). It also checks the conventions below that can be checke
 mechanically: every day an agent logged has its session page, a finished session has
 `finished` and a `harness`, curated pages an agent made or changed carry `review: pending`,
 `review: approved` carries its approval record, a done compute run records its `commit`
-and an agent's has an executable `script`, an experiment with runs has its Question,
+(one that resolves in the repository, except in a shallow clone, or `unknown` with the
+reason under `Notes`), a run's `env` names no credential, an agent's compute run has an
+executable `script`, an experiment with runs has its Question,
 Hypothesis, Plan and Success criteria filled and a concluded one its `outcome` and
 Conclusion, runs and experiments are listed on their parents, a protocol pin
 (`PRO-0012@3`, `@3.s4`) names a version and step that exist, pages sit under their
@@ -163,7 +165,12 @@ yajna new run --experiment EXP-20261021-0k3m9x --kind compute
 ```
 
 Write what was done and what came out under `Notes`, tick the checklist, set `status`, and
-put `commit` in the frontmatter so the run points at the code it ran. Run-local files go in
+record what it ran with: `yajna run record RUN-… --env VPI_DATA --outputs <file>…` writes the
+full `commit` (HEAD, or `--commit <sha>`; `unknown` when it cannot be found, with the reason
+under `Notes`), this machine as `host`, the variables the run depended on outside git as
+`env` (data roots, offline flags; names that look like credentials are refused), and the
+files its result rests on with their sha256 as `outputs`, each relative to the repo root or
+`$VAR/…` under a root named in `env`. Run-local files go in
 `runs/RUN-.../` or the experiment's sidecar directory. Not every command you ran is a run;
 one page per result that the experiment's conclusion will rest on.
 
@@ -197,8 +204,8 @@ python train.py 2>&1 | tee run.log
 yajna result --experiment EXP-20261021-0k3m9x run.log
 ```
 
-That writes the `RUN` page (status `done`, the repo commit recorded, `--script <path>` for
-the script that produced the line) and appends a row to
+That writes the `RUN` page (status `done`, the full commit and `host` recorded, `--script
+<path>` for the script that produced the line, `--env` and `--outputs` as for `run record`) and appends a row to
 `experiments/EXP-20261021-0k3m9x/results.tsv`, adding columns as new keys appear. The TSV is tracked
 in git. Use it only where a flat table of numbers is the natural summary of the experiment.
 

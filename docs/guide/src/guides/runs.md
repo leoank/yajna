@@ -33,8 +33,34 @@ beside the page: `runs/RUN-20261022-d0k2m7/`.
 
 A compute run is only useful if it can be run again. Every compute run records:
 
-- `commit`: the commit of the repository it ran at,
+- `commit`: the full SHA of the repository commit it ran at,
 - `script`: an executable, relative to the repository root, that re-creates it.
+
+and, where it applies, what it ran with:
+
+- `host`: the machine it ran on,
+- `env`: the variables it depended on that git does not hold, such as a data root or an
+  offline flag, with their values (never a credential: a name with `KEY`, `TOKEN`,
+  `SECRET`, `PASSWORD`, `CREDENTIAL` or `AUTH` in it is refused),
+- `outputs`: the files its result rests on, with their sha256, each relative to the
+  repository root or `$VAR/…` under a root named in `env`.
+
+`yajna run record` fills these in on a run you created with `yajna new run`, once it has
+run:
+
+```console
+$ export VPI_DATA=/data/vpi
+$ yajna run record RUN-20261022-d1a9p0 --env VPI_DATA \
+    --outputs notes/projects/PRJ-0001-yeast-heat-shock/runs/RUN-20261022-d1a9p0/manifest.tsv \
+              $VPI_DATA/results/E1/maps.png
+RUN-20261022-d1a9p0: commit 4f1c…, host oppy, env 1, outputs 2
+```
+
+The commit is HEAD unless the page already has one or you pass `--commit <sha>`. When the
+commit a past run executed at cannot be found, `--commit unknown` records that, and the
+reason goes under *Notes*. `yajna validate` fails when a compute run's commit is not in the
+repository (not checked in a shallow clone, which lacks the history), or when a done one
+has none.
 
 ```console
 $ yajna new run --experiment EXP-20261022-cwr123 --kind compute \
@@ -74,8 +100,8 @@ python train.py 2>&1 | tee run.log
 yajna result --experiment EXP-20261022-cwr123 run.log --script code/toy/train.sh
 ```
 
-`yajna result` writes the run page with status `done`, the time, the commit and a table of
-the values, and appends a row to `experiments/EXP-20261022-cwr123/results.tsv`, adding
+`yajna result` writes the run page with status `done`, the time, the commit, the host and a
+table of the values (`--env` and `--outputs` as for `run record`), and appends a row to `experiments/EXP-20261022-cwr123/results.tsv`, adding
 columns as new keys appear. The TSV is tracked in git. `--note "..."` adds text to the run
 page; with no file, it reads standard input.
 
