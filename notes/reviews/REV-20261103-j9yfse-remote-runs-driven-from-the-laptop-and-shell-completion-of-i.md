@@ -8,8 +8,8 @@ target:
   kind: range               # branch | range | page | run | experiment | phase
   ref: HEAD..HEAD
 base: 2c88d86bf47d9ffe05b5243b75d6bedf7a95a56d
-head: 742f1fc70d40624a69eeb6f1945f7105e7011da3
-rounds: [2c88d86bf47d9ffe05b5243b75d6bedf7a95a56d]
+head: 81e3e31c46cdc262a7ef28ea9f2115b11dd051df
+rounds: [2c88d86bf47d9ffe05b5243b75d6bedf7a95a56d, 742f1fc70d40624a69eeb6f1945f7105e7011da3]
 paths: []
 about: [PRJ-0001]
 status: open              # open | changes_requested | approved | merged | closed
@@ -62,6 +62,16 @@ logs and in-repo outputs are written here.
 - An `env` value is checked for existence on the remote only when it is an absolute or
   `~/` path. A relative default inside a script (`code/<slug>/data`) resolves inside the
   worktree, where gitignored data is absent.
+
+**Added after the first look (8661c4e, 81e3e31), 0.24.0:**
+- `run record --host <machine>` and `--env NAME=VALUE` (also on `result`): a run that ran
+  elsewhere is recorded from here with that machine and the values it used there. This
+  closes the `host` gap listed under *Not verified*. In `reproduce.rs`: `env_of`, `record`.
+- `--on` clones this repository's `origin` to the host's root when nothing is there, to the
+  root less the notebook's path inside its repository (`clone_sh` in `rerun.rs`); `run
+  clean --on` says there is nothing to clean. Tests
+  `a_run_on_another_machine_is_recorded_with_its_host_and_values` and
+  `on_a_host_without_the_checkout_it_is_cloned_from_origin`.
 
 **To review:** `yajna serve --review --open` in this repo, or `yajna review show
 REV-20261103-j9yfse --diff`.
