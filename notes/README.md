@@ -30,7 +30,7 @@ open items with the rest.
 - [x] Phase 0b: the Rust CLI at parity, `init lab|project`, namespaced links, `graduate` (ADR-0017, ADR-0018)
 - [x] Phase 0b: `packages.yajna` installed through neusis
 - [x] Phase 0b: a tagged release, v0.2.0, with binaries for Linux and macOS
-- [ ] Phase 0b: a machine without Nix running `init project`, `new` and `validate` from the release binary
+- [x] Phase 0b: a machine without Nix running `init project`, `new` and `validate` from the release binary
 - [x] Phase 0b: rc2s2 graduates by the documented procedure and both repos validate
   (2026-10-25: manthan PRJ-0002 is now github:leoank/rc2s2 as rc2s2/PRJ-0001; the lab paths
   graduate left in run pages and scripts were fixed in yajna 0.8.2 and in the rc2s2 repo)
@@ -38,7 +38,7 @@ open items with the rest.
 - [x] Phase 1: the index, `show`, `timeline`, `tree` and `runs`, the static site with `--serve`, CI (ADR-0019)
 - [x] Agent tooling: the Claude Code plugin (skill and `/yajna:project` commands), agents as authors, reproducible runs
 - [x] Parallel work: `worktree`, `validate --against`, `renumber` (ADR-0021)
-- [ ] `yajna renumber` also rewrites IDs outside markdown: when manthan renumbered g2a (PRJ-0003 to PRJ-0004) and vesicle-protrusions-and-imaging (PRJ-0004 to PRJ-0005) on 2026-10-23, the IDs in their code (`flake.nix` descriptions, `pyproject.toml`, a Python docstring) were left behind and fixed by hand; it should rewrite them, or at least list the files that still name the old ID
+- [x] `yajna renumber` also rewrites IDs outside markdown: when manthan renumbered g2a (PRJ-0003 to PRJ-0004) and vesicle-protrusions-and-imaging (PRJ-0004 to PRJ-0005) on 2026-10-23, the IDs in their code (`flake.nix` descriptions, `pyproject.toml`, a Python docstring) were left behind and fixed by hand; it should rewrite them, or at least list the files that still name the old ID
 - [x] Phase 1: the one-way ELN exporter, `yajna export` (ADR-0010)
 - [ ] Verify `import benchling` against real exports from the lab's tenant ([[EXP-20261019-j4xp01]])
 - [ ] Phase 1: upload to the institutional ELN, and its import format, once the ELN is named
