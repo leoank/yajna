@@ -56,6 +56,15 @@ $ yajna run record RUN-20261022-d1a9p0 --env VPI_DATA \
 RUN-20261022-d1a9p0: commit 4f1c…, host oppy, env 1, outputs 2
 ```
 
+For a run that ran on another machine, say which, and give the values it ran with there:
+
+```console
+$ yajna run record RUN-20261023-nvfv0n --host oppy --env VPI_DATA=/data/ank/vpi HF_HUB_OFFLINE=1
+```
+
+`--env NAME` takes the value from your environment, `--env NAME=VALUE` records the one
+given. Without `--host`, `host` is the machine you record from when the page names none.
+
 The commit is HEAD unless the page already has one or you pass `--commit <sha>`. When the
 commit a past run executed at cannot be found, `--commit unknown` records that, and the
 reason goes under *Notes*. `yajna validate` fails when a compute run's commit is not in the

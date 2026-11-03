@@ -6389,3 +6389,49 @@ fn ids_complete_from_the_notebook_with_their_titles() {
         .unwrap();
     assert!(String::from_utf8_lossy(&out.stdout).starts_with("#compdef yajna"));
 }
+
+#[test]
+fn a_run_on_another_machine_is_recorded_with_its_host_and_values() {
+    let v = git_lab();
+    let out = v.run(&[
+        "new",
+        "run",
+        "--experiment",
+        "EXP-20261021-000001",
+        "--kind",
+        "compute",
+    ]);
+    let page = v.path(&out);
+    let id = page.file_stem().unwrap().to_str().unwrap().to_string();
+    let out = v.run_with(
+        &[
+            "run",
+            "record",
+            &id,
+            "--host",
+            "oppy",
+            "--env",
+            "VPI_DATA=/data/vpi",
+            "HF_HUB_OFFLINE",
+        ],
+        None,
+        &[("HF_HUB_OFFLINE", "1"), ("VPI_DATA", "/laptop/copy")],
+    );
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let text = v.read(&page);
+    assert!(text.contains("\nhost: oppy\n"), "{text}");
+    assert!(
+        text.contains("env:\n  VPI_DATA: /data/vpi\n  HF_HUB_OFFLINE: '1'\n"),
+        "the given value, not this machine's: {text}"
+    );
+    // --host replaces one already recorded; a credential is refused in either form
+    assert_eq!(v.run(&["run", "record", &id, "--host", "rogue"]).code, 0);
+    assert!(v.read(&page).contains("\nhost: rogue\n"));
+    let out = v.run(&["run", "record", &id, "--env", "API_TOKEN=x"]);
+    assert_eq!(out.code, 1);
+    assert!(
+        out.stderr.contains("looks like a credential"),
+        "{}",
+        out.stderr
+    );
+}

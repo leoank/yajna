@@ -167,8 +167,10 @@ yajna new run --experiment EXP-20261021-0k3m9x --kind compute
 Write what was done and what came out under `Notes`, tick the checklist, set `status`, and
 record what it ran with: `yajna run record RUN-… --env VPI_DATA --outputs <file>…` writes the
 full `commit` (HEAD, or `--commit <sha>`; `unknown` when it cannot be found, with the reason
-under `Notes`), this machine as `host`, the variables the run depended on outside git as
-`env` (data roots, offline flags; names that look like credentials are refused), and the
+under `Notes`), this machine as `host` (`--host oppy` for a run that ran elsewhere), the
+variables the run depended on outside git as `env` (data roots, offline flags; `NAME` takes
+the value here, `NAME=VALUE` gives the one it ran with; names that look like credentials are
+refused), and the
 files its result rests on with their sha256 as `outputs`, each relative to the repo root or
 `$VAR/…` under a root named in `env`. Run-local files go in
 `runs/RUN-.../` or the experiment's sidecar directory. Not every command you ran is a run;

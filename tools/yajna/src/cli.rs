@@ -143,9 +143,10 @@ pub enum Cmd {
         /// the executable that re-created this run, relative to the repo root
         #[arg(long)]
         script: Option<String>,
-        /// variables the run depended on (data roots, offline flags), recorded with their
-        /// values from this environment as `env`; names that look like credentials are refused
-        #[arg(long, num_args = 1.., value_name = "NAME")]
+        /// variables the run depended on (data roots, offline flags), recorded as `env`:
+        /// NAME takes its value from this environment, NAME=VALUE gives it; names that look
+        /// like credentials are refused
+        #[arg(long, num_args = 1.., value_name = "NAME[=VALUE]")]
         env: Vec<String>,
         /// files the result rests on, recorded with their sha256 as `outputs`: inside the
         /// repo, or under the value of a variable given to --env
@@ -482,9 +483,13 @@ pub enum RunAction {
         /// the commit it ran at (default HEAD when the page has none), or `unknown`
         #[arg(long)]
         commit: Option<String>,
-        /// variables the run depended on, recorded with their values from this environment;
-        /// names that look like credentials are refused
-        #[arg(long, num_args = 1.., value_name = "NAME")]
+        /// the machine it ran on (default this one, when the page names none)
+        #[arg(long)]
+        host: Option<String>,
+        /// variables the run depended on: NAME takes its value from this environment,
+        /// NAME=VALUE gives it (for a run on another machine); names that look like
+        /// credentials are refused
+        #[arg(long, num_args = 1.., value_name = "NAME[=VALUE]")]
         env: Vec<String>,
         /// files the result rests on, recorded with their sha256: inside the repo, or under
         /// the value of a variable given to --env

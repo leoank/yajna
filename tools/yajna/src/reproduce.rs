@@ -28,9 +28,10 @@ pub fn run(vault: &Vault, action: &RunAction) -> Res<i32> {
         RunAction::Record {
             run,
             commit,
+            host,
             env,
             outputs,
-        } => record(vault, run, commit.as_deref(), env, outputs),
+        } => record(vault, run, commit.as_deref(), host.as_deref(), env, outputs),
         RunAction::Shell {
             run,
             command,
@@ -78,18 +79,26 @@ pub(crate) fn head(root: &Path) -> Option<String> {
     git(root, &["rev-parse", "HEAD"]).ok()
 }
 
-/// The named variables with their values here, refusing credentials and unset names.
+/// The named variables with their values here, or as given (`NAME=VALUE`, for a run on
+/// another machine), refusing credentials and unset names.
 pub(crate) fn env_of(names: &[String]) -> Res<Vec<(String, String)>> {
     names
         .iter()
-        .map(|name| {
+        .map(|arg| {
+            let (name, given) = match arg.split_once('=') {
+                Some((n, v)) => (n, Some(v.to_string())),
+                None => (arg.as_str(), None),
+            };
             if credential_like(name) {
                 return Err(format!(
                     "--env {name}: looks like a credential, which never goes in a page"
                 ));
             }
-            let value = std::env::var(name).map_err(|_| format!("--env {name}: not set"))?;
-            Ok((name.clone(), value))
+            let value = match given {
+                Some(v) => v,
+                None => std::env::var(name).map_err(|_| format!("--env {name}: not set"))?,
+            };
+            Ok((name.to_string(), value))
         })
         .collect()
 }
@@ -187,6 +196,7 @@ fn record(
     vault: &Vault,
     id: &str,
     commit: Option<&str>,
+    on: Option<&str>,
     env: &[String],
     outputs: &[PathBuf],
 ) -> Res<i32> {
@@ -203,10 +213,11 @@ fn record(
         ),
         None => None,
     };
-    let host = if page.field("host").is_none() {
-        host()
-    } else {
-        None
+    // the machine it ran on: as given, else this one when the page names none
+    let host = match on {
+        Some(h) => Some(h.to_string()),
+        None if page.field("host").is_none() => host(),
+        None => None,
     };
     let env = env_of(env)?;
     let outputs = outputs_of(vault, outputs, &env)?;
