@@ -111,9 +111,16 @@ says it cannot find `yajna.toml`; the [Quickstart](quickstart.md) makes one.
 ## Shell completion
 
 yajna completes its subcommands and flags, and the IDs an argument takes from the notebook
-you are in: `yajna run shell RUN-<Tab>` lists the runs, each with what its experiment says
-about it; `--project`, `--experiment`, `yajna show` and the review commands do the same for
-theirs. Load it at shell startup, so it always matches the yajna on your PATH:
+you are in, each with its title or what its experiment says about it. A command offers only
+what it can act on: `yajna run shell RUN-<Tab>` the runs with a commit, `run reproduce` those
+with outputs or metrics to compare, `run record` those not done, `run clean` those with a
+worktree, the second run of `run diff` those of the first one's experiment, a review's
+thread commands the open reviews. `--project`, `--experiment` and `yajna show` complete
+theirs.
+
+Completion matches the start of an ID. To find one by what it is, leave it out: on a
+terminal, `yajna run shell`, `run reproduce`, `run record`, `run diff`, `show` and `timeline`
+open a picker over every ID of the kind, narrowed as you type words of its title. Load it at shell startup, so it always matches the yajna on your PATH:
 
 ```sh
 # zsh, in ~/.zshrc (with compinit loaded)

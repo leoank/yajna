@@ -716,7 +716,7 @@ fn repo_of(vault: &Vault) -> Res<(PathBuf, String)> {
 }
 
 /// `<cache>/runs/<repo hash>/`, where this notebook's run worktrees live.
-fn trees_dir(vault: &Vault) -> PathBuf {
+pub(crate) fn trees_dir(vault: &Vault) -> PathBuf {
     let mut h = DefaultHasher::new();
     vault.root.hash(&mut h);
     crate::index::cache_dir()

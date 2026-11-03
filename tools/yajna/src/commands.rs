@@ -101,7 +101,7 @@ pub fn run(vault: &Vault, cmd: &Cmd, prompter: &mut dyn Prompter) -> Res<i32> {
             env,
             outputs,
         ),
-        Cmd::Run { action } => crate::reproduce::run(vault, action),
+        Cmd::Run { action } => crate::reproduce::run(vault, action, prompter),
         Cmd::Ref { key, note } => cmd_ref(vault, key, *note),
         Cmd::Validate { against, since } => {
             cmd_validate(vault, against.as_deref(), since.as_deref())
@@ -169,8 +169,14 @@ pub fn run(vault: &Vault, cmd: &Cmd, prompter: &mut dyn Prompter) -> Res<i32> {
         Cmd::Review { action } => crate::review::run(vault, action),
         Cmd::Phase { action } => crate::review::phase(vault, action),
         Cmd::Index => crate::query::cmd_index(vault),
-        Cmd::Show { id } => crate::query::cmd_show(vault, id),
-        Cmd::Timeline { id } => crate::query::cmd_timeline(vault, id),
+        Cmd::Show { id } => crate::query::cmd_show(
+            vault,
+            &crate::complete::given_or_picked(vault, id.as_deref(), &[], "page", prompter)?,
+        ),
+        Cmd::Timeline { id } => crate::query::cmd_timeline(
+            vault,
+            &crate::complete::given_or_picked(vault, id.as_deref(), &[], "page", prompter)?,
+        ),
         Cmd::Tree { project } => crate::query::cmd_tree(vault, project.as_deref()),
         Cmd::Runs {
             experiment,

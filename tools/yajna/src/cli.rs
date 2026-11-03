@@ -330,13 +330,13 @@ pub enum Cmd {
     Show {
         /// any page's ID
         #[arg(add = ArgValueCandidates::new(crate::complete::any))]
-        id: String,
+        id: Option<String>,
     },
     /// everything that happened to an entity, in date order: log mentions, pages that link it, runs
     Timeline {
         /// any page's ID, such as a material's
         #[arg(add = ArgValueCandidates::new(crate::complete::any))]
-        id: String,
+        id: Option<String>,
     },
     /// a project's experiments by theme with status, outcome, runs and influence
     Tree {
@@ -477,9 +477,9 @@ pub enum RunAction {
     /// fill in what a run created by `yajna new run` ran with: the full commit, this
     /// machine as `host` (when the page has none), `env` and `outputs`
     Record {
-        /// RUN-…
-        #[arg(add = ArgValueCandidates::new(crate::complete::runs))]
-        run: String,
+        /// RUN-… (left out on a terminal: pick one)
+        #[arg(add = ArgValueCandidates::new(crate::complete::runs_to_record))]
+        run: Option<String>,
         /// the commit it ran at (default HEAD when the page has none), or `unknown`
         #[arg(long)]
         commit: Option<String>,
@@ -500,9 +500,9 @@ pub enum RunAction {
     /// copied in from now, the project's dev shell, YAJNA_RUN, YAJNA_RUN_DIR,
     /// YAJNA_RUN_COMMIT and the run's env
     Shell {
-        /// RUN-…
-        #[arg(add = ArgValueCandidates::new(crate::complete::runs))]
-        run: String,
+        /// RUN-… (left out on a terminal: pick one)
+        #[arg(add = ArgValueCandidates::new(crate::complete::runs_with_commit))]
+        run: Option<String>,
         /// run this instead of an interactive shell
         #[arg(short = 'c', long = "command")]
         command: Option<String>,
@@ -523,7 +523,7 @@ pub enum RunAction {
     /// kept unless --force
     Clean {
         /// RUN-… (default: every run worktree of this notebook)
-        #[arg(add = ArgValueCandidates::new(crate::complete::runs))]
+        #[arg(add = ArgValueCandidates::new(crate::complete::runs_with_worktree))]
         run: Option<String>,
         #[arg(long)]
         force: bool,
@@ -538,19 +538,19 @@ pub enum RunAction {
     /// what differs between two runs: commit, host, env, outputs, metrics, the code between
     /// their commits, their scripts and pages
     Diff {
-        /// RUN-…
+        /// RUN-… (left out on a terminal: pick one)
         #[arg(add = ArgValueCandidates::new(crate::complete::runs))]
-        a: String,
-        /// RUN-…
-        #[arg(add = ArgValueCandidates::new(crate::complete::runs))]
-        b: String,
+        a: Option<String>,
+        /// RUN-… (left out on a terminal: pick one)
+        #[arg(add = ArgValueCandidates::new(crate::complete::runs_beside_first))]
+        b: Option<String>,
     },
     /// run a compute run's script again at its commit into a new run that `reproduces` it,
     /// and compare the outputs' hashes and the metrics: verdict reproduced, differs or failed
     Reproduce {
-        /// RUN-…
-        #[arg(add = ArgValueCandidates::new(crate::complete::runs))]
-        run: String,
+        /// RUN-… (left out on a terminal: pick one)
+        #[arg(add = ArgValueCandidates::new(crate::complete::runs_to_reproduce))]
+        run: Option<String>,
         /// relative difference allowed between numeric metrics (default: exact)
         #[arg(long)]
         tolerance: Option<f64>,
@@ -644,7 +644,7 @@ pub enum ReviewAction {
     /// start a thread: on lines (--at path:from-to), a heading (--at path#Heading), or the
     /// whole review
     Comment {
-        #[arg(add = ArgValueCandidates::new(crate::complete::reviews))]
+        #[arg(add = ArgValueCandidates::new(crate::complete::open_reviews))]
         review: String,
         /// <path>:<from>[-<to>] or <path>#<heading>, at the review's head; omit for a general thread
         #[arg(long)]
@@ -658,7 +658,7 @@ pub enum ReviewAction {
     },
     /// answer in a thread
     Reply {
-        #[arg(add = ArgValueCandidates::new(crate::complete::reviews))]
+        #[arg(add = ArgValueCandidates::new(crate::complete::open_reviews))]
         review: String,
         /// T<n>
         thread: String,
@@ -668,7 +668,7 @@ pub enum ReviewAction {
     },
     /// mark a thread addressed by a commit (on the branch, for a branch review)
     Address {
-        #[arg(add = ArgValueCandidates::new(crate::complete::reviews))]
+        #[arg(add = ArgValueCandidates::new(crate::complete::open_reviews))]
         review: String,
         thread: String,
         /// the commit that addresses it (default HEAD)
@@ -681,7 +681,7 @@ pub enum ReviewAction {
     },
     /// resolve a thread; humans only
     Resolve {
-        #[arg(add = ArgValueCandidates::new(crate::complete::reviews))]
+        #[arg(add = ArgValueCandidates::new(crate::complete::open_reviews))]
         review: String,
         thread: String,
         text: Vec<String>,
@@ -690,7 +690,7 @@ pub enum ReviewAction {
     },
     /// reopen an addressed or resolved thread
     Reopen {
-        #[arg(add = ArgValueCandidates::new(crate::complete::reviews))]
+        #[arg(add = ArgValueCandidates::new(crate::complete::open_reviews))]
         review: String,
         thread: String,
         text: Vec<String>,
@@ -700,7 +700,7 @@ pub enum ReviewAction {
     /// approve a review once no thread is open or addressed (a human only); for a page
     /// target, also clears `review: pending` on the page
     Approve {
-        #[arg(add = ArgValueCandidates::new(crate::complete::reviews))]
+        #[arg(add = ArgValueCandidates::new(crate::complete::open_reviews))]
         review: String,
         text: Vec<String>,
         #[arg(long)]
@@ -708,7 +708,7 @@ pub enum ReviewAction {
     },
     /// ask for changes before the review can be approved
     RequestChanges {
-        #[arg(add = ArgValueCandidates::new(crate::complete::reviews))]
+        #[arg(add = ArgValueCandidates::new(crate::complete::open_reviews))]
         review: String,
         text: Vec<String>,
         #[arg(long)]
@@ -717,7 +717,7 @@ pub enum ReviewAction {
     /// merge an approved branch review into the branch checked out here, with --no-ff,
     /// after validating the branch against it (a human only)
     Merge {
-        #[arg(add = ArgValueCandidates::new(crate::complete::reviews))]
+        #[arg(add = ArgValueCandidates::new(crate::complete::open_reviews))]
         review: String,
         /// merge although threads are open or the review is not approved; the page says so
         #[arg(long)]

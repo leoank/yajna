@@ -27,6 +27,20 @@ pub trait Prompter {
         check: Option<Check>,
         default: &str,
     ) -> Result<String, String>;
+
+    /// One of `items`, searched as you type; its index. The default numbers them and asks.
+    fn pick(&mut self, message: &str, items: &[String]) -> Result<usize, String> {
+        for (i, it) in items.iter().enumerate() {
+            println!("{:>3}  {it}", i + 1);
+        }
+        let n = items.len();
+        let check: Check = std::rc::Rc::new(move |s: &str| match s.parse::<usize>() {
+            Ok(k) if (1..=n).contains(&k) => Ok(()),
+            _ => Err(format!("a number from 1 to {n}")),
+        });
+        let answer = self.ask(message, None, Some(check), "")?;
+        Ok(answer.parse::<usize>().map_err(|e| e.to_string())? - 1)
+    }
 }
 
 /// What tab completes: a fixed word list, or entity IDs by ID or title.
@@ -165,6 +179,20 @@ impl Prompter for Interactive {
             Err(e) => Err(e.to_string()),
         }
     }
+
+    /// inquire's select, filtered fuzzily as you type.
+    fn pick(&mut self, message: &str, items: &[String]) -> Result<usize, String> {
+        match inquire::Select::new(message, items.to_vec())
+            .with_page_size(15)
+            .raw_prompt()
+        {
+            Ok(choice) => Ok(choice.index),
+            Err(InquireError::OperationCanceled | InquireError::OperationInterrupted) => {
+                Err("cancelled".to_string())
+            }
+            Err(e) => Err(e.to_string()),
+        }
+    }
 }
 
 pub struct Scripted {
@@ -205,6 +233,22 @@ impl Prompter for Scripted {
             check(&answer).map_err(|m| format!("{message}: {m}"))?;
         }
         Ok(answer)
+    }
+
+    /// The first item that has every word of the answer, as typing them would leave on top.
+    fn pick(&mut self, message: &str, items: &[String]) -> Result<usize, String> {
+        let answer = self
+            .answers
+            .next()
+            .ok_or_else(|| format!("no scripted answer for {message:?}"))?
+            .to_lowercase();
+        items
+            .iter()
+            .position(|it| {
+                let it = it.to_lowercase();
+                answer.split_whitespace().all(|w| it.contains(w))
+            })
+            .ok_or_else(|| format!("{message}: nothing matches {answer:?}"))
     }
 }
 

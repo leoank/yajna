@@ -6593,3 +6593,88 @@ fn the_plugin_carries_the_cli_version() {
         "plugins/yajna/.claude-plugin/plugin.json carries the CLI's version"
     );
 }
+
+#[test]
+fn each_command_completes_what_it_can_act_on_and_the_picker_searches_all() {
+    let (v, id, _) = reproducible_lab();
+    // another experiment with a run that has no commit yet
+    let out = v.run(&["new", "experiment", "Second", "--project", "PRJ-0001"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let exp2 = v.path(&out).file_stem().unwrap().to_str().unwrap()[..19].to_string();
+    fill_experiments(&v.root);
+    let out = v.run(&["new", "run", "--experiment", &exp2, "--kind", "compute"]);
+    let fresh = v
+        .path(&out)
+        .file_stem()
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
+    let complete = |index: &str, words: &[&str]| {
+        let out = Command::new(env!("CARGO_BIN_EXE_yajna"))
+            .current_dir(&v.root)
+            .env("COMPLETE", "zsh")
+            .env("_CLAP_IFS", "\n")
+            .env("_CLAP_COMPLETE_INDEX", index)
+            .env("XDG_STATE_HOME", v.root.join(".cache/state"))
+            .arg("--")
+            .args(words)
+            .output()
+            .unwrap();
+        String::from_utf8_lossy(&out.stdout).into_owned()
+    };
+    let ids = |s: String| -> Vec<String> {
+        s.lines()
+            .map(|l| l.split(':').next().unwrap().to_string())
+            .collect()
+    };
+    assert_eq!(
+        ids(complete("3", &["yajna", "run", "shell", "RUN-"])),
+        vec![id.clone()]
+    );
+    assert_eq!(
+        ids(complete("3", &["yajna", "run", "reproduce", "RUN-"])),
+        vec![id.clone()]
+    );
+    assert_eq!(
+        ids(complete("3", &["yajna", "run", "record", "RUN-"])),
+        vec![fresh.clone()]
+    );
+    assert!(
+        complete("3", &["yajna", "run", "clean", "RUN-"]).is_empty(),
+        "no worktrees yet"
+    );
+    // the second run of a diff: the first one's experiment
+    assert_eq!(
+        ids(complete("4", &["yajna", "run", "diff", &id, "RUN-"])),
+        vec![id.clone()]
+    );
+    assert_eq!(
+        ids(complete("4", &["yajna", "run", "diff", &fresh, "RUN-"])),
+        vec![fresh.clone()]
+    );
+
+    // the ID left out: picked from every run, here the one shell's completion leaves out
+    let out = v.run_with(
+        &["run", "record", "--host", "rogue"],
+        None,
+        &[("YAJNA_ANSWERS", "seed 1")],
+    );
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(
+        out.stdout.starts_with(&format!("{id}: host rogue")),
+        "{}",
+        out.stdout
+    );
+    let out = v.run_with(&["show"], None, &[("YAJNA_ANSWERS", "second")]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(out.stdout.contains(&exp2), "{}", out.stdout);
+    // without a terminal it says what is missing
+    let out = v.run(&["run", "shell", "-c", "true"]);
+    assert_eq!(out.code, 1);
+    assert!(
+        out.stderr.contains("which run? give its ID"),
+        "{}",
+        out.stderr
+    );
+}

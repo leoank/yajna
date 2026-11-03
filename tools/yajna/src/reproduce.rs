@@ -23,7 +23,11 @@ use crate::yamlfmt::dump_scalar;
 /// Words in a variable name that mark it as a credential, which never goes in a page.
 const CREDENTIAL_WORDS: &[&str] = &["KEY", "TOKEN", "SECRET", "PASSWORD", "CREDENTIAL", "AUTH"];
 
-pub fn run(vault: &Vault, action: &RunAction) -> Res<i32> {
+pub fn run(vault: &Vault, action: &RunAction, p: &mut dyn crate::tui::Prompter) -> Res<i32> {
+    // a run left out is picked on a terminal, from every run
+    let mut pick = |given: &Option<String>, what: &str| {
+        crate::complete::given_or_picked(vault, given.as_deref(), &["run"], what, p)
+    };
     match action {
         RunAction::Record {
             run,
@@ -31,7 +35,14 @@ pub fn run(vault: &Vault, action: &RunAction) -> Res<i32> {
             host,
             env,
             outputs,
-        } => record(vault, run, commit.as_deref(), host.as_deref(), env, outputs),
+        } => record(
+            vault,
+            &pick(run, "run")?,
+            commit.as_deref(),
+            host.as_deref(),
+            env,
+            outputs,
+        ),
         RunAction::Shell {
             run,
             command,
@@ -40,7 +51,7 @@ pub fn run(vault: &Vault, action: &RunAction) -> Res<i32> {
             ssh,
         } => crate::rerun::shell(
             vault,
-            run,
+            &pick(run, "run")?,
             command.as_deref(),
             *working_tree,
             on.as_deref(),
@@ -52,14 +63,25 @@ pub fn run(vault: &Vault, action: &RunAction) -> Res<i32> {
             on,
             ssh,
         } => crate::rerun::clean(vault, run.as_deref(), *force, on.as_deref(), ssh),
-        RunAction::Diff { a, b } => crate::rerun::diff(vault, a, b),
+        RunAction::Diff { a, b } => {
+            let a = pick(a, "first run")?;
+            let b = pick(b, "second run")?;
+            crate::rerun::diff(vault, &a, &b)
+        }
         RunAction::Reproduce {
             run,
             tolerance,
             out_root,
             on,
             ssh,
-        } => crate::rerun::reproduce(vault, run, *tolerance, out_root, on.as_deref(), ssh),
+        } => crate::rerun::reproduce(
+            vault,
+            &pick(run, "run")?,
+            *tolerance,
+            out_root,
+            on.as_deref(),
+            ssh,
+        ),
     }
 }
 

@@ -417,7 +417,7 @@ struct Target {
     author: String,
 }
 
-fn interactive() -> bool {
+pub(crate) fn interactive() -> bool {
     std::io::stdin().is_terminal() || std::env::var_os("YAJNA_ANSWERS").is_some()
 }
 

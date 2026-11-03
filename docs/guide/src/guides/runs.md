@@ -139,7 +139,8 @@ yajna: the script notes/projects/…/runs/RUN-20261022-d1a9p0/run.sh did not exi
 yajna: dev shell: nix develop ~/.cache/yajna/runs/…/RUN-20261022-d1a9p0/code/toy
 ```
 
-`run shell` makes a git worktree at the run's `commit` (kept in the cache and reused), copies
+Leave the run's ID out on a terminal to pick it from a list you can search by its
+description. `run shell` makes a git worktree at the run's `commit` (kept in the cache and reused), copies
 the run's page and directory into it from HEAD, at their current paths, because the script
 is usually committed after the code it ran, and opens the project's dev shell there with
 `YAJNA_RUN`, `YAJNA_RUN_DIR`, `YAJNA_RUN_COMMIT` and the run's `env` set. It says what does
