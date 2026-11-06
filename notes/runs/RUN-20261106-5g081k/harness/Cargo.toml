@@ -1,0 +1,15 @@
+# The zstd question of EXP-20261106-3t40bg: zstd per 64 KB chunk inside xorbs against LZ4
+# and against zstd of whole files, on RUN-20261106-4vftn2's data. Not part of the tools
+# workspace; run.sh builds it.
+[package]
+name = "xet-zstd"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+sha2 = "0.10"
+yajna-xet = { path = "../../../../tools/yajna-xet" }
+zstd = "0.13"

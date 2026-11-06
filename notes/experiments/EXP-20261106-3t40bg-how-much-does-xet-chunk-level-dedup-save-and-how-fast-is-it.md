@@ -57,6 +57,7 @@ indexes, and what *Risks* says about imaging.
 One line per run after its link, what was tried and what it showed; `yajna validate`
 rejects a bare link here. Metric runs also land in results.tsv.
 - [[RUN-20261106-4vftn2]] eight public data sets (1.07 GB): dedup saves where versions share bytes (appended rows 1%, local edits 0.5%, a time-lapse's repeated regions half), nothing for full-training checkpoints or a second sample; LZ4 is far behind zstd on sparse images (32% against 6%); our chunker 20-25% slower than xet-core's at ~950 MB/s
+- [[RUN-20261106-5g081k]] zstd per 64 KB chunk against LZ4 on the same data: imaging 0.25 against 0.43 (whole-file zstd 0.18), daily CSVs 0.34 against 0.64, checkpoints 0.92 against 1.00; the option ank asked for is zstd -3 per chunk
 
 ## Conclusion
 Written once, by a human, when status becomes `concluded`.
