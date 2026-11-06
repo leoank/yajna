@@ -83,7 +83,9 @@ verdict: reproduced                                 # reproduced | differs | fai
   thread caps. Names that look like credentials (`KEY`, `TOKEN`, `SECRET`, `PASSWORD`,
   `CREDENTIAL`, `AUTH`) are refused by validation and by the commands that write it.
 - **`outputs`** are the files the run's result rests on, not everything it wrote. A path
-  is relative to the repo root or starts with `$VAR/` for a root named in `env`.
+  is relative to the repo root or starts with `$VAR/` for a root named in `env`. One at
+  least `[data] outputs_min` large is also stored in a data store and gets `xet`, its Xet
+  hash, so `yajna data get RUN-…` can bring it back (`data.md` section 9).
 - **Recording.** `yajna result` writes the full `commit` and `host` itself, and takes
   `--env NAME…` (values read from the environment) and `--outputs <glob>…` (hashed).
   `yajna run record RUN-… [--commit …] [--env …] [--outputs …]` fills the same fields on

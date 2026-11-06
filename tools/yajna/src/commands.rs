@@ -642,6 +642,7 @@ fn cmd_result(
 ) -> Res<i32> {
     // what the page will record is checked before the run's ID is allocated
     let env = crate::reproduce::env_of(env)?;
+    let outputs_given = outputs;
     let outputs = crate::reproduce::outputs_of(vault, outputs, &env)?;
     let source = match file {
         Some(f) => fs::read_to_string(f).map_err(|e| format!("{}: {e}", f.display()))?,
@@ -731,9 +732,10 @@ fn cmd_result(
         .join(format!("{ident}.md"));
     vault.write_page(&path, &meta, &body)?;
     if !env.is_empty() || !outputs.is_empty() {
+        let xet = crate::reproduce::store(vault, outputs_given, &outputs)?;
         let text = crate::vault::read_text(&path).map_err(|e| e.to_string())?;
         let text = crate::init::edit_frontmatter(&text, |fm| {
-            crate::reproduce::put_fields(fm, None, &env, &outputs)
+            crate::reproduce::put_fields(fm, None, &env, &outputs, &xet)
         });
         fs::write(&path, text).map_err(|e| e.to_string())?;
     }
@@ -916,6 +918,9 @@ fn cmd_ref(vault: &Vault, key: &str, note: bool) -> Res<i32> {
 fn cmd_validate(vault: &Vault, against: Option<&str>, since: Option<&str>) -> Res<i32> {
     let (mut problems, counted) = validate::validate(vault)?;
     problems.extend(crate::conventions::check(vault, since)?);
+    for w in crate::data::large_tracked(vault) {
+        eprintln!("warning: {w}");
+    }
     if let Some(reference) = against {
         let (collisions, mut notes) = crate::parallel::against(vault, reference)?;
         problems.extend(collisions);

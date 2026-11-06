@@ -1228,7 +1228,7 @@ pub(crate) fn reproduce(
         set_field(fm, "commit", &tree.commit);
         set_field(fm, "script", &script);
         set_field(fm, "reproduces", &id);
-        put_fields(fm, runs_on.as_deref(), &env, &[]);
+        put_fields(fm, runs_on.as_deref(), &env, &[], &Default::default());
     });
     fs::write(&path, text).map_err(|e| e.to_string())?;
     match &tree.remote {
@@ -1453,7 +1453,7 @@ pub(crate) fn reproduce(
         set_field(fm, "status", "done");
         set_field(fm, "finished", &finished);
         set_field(fm, "verdict", verdict);
-        put_fields(fm, None, &[], &own);
+        put_fields(fm, None, &[], &own, &Default::default());
     });
     let (head, rest) = text.split_at(text.find("\n---\n").map(|i| i + 5).unwrap_or(text.len()));
     fs::write(&path, format!("{head}{body}{rest}")).map_err(|e| e.to_string())?;

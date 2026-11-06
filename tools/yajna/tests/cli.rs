@@ -7300,3 +7300,145 @@ fn data_add_stores_a_folder_as_one_bundle_get_only_writes_part_and_drop_keeps_fi
         assert!(out.code != 0 && out.stderr.contains("is a symlink"), "{}", out.stderr);
     }
 }
+
+#[test]
+fn run_outputs_over_outputs_min_are_stored_data_get_run_brings_them_back_and_add_art_converts_a_path_page() {
+    let v = git_lab();
+    fill_experiments(&v.root);
+    let lab_store = v.root.join(".cache/lab-store");
+    fs::create_dir_all(v.root.join(".cache/config/yajna")).unwrap();
+    fs::write(v.root.join(".cache/config/yajna/config.toml"), format!("[stores]\nlab = {:?}\n", lab_store.to_str().unwrap())).unwrap();
+    let mut cfg = v.read(&v.root.join("yajna.toml"));
+    cfg.push_str("\n[data]\noutputs_min = \"100 kB\"\ngit_max = \"1 MB\"\n");
+    fs::write(v.root.join("yajna.toml"), &cfg).unwrap();
+    let mut x = 5u64;
+    let mut noise = |n: usize| -> Vec<u8> {
+        (0..n)
+            .map(|_| {
+                x ^= x << 13;
+                x ^= x >> 7;
+                x ^= x << 17;
+                (x >> 24) as u8
+            })
+            .collect()
+    };
+
+    // a run with a checkpoint in its directory, a log too small to store, and a model
+    // under a recorded variable
+    let out = v.run(&["new", "run", "--experiment", "EXP-20261021-000001", "--kind", "compute"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let run = v.path(&out);
+    let id = run.file_stem().unwrap().to_str().unwrap().to_string();
+    let dir = run.with_extension("");
+    fs::create_dir_all(&dir).unwrap();
+    let ckpt = noise(300_000);
+    fs::write(dir.join("checkpoint.bin"), &ckpt).unwrap();
+    fs::write(dir.join("train.log"), "loss 0.1\n").unwrap();
+    let data = empty();
+    let model = noise(200_000);
+    fs::write(data.root.join("model.bin"), &model).unwrap();
+    let env = [("VPI_DATA", data.root.to_str().unwrap())];
+    let head = git(&v.root, &["rev-parse", "HEAD"]).trim().to_string();
+    let out = v.run_with(
+        &[
+            "run",
+            "record",
+            &id,
+            "--commit",
+            &head,
+            "--env",
+            "VPI_DATA",
+            "--outputs",
+            dir.join("checkpoint.bin").to_str().unwrap(),
+            dir.join("train.log").to_str().unwrap(),
+            data.root.join("model.bin").to_str().unwrap(),
+        ],
+        None,
+        &env,
+    );
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(out.stderr.contains("stored 2 output(s) in local (500.0 kB"), "{}", out.stderr);
+    let page = v.read(&run);
+    let rel_dir = dir.strip_prefix(&v.root).unwrap().to_str().unwrap().to_string();
+    let block = |name: &str| page.split(&format!("  - path: {name}\n")).nth(1).unwrap_or("").lines().take(2).collect::<Vec<_>>().join("\n");
+    assert!(block(&format!("{rel_dir}/checkpoint.bin")).contains("    xet: "), "{page}");
+    assert!(block("$VPI_DATA/model.bin").contains("    xet: "), "{page}");
+    assert!(!block(&format!("{rel_dir}/train.log")).contains("xet"), "{page}");
+    assert!(v.read(&v.root.join(".gitignore")).contains(&format!("/{rel_dir}/checkpoint.bin\n")));
+    let out = v.run(&["validate"]);
+    assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
+    let out = v.run(&["data", "status", &id]);
+    assert!(out.stdout.contains(&format!("{id}  2 output(s)  here  local: whole, lab: -  (1 copy)")), "{}", out.stdout);
+
+    // pushed, gone from disk, back from the store; a changed output is never written over
+    assert_eq!(v.run(&["data", "push", &id, "--to", "lab"]).code, 0);
+    assert_eq!(v.run(&["data", "drop", &id, "--from", "local"]).code, 0);
+    fs::remove_file(dir.join("checkpoint.bin")).unwrap();
+    fs::remove_file(data.root.join("model.bin")).unwrap();
+    let out = v.run(&["data", "get", &id]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(out.stderr.contains(&format!("{id}: 2 output(s) from local")), "{}", out.stderr);
+    assert_eq!(fs::read(dir.join("checkpoint.bin")).unwrap(), ckpt);
+    assert_eq!(fs::read(data.root.join("model.bin")).unwrap(), model);
+    fs::write(dir.join("checkpoint.bin"), b"a later run's").unwrap();
+    let out = v.run(&["data", "get", &id]);
+    assert!(out.code != 0 && out.stderr.contains("checkpoint.bin differs from the recorded output; kept"), "{}", out.stderr);
+    assert_eq!(fs::read(dir.join("checkpoint.bin")).unwrap(), b"a later run's");
+
+    // result --outputs stores too
+    let out = v.run_with(
+        &["result", "--experiment", "EXP-20261021-000001", "--outputs", data.root.join("model.bin").to_str().unwrap(), "--env", "VPI_DATA"],
+        Some("===RESULT=== {\"loss\": 0.1}\n"),
+        &env,
+    );
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(v.read(&v.path(&out)).contains("    xet: "), "{}", v.read(&v.path(&out)));
+
+    // --art: a store: path page whose file is in the repo, then one whose folder is elsewhere
+    let art = |title: &str, path: &str, hash: &str| {
+        let out = v.run(&["new", "artifact", title, "--project", "PRJ-0001"]);
+        let page = v.path(&out);
+        let text = v.read(&page).replace("path: \"\"", &format!("path: {path:?}")).replace("hash: null", &format!("hash: {hash}"));
+        fs::write(&page, text).unwrap();
+        (page.file_name().unwrap().to_string_lossy()[..19].to_string(), page)
+    };
+    fs::create_dir_all(v.root.join("raw")).unwrap();
+    let scan = noise(50_000);
+    fs::write(v.root.join("raw/scan.bin"), &scan).unwrap();
+    let sha = format!("{:x}", <sha2::Sha256 as sha2::Digest>::digest(&scan));
+    let (wrong, _) = art("Wrong", "raw/scan.bin", &format!("sha256:{}", "0".repeat(64)));
+    let out = v.run(&["data", "add", "--art", &wrong]);
+    assert!(out.code != 0 && out.stderr.contains("does not match the page's hash"), "{}", out.stderr);
+    let (a1, p1) = art("Scan", "raw/scan.bin", &format!("sha256:{sha}"));
+    let out = v.run(&["data", "add", "--art", &a1]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let text = v.read(&p1);
+    assert!(text.contains("store: xet\n") && text.contains("path: raw/scan.bin\n") && text.contains("kind: file\n") && text.contains("size: 50000\n"), "{text}");
+    assert!(v.read(&v.root.join(".gitignore")).contains("/raw/scan.bin\n"));
+    let (a2, p2) = art("E1c maps", "VPI_DATA/results/E1c (on oppy)", "null");
+    let out = v.run(&["data", "add", "--art", &a2]);
+    assert!(out.code != 0 && out.stderr.contains(&format!("yajna data add --art {a2} <path>")), "{}", out.stderr);
+    let out = v.run(&["data", "add", "--art", &a2, data.root.to_str().unwrap()]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let text = v.read(&p2);
+    let name = data.root.file_name().unwrap().to_str().unwrap();
+    assert!(text.contains("kind: bundle\nfiles: 1\n") && text.contains(&format!("path: data/{a2}/{name}\n")), "{text}");
+    assert!(v.run(&["data", "add", "--art", &a2]).stderr.contains("in a data store already"));
+    let out = v.run(&["validate"]);
+    assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
+
+    // step 8: a large file staged is caught before it is committed, and validate warns
+    // about one in git
+    fs::write(v.root.join("raw/big.bin"), noise(1_500_000)).unwrap();
+    git(&v.root, &["add", "-f", "raw/big.bin"]);
+    let out = v.run(&["data", "check", "--staged"]);
+    assert_eq!(out.code, 1, "{}", out.stderr);
+    assert!(out.stdout.contains("raw/big.bin  1.5 MB  git rm --cached raw/big.bin && yajna data add raw/big.bin"), "{}", out.stdout);
+    assert!(out.stderr.contains("1 file(s) staged over [data] git_max (1000.0 kB)"), "{}", out.stderr);
+    git(&v.root, &["commit", "-q", "-m", "big"]);
+    assert_eq!(v.run(&["data", "check", "--staged"]).code, 0);
+    assert_eq!(v.run(&["data", "check"]).code, 1);
+    let out = v.run(&["validate"]);
+    assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
+    assert!(out.stderr.contains("warning: raw/big.bin is 1.5 MB in git, over [data] git_max"), "{}", out.stderr);
+}

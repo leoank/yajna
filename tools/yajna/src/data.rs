@@ -27,8 +27,8 @@ const FORMAT: &str = "yajna-xet/1";
 
 pub fn run(vault: &Vault, action: &DataAction) -> Res<i32> {
     match action {
-        DataAction::Add { paths, project, run, title, author, to } => {
-            add(vault, paths, project.as_deref(), run.as_deref(), title.as_deref(), author.as_deref(), to.as_deref())
+        DataAction::Add { paths, art, project, run, title, author, to } => {
+            add(vault, paths, art.as_deref(), project.as_deref(), run.as_deref(), title.as_deref(), author.as_deref(), to.as_deref())
         }
         DataAction::Push { targets, to } => push(vault, targets, to.as_deref()),
         DataAction::Pull { targets, from } => pull(vault, targets, from.as_deref()),
@@ -36,6 +36,7 @@ pub fn run(vault: &Vault, action: &DataAction) -> Res<i32> {
         DataAction::Status { targets } => status(vault, targets),
         DataAction::Drop { targets, from } => drop_cmd(vault, targets, from),
         DataAction::Free { targets } => free(vault, targets),
+        DataAction::Check { staged } => check(vault, *staged),
     }
 }
 
@@ -697,6 +698,15 @@ struct Source {
     members: Option<Vec<String>>,
 }
 
+impl Source {
+    fn of(p: &Path) -> Res<Source> {
+        let meta = fs::metadata(p).map_err(|e| format!("{}: {e}", p.display()))?;
+        let path = fs::canonicalize(p).map_err(|e| format!("{}: {e}", p.display()))?;
+        let members = if meta.is_dir() { Some(walk_bundle(&path)?) } else { None };
+        Ok(Source { path, members })
+    }
+}
+
 /// The files under `dir`, as sorted relative paths with `/`; symlinks and names a manifest
 /// line cannot hold are refused.
 fn walk_bundle(dir: &Path) -> Res<Vec<String>> {
@@ -743,7 +753,7 @@ impl<R: Read> Read for ShaReader<R> {
     }
 }
 
-/// One stored page's worth of what `add` packed: the file, or the bundle's manifest.
+/// One source's worth of what was packed: the file, or the bundle's manifest.
 struct Packed {
     xet: Hash,
     sha256: String,
@@ -754,46 +764,16 @@ struct Packed {
     files: Option<usize>,
 }
 
-#[allow(clippy::too_many_arguments)]
-fn add(vault: &Vault, paths: &[PathBuf], project: Option<&str>, run: Option<&str>, title: Option<&str>, author: Option<&str>, to: Option<&str>) -> Res<i32> {
-    if title.is_some() && paths.len() > 1 {
-        return Err("--title names one file's page; leave it out for several".into());
-    }
-    let run_page = run.map(|r| vault.find(r)).transpose()?;
-    if let Some(p) = &run_page {
-        if p.field("type") != Some("run") {
-            return Err(format!("{} is not a run", p.id().unwrap_or("")));
-        }
-    }
-    let project = project.map(str::to_string).or_else(|| run_page.as_ref().and_then(|p| p.field("project").map(str::to_string)));
-    // what the page needs is checked before anything is stored
-    if project.is_none() && !vault.is_project() {
-        return Err("an artifact needs --project PRJ-xxxx (or --run RUN-…)".into());
-    }
-    if let Some(p) = &project {
-        vault.find(p)?;
-    }
-    let compression = compression(vault)?;
-    let all = stores()?;
-    if let Some(t) = to {
-        named(&all, t)?;
-    }
-    let mut sources = Vec::new();
-    for p in paths {
-        let meta = fs::metadata(p).map_err(|e| format!("{}: {e}", p.display()))?;
-        let path = fs::canonicalize(p).map_err(|e| format!("{}: {e}", p.display()))?;
-        let members = if meta.is_dir() { Some(walk_bundle(&path)?) } else { None };
-        sources.push(Source { path, members });
-    }
-    let local = &all[0];
+/// Store `sources` in `local`, deduplicated against what it holds, under its write lock:
+/// what each became, and the recipes of every file stored (for a push after).
+fn pack_local(local: &Store, compression: Compression, sources: &[Source]) -> Res<(Vec<Packed>, Vec<FileInfo>)> {
     local.ensure()?;
     let staging = Staging::new(local)?;
     let root = local.dir().unwrap().to_path_buf();
     // a drop must not delete a xorb this add has just deduplicated against
-    let lock = local.lock_write()?;
-
-    // pack, deduplicating against what `local` holds; bundles' manifests go in xorbs of
-    // their own, so reading one fetches kilobytes, not the last 64 MB of a session
+    let _lock = local.lock_write()?;
+    // bundles' manifests go in xorbs of their own, so reading one fetches kilobytes, not
+    // the last 64 MB of a session
     let new_xorbs: std::cell::RefCell<Vec<XorbInfo>> = Default::default();
     let mut packed = Vec::new();
     let files = {
@@ -818,7 +798,7 @@ fn add(vault: &Vault, paths: &[PathBuf], project: Option<&str>, run: Option<&str
             let a = packer.add_with(&mut r, &mut |h| lookup(h).map_err(xet_err)).map_err(|e| format!("{}: {e}", path.display()))?;
             Ok((a, format!("{:x}", r.sha.finalize())))
         };
-        for src in &sources {
+        for src in sources {
             let open = |p: &Path| fs::File::open(p).map_err(|e| format!("{}: {e}", p.display()));
             match &src.members {
                 None => {
@@ -846,50 +826,211 @@ fn add(vault: &Vault, paths: &[PathBuf], project: Option<&str>, run: Option<&str
         files
     };
     local.apply(shard_ops(&shard_of(&files, new_xorbs.into_inner())), &staging.0)?;
-    std::mem::drop(lock);
+    Ok((packed, files))
+}
+
+/// Where a stored file is written out: its own path when inside the notebook (then kept out
+/// of git), else `data/<ART id>/<name>`.
+fn home_of(vault: &Vault, src: &Path, id: &str) -> Res<String> {
+    let name = src.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    let vroot = fs::canonicalize(&vault.root).map_err(err)?;
+    let path = match src.strip_prefix(&vroot) {
+        Ok(inside) => inside.to_string_lossy().replace('\\', "/"),
+        Err(_) => format!("data/{id}/{name}"),
+    };
+    ignore(vault, &path)?;
+    Ok(path)
+}
+
+/// The fields of a stored page, set where the page has them and added after `hash`
+/// otherwise.
+fn put_stored(fm: &mut Vec<String>, path: &str, p: &Packed) {
+    set_field(fm, "store", "xet");
+    set_field(fm, "path", path);
+    set_field(fm, "hash", &format!("sha256:{}", p.sha256));
+    let mut fields = vec![("xet", p.xet.hex()), ("size", p.size.to_string())];
+    match p.files {
+        None => fields.push(("kind", "file".into())),
+        Some(n) => fields.extend([("kind", "bundle".into()), ("files", n.to_string())]),
+    }
+    let mut after = "hash";
+    for (k, v) in fields {
+        if fm.iter().any(|l| l.starts_with(&format!("{k}:"))) {
+            set_field(fm, k, &v);
+        } else {
+            insert_after(fm, after, &format!("{k}: {v}"));
+        }
+        after = k;
+    }
+}
+
+fn stored_msg(id: &str, name: &str, store: &str, p: &Packed) -> String {
+    match p.files {
+        None => format!("{id}: {name} stored in {store} ({}, {} of it already there)", human(p.size), human(p.deduped)),
+        Some(n) => format!("{id}: {name}/ stored in {store} as a bundle of {n} file(s) ({}, {} of it already there)", human(p.size), human(p.deduped)),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn add(vault: &Vault, paths: &[PathBuf], art: Option<&str>, project: Option<&str>, run: Option<&str>, title: Option<&str>, author: Option<&str>, to: Option<&str>) -> Res<i32> {
+    if let Some(art) = art {
+        return convert(vault, art, paths, to);
+    }
+    if title.is_some() && paths.len() > 1 {
+        return Err("--title names one file's page; leave it out for several".into());
+    }
+    let run_page = run.map(|r| vault.find(r)).transpose()?;
+    if let Some(p) = &run_page {
+        if p.field("type") != Some("run") {
+            return Err(format!("{} is not a run", p.id().unwrap_or("")));
+        }
+    }
+    let project = project.map(str::to_string).or_else(|| run_page.as_ref().and_then(|p| p.field("project").map(str::to_string)));
+    // what the page needs is checked before anything is stored
+    if project.is_none() && !vault.is_project() {
+        return Err("an artifact needs --project PRJ-xxxx (or --run RUN-…)".into());
+    }
+    if let Some(p) = &project {
+        vault.find(p)?;
+    }
+    let compression = compression(vault)?;
+    let all = stores()?;
+    if let Some(t) = to {
+        named(&all, t)?;
+    }
+    let sources = paths.iter().map(|p| Source::of(p)).collect::<Res<Vec<_>>>()?;
+    let local = &all[0];
+    let (packed, files) = pack_local(local, compression, &sources)?;
 
     for (src, p) in sources.iter().zip(&packed) {
         let name = src.path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
         let page = crate::commands::create(vault, "artifact", Some(title.unwrap_or(&name)), project.as_deref(), None, None, false, author, None, None)?;
         let id = page.file_name().unwrap().to_string_lossy()[..19].to_string();
-        let vroot = fs::canonicalize(&vault.root).map_err(err)?;
-        let path = match src.path.strip_prefix(&vroot) {
-            Ok(inside) => inside.to_string_lossy().replace('\\', "/"),
-            Err(_) => format!("data/{id}/{name}"),
-        };
-        ignore(vault, &path)?;
+        let path = home_of(vault, &src.path, &id)?;
         let text = crate::vault::read_text(&page).map_err(err)?;
         let text = edit_frontmatter(&text, |fm| {
             if let Some(r) = run_page.as_ref().and_then(|p| p.id()) {
                 set_field(fm, "run", r);
             }
-            set_field(fm, "store", "xet");
-            set_field(fm, "path", &path);
-            set_field(fm, "hash", &format!("sha256:{}", p.sha256));
-            insert_after(fm, "hash", &format!("xet: {}", p.xet.hex()));
-            insert_after(fm, "xet", &format!("size: {}", p.size));
-            match p.files {
-                None => insert_after(fm, "size", "kind: file"),
-                Some(n) => {
-                    insert_after(fm, "size", "kind: bundle");
-                    insert_after(fm, "kind", &format!("files: {n}"));
-                }
-            }
+            put_stored(fm, &path, p);
         });
         fs::write(&page, text).map_err(err)?;
-        match p.files {
-            None => eprintln!("{id}: {name} stored in {} ({}, {} of it already there)", local.name, human(p.size), human(p.deduped)),
-            Some(n) => eprintln!("{id}: {name}/ stored in {} as a bundle of {n} file(s) ({}, {} of it already there)", local.name, human(p.size), human(p.deduped)),
-        }
+        eprintln!("{}", stored_msg(&id, &name, &local.name, p));
         println!("{}", rel(&page, &vault.root));
     }
+    push_after(&all, to, &files)
+}
+
+/// `add --to`: push what was just stored.
+fn push_after(all: &[Store], to: Option<&str>, files: &[FileInfo]) -> Res<i32> {
     if let Some(t) = to {
-        let store = named(&all, t)?;
+        let store = named(all, t)?;
         store.ensure()?;
-        let (n, bytes) = copy(local, store, &files, &staging.0)?;
+        let staging = Staging::new(&all[0])?;
+        let (n, bytes) = copy(&all[0], store, files, &staging.0)?;
         eprintln!("pushed {} file(s) to {}: {n} xorb(s), {}", files.len(), store.name, human(bytes));
     }
     Ok(0)
+}
+
+/// `add --art`: store the data of a `store: path` page and rewrite the page to name it.
+fn convert(vault: &Vault, art: &str, paths: &[PathBuf], to: Option<&str>) -> Res<i32> {
+    let page = vault.find(art)?;
+    let id = page.id().unwrap_or(art).to_string();
+    if page.field("type") != Some("artifact") {
+        return Err(format!("{id} is not an artifact"));
+    }
+    if page.field("store") == Some("xet") {
+        return Err(format!("{id} is in a data store already"));
+    }
+    let recorded = page.field("path").unwrap_or("").to_string();
+    let from = match paths {
+        [] if recorded.trim().is_empty() => return Err(format!("{id} records no path: give where its data is: yajna data add --art {id} <path>")),
+        [] => vault.root.join(&recorded),
+        [one] => one.clone(),
+        _ => return Err("--art converts one page: give at most one path, where its data is".into()),
+    };
+    if !from.exists() {
+        return Err(format!(
+            "{id}: its data is not at {} here; give where it is: yajna data add --art {id} <path>",
+            if paths.is_empty() { recorded.clone() } else { from.display().to_string() }
+        ));
+    }
+    let src = Source::of(&from)?;
+    let old = page.field("hash").map(str::to_string);
+    let all = stores()?;
+    if let Some(t) = to {
+        named(&all, t)?;
+    }
+    if src.members.is_none() {
+        // a file's recorded sha256 is checked before anything is stored
+        if let Some(h) = old.as_deref().and_then(|h| h.strip_prefix("sha256:")) {
+            if sha256_of(&src.path).as_deref() != Some(h) {
+                return Err(format!("{id}: {} does not match the page's hash; nothing stored", src.path.display()));
+            }
+        }
+    }
+    let (packed, files) = pack_local(&all[0], compression(vault)?, std::slice::from_ref(&src))?;
+    let p = &packed[0];
+    let path = home_of(vault, &src.path, &id)?;
+    let text = crate::vault::read_text(&page.path).map_err(err)?;
+    fs::write(&page.path, edit_frontmatter(&text, |fm| put_stored(fm, &path, p))).map_err(err)?;
+    let name = src.path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    eprintln!("{}", stored_msg(&id, &name, &all[0].name, p));
+    if src.members.is_some() && old.as_ref().is_some_and(|h| *h != format!("sha256:{}", p.sha256)) {
+        eprintln!("{id}: hash is now the manifest's sha256 (it was {}); the old one means what the page says it does", old.unwrap());
+    }
+    if path != recorded {
+        eprintln!("{id}: path is now {path} (it was {recorded:?}); `yajna data get {id}` writes it there");
+    }
+    println!("{}", rel(&page.path, &vault.root));
+    push_after(&all, to, &files)
+}
+
+/// The run outputs among `files` (as recorded, and where they are) at least `[data]
+/// outputs_min` large, stored in `local`: their Xet hashes by recorded path. Those inside
+/// the notebook are kept out of git.
+pub(crate) fn store_outputs(vault: &Vault, files: &[(String, PathBuf)]) -> Res<HashMap<String, String>> {
+    let min = size_setting(vault.cfg.data.outputs_min.as_deref(), "outputs_min", 1_000_000)?;
+    let big: Vec<&(String, PathBuf)> = files.iter().filter(|(_, p)| fs::metadata(p).is_ok_and(|m| m.len() >= min)).collect();
+    if big.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let sources = big.iter().map(|(_, p)| Source::of(p)).collect::<Res<Vec<_>>>()?;
+    let all = stores()?;
+    let (packed, _) = pack_local(&all[0], compression(vault)?, &sources)?;
+    let mut out = HashMap::new();
+    let (mut size, mut deduped) = (0, 0);
+    for ((name, _), p) in big.iter().zip(&packed) {
+        if !name.starts_with('$') {
+            ignore(vault, name)?;
+        }
+        size += p.size;
+        deduped += p.deduped;
+        out.insert(name.clone(), p.xet.hex());
+    }
+    eprintln!("stored {} output(s) in {} ({}, {} of it already there)", out.len(), all[0].name, human(size), human(deduped));
+    Ok(out)
+}
+
+/// A size from `[data]` (`"5 MB"`, `"500 kB"`, `"1 GiB"`, `"1000"`) in bytes.
+fn size_setting(given: Option<&str>, key: &str, default: u64) -> Res<u64> {
+    let Some(s) = given else { return Ok(default) };
+    let bad = || format!("[data] {key} = {s:?} in yajna.toml: a size such as \"5 MB\"");
+    let t = s.trim();
+    let split = t.find(|c: char| !(c.is_ascii_digit() || c == '.')).unwrap_or(t.len());
+    let n: f64 = t[..split].parse().map_err(|_| bad())?;
+    let unit = match t[split..].trim() {
+        "" | "B" => 1.0,
+        "kB" | "KB" | "k" => 1e3,
+        "MB" | "M" => 1e6,
+        "GB" | "G" => 1e9,
+        "KiB" => 1024.0,
+        "MiB" => 1024.0 * 1024.0,
+        "GiB" => 1024.0 * 1024.0 * 1024.0,
+        _ => return Err(bad()),
+    };
+    Ok((n * unit) as u64)
 }
 
 /// Keep a materialized file out of git: `data/` as a whole, or the file's own path.
@@ -919,73 +1060,124 @@ fn human(n: u64) -> String {
 /// relative path, size, sha256 and Xet hash, tab-separated, sorted by path.
 const MANIFEST_HEADER: &str = "path\tsize\tsha256\txet\n";
 
-/// A file a page names: the page's own file, or one of a bundle's.
+/// A file a page names: an artifact's own file, one of a bundle's, or a run's output.
 #[derive(Clone)]
 struct Member {
-    /// where it is written out, relative to the notebook root
+    /// where it is written out, relative to the notebook root (or absolute, for a run's
+    /// output under a recorded variable)
     path: String,
-    /// what `--only` matches: the path inside a bundle, or a file's name
+    /// what `--only` matches: the path inside a bundle, a file's name, an output as recorded
     name: String,
     xet: Hash,
     sha256: String,
     size: Option<u64>,
 }
 
-/// A stored artifact: its page, Xet hash, sha256, size and path; for a bundle, the
-/// manifest's hash and sha256 and, once `expand` has read the manifest, its files.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Kind {
+    File,
+    Bundle,
+    /// a run's stored outputs
+    Run,
+}
+
+/// A page whose data is in stores: an artifact (a file or a bundle) or a run's outputs. A
+/// bundle names its manifest; its files are known once `expand` has read it.
 struct Stored {
     id: String,
-    xet: Hash,
-    sha256: String,
-    size: Option<u64>,
+    kind: Kind,
+    /// an artifact's `path`; for a run, its stored outputs counted
     path: String,
-    bundle: bool,
+    /// a bundle's manifest: its Xet hash and sha256
+    manifest: Option<(Hash, String)>,
+    size: Option<u64>,
     files: Vec<Member>,
 }
 
 impl Stored {
-    /// Every Xet file the page needs in a store: its file, or a bundle's manifest and files.
+    /// Every Xet file the page needs in a store: a bundle's manifest, then its files.
     fn hashes(&self) -> Vec<Hash> {
-        let mut out = vec![self.xet];
-        out.extend(self.files.iter().map(|m| m.xet));
-        out
-    }
-
-    /// The files written out for it.
-    fn members(&self) -> Vec<Member> {
-        if self.bundle {
-            return self.files.clone();
-        }
-        let name = self.path.rsplit('/').next().unwrap_or(&self.path).to_string();
-        vec![Member { path: self.path.clone(), name, xet: self.xet, sha256: self.sha256.clone(), size: self.size }]
+        self.manifest.iter().map(|m| m.0).chain(self.files.iter().map(|m| m.xet)).collect()
     }
 
     fn whole_in(&self, held: &Holdings) -> bool {
         self.hashes().iter().all(|h| matches!(held.get(h), Some(Holding::Whole(_))))
     }
+
+    /// A bundle whose manifest could not be read.
+    fn unread(&self) -> bool {
+        self.kind == Kind::Bundle && self.files.is_empty()
+    }
+
+    /// "3 file(s) under data/…/s1", "2 output(s)"
+    fn count(&self, n: usize) -> String {
+        match self.kind {
+            Kind::Run => format!("{n} output(s)"),
+            _ => format!("{n} file(s) under {}", self.path),
+        }
+    }
+}
+
+/// A run's outputs recorded with a Xet hash: (path as recorded, sha256, Xet hash).
+pub(crate) fn stored_outputs(page: &Page) -> impl Iterator<Item = (String, String, Hash)> + '_ {
+    page.meta
+        .as_ref()
+        .and_then(|m| m.get("outputs"))
+        .and_then(|o| o.as_array())
+        .into_iter()
+        .flatten()
+        .filter_map(|o| Some((o.get("path")?.as_str()?.to_string(), o.get("sha256")?.as_str()?.to_string(), Hash::from_hex(o.get("xet")?.as_str()?)?)))
 }
 
 fn stored(page: &Page) -> Res<Stored> {
     let id = page.id().unwrap_or("").to_string();
+    if page.field("type") == Some("run") {
+        let env = crate::rerun::env_of_page(page);
+        let files = stored_outputs(page)
+            .map(|(name, sha256, xet)| {
+                let path = match name.strip_prefix('$').and_then(|r| r.split_once('/')) {
+                    None => name.clone(),
+                    Some((var, rest)) => {
+                        let base = env.iter().find(|(k, _)| k == var).map(|(_, v)| v.clone());
+                        format!("{}/{rest}", base.ok_or_else(|| format!("{id}: output {name}: ${var} is not in its env"))?)
+                    }
+                };
+                Ok(Member { path, name, xet, sha256, size: None })
+            })
+            .collect::<Res<Vec<_>>>()?;
+        if files.is_empty() {
+            return Err(format!("{id} has no outputs in a data store (outputs at least [data] outputs_min large are stored when recorded)"));
+        }
+        let path = format!("{} output(s)", files.len());
+        return Ok(Stored { id, kind: Kind::Run, path, manifest: None, size: None, files });
+    }
     if page.field("store") != Some("xet") {
         return Err(format!("{id} is not kept in a data store (store: {})", page.field("store").unwrap_or("none")));
     }
     let xet = page.field("xet").and_then(Hash::from_hex).ok_or_else(|| format!("{id} has no xet hash"))?;
-    Ok(Stored {
-        id,
-        xet,
-        sha256: page.field("hash").unwrap_or("").trim_start_matches("sha256:").to_string(),
-        size: page.meta.as_ref().and_then(|m| m.get("size")).and_then(|v| v.as_u64()),
-        path: page.field("path").unwrap_or("").to_string(),
-        bundle: page.field("kind") == Some("bundle"),
-        files: Vec::new(),
+    let sha256 = page.field("hash").unwrap_or("").trim_start_matches("sha256:").to_string();
+    let size = page.meta.as_ref().and_then(|m| m.get("size")).and_then(|v| v.as_u64());
+    let path = page.field("path").unwrap_or("").to_string();
+    Ok(if page.field("kind") == Some("bundle") {
+        Stored { id, kind: Kind::Bundle, path, manifest: Some((xet, sha256)), size, files: Vec::new() }
+    } else {
+        let name = path.rsplit('/').next().unwrap_or(&path).to_string();
+        let file = Member { path: path.clone(), name, xet, sha256, size };
+        Stored { id, kind: Kind::File, path, manifest: None, size, files: vec![file] }
     })
 }
 
-/// The pages named (IDs or paths), or every stored artifact.
+/// The pages named (IDs or paths), or every page with data in stores.
 fn targets(vault: &Vault, targets: &[String]) -> Res<Vec<Stored>> {
     let pages = vault.pages()?;
-    let all: Vec<&Page> = pages.iter().filter(|p| p.field("type") == Some("artifact") && p.field("store") == Some("xet")).collect();
+    let all: Vec<&Page> = pages
+        .iter()
+        .filter(|p| match p.field("type") {
+            Some("artifact") => p.field("store") == Some("xet"),
+            Some("run") => stored_outputs(p).next().is_some(),
+            _ => false,
+        })
+        .collect();
     if targets.is_empty() {
         return all.into_iter().map(stored).collect();
     }
@@ -993,7 +1185,8 @@ fn targets(vault: &Vault, targets: &[String]) -> Res<Vec<Stored>> {
         .iter()
         .map(|t| {
             let by_path = t.trim_start_matches("./").trim_end_matches('/');
-            match all.iter().find(|p| p.field("path") == Some(by_path)) {
+            let found = all.iter().find(|p| p.field("path") == Some(by_path) || stored_outputs(p).any(|o| o.0 == by_path));
+            match found {
                 Some(p) => stored(p),
                 None => stored(&vault.find(t)?),
             }
@@ -1005,7 +1198,7 @@ fn targets(vault: &Vault, targets: &[String]) -> Res<Vec<Stored>> {
 /// from the first store holding them (a manifest is small; its files are not pulled).
 /// Returns the bundles whose manifest no store reached holds.
 fn expand(all: &[Store], pages: &mut [Stored], staging: &Path) -> Res<Vec<String>> {
-    let want: Vec<Hash> = pages.iter().filter(|p| p.bundle).map(|p| p.xet).collect();
+    let want: Vec<Hash> = pages.iter().filter(|p| p.files.is_empty()).filter_map(|p| p.manifest.as_ref().map(|m| m.0)).collect();
     if want.is_empty() {
         return Ok(Vec::new());
     }
@@ -1014,14 +1207,15 @@ fn expand(all: &[Store], pages: &mut [Stored], staging: &Path) -> Res<Vec<String
     let held = local.holdings(&want, staging)?;
     let root = local.dir().unwrap();
     let mut lost = Vec::new();
-    for p in pages.iter_mut().filter(|p| p.bundle) {
-        let Some(Holding::Whole(f)) = held.get(&p.xet) else {
+    for p in pages.iter_mut().filter(|p| p.files.is_empty()) {
+        let Some((xet, sha256)) = &p.manifest else { continue };
+        let Some(Holding::Whole(f)) = held.get(xet) else {
             lost.push(p.id.clone());
             continue;
         };
         let mut bytes = Vec::new();
         reconstruct(f, |h| fs::read(root.join(fanned("xorbs", h))).map_err(xet_err), &mut bytes).map_err(|e| format!("{}: manifest: {e}", p.id))?;
-        if format!("{:x}", Sha256::digest(&bytes)) != p.sha256 {
+        if format!("{:x}", Sha256::digest(&bytes)) != *sha256 {
             return Err(format!("{}: the manifest in store local does not match the page's sha256", p.id));
         }
         p.files = parse_manifest(&String::from_utf8_lossy(&bytes), &p.path).map_err(|e| format!("{}: manifest: {e}", p.id))?;
@@ -1095,7 +1289,7 @@ fn push(vault: &Vault, targets_: &[String], to: Option<&str>) -> Res<i32> {
     }
     let hashes = unique_hashes(&pages);
     let here = local.holdings(&hashes, &staging.0)?;
-    for p in pages.iter().filter(|p| !p.whole_in(&here) && (!p.bundle || !p.files.is_empty())) {
+    for p in pages.iter().filter(|p| !p.whole_in(&here) && !p.unread()) {
         eprintln!("{}: local does not hold {} whole; pull or add it first", p.id, p.path);
         failed += 1;
     }
@@ -1176,7 +1370,7 @@ fn pull(vault: &Vault, targets_: &[String], from: Option<&str>) -> Res<i32> {
         failed += 1;
     }
     let missing: HashSet<Hash> = pull_hashes(&all, &unique_hashes(&pages), from, &staging.0)?.into_iter().collect();
-    for p in pages.iter().filter(|p| !p.bundle || !p.files.is_empty()) {
+    for p in pages.iter().filter(|p| !p.unread()) {
         if p.hashes().iter().any(|h| missing.contains(h)) {
             eprintln!("{}: no store reached holds it whole", p.id);
             failed += 1;
@@ -1192,10 +1386,11 @@ fn get(vault: &Vault, targets_: &[String], from: Option<&str>, only: Option<&str
     let only = only.map(|g| globset::Glob::new(g).map(|g| g.compile_matcher()).map_err(|e| format!("--only {g}: {e}"))).transpose()?;
     let mut pages = targets(vault, targets_)?;
     expand_all(&all, &mut pages, &staging.0)?;
+    let mut failed = 0;
     // (page, file) for every file to write out
-    let mut todo: Vec<(&Stored, Member)> = Vec::new();
+    let mut todo: Vec<(&Stored, &Member)> = Vec::new();
     for p in &pages {
-        let picked: Vec<Member> = p.members().into_iter().filter(|m| only.as_ref().is_none_or(|g| g.is_match(&m.name))).collect();
+        let picked: Vec<&Member> = p.files.iter().filter(|m| only.as_ref().is_none_or(|g| g.is_match(&m.name))).collect();
         if picked.is_empty() {
             if only.is_some() && !targets_.is_empty() {
                 eprintln!("{}: no file matches --only", p.id);
@@ -1208,15 +1403,19 @@ fn get(vault: &Vault, targets_: &[String], from: Option<&str>, only: Option<&str
             let dest = vault.root.join(&m.path);
             if dest.is_file() && sha256_of(&dest).as_deref() == Some(m.sha256.as_str()) {
                 here += 1;
-                if !p.bundle {
+                if p.kind == Kind::File {
                     eprintln!("{}: {} is here already", p.id, p.path);
                 }
+            } else if dest.exists() && p.kind == Kind::Run {
+                // a run's output may be a later run's result: never written over
+                eprintln!("{}: {} differs from the recorded output; kept", p.id, m.name);
+                failed += 1;
             } else {
                 todo.push((p, m));
             }
         }
-        if p.bundle && here > 0 {
-            eprintln!("{}: {here} of {total} file(s) under {} here already", p.id, p.path);
+        if p.kind != Kind::File && here > 0 {
+            eprintln!("{}: {here} of {} here already", p.id, p.count(total));
         }
     }
     // read from a directory store where the file is whole; anything else comes into local
@@ -1232,11 +1431,10 @@ fn get(vault: &Vault, targets_: &[String], from: Option<&str>, only: Option<&str
     let reader = direct.unwrap_or(&all[0]);
     let held = reader.holdings(&hashes, &staging.0)?;
     let root = reader.dir().unwrap();
-    let mut failed = 0;
     let mut written: BTreeMap<&str, usize> = BTreeMap::new();
     for (p, m) in &todo {
         let Holding::Whole(file) = &held[&m.xet] else {
-            eprintln!("{}: no store reached holds {} whole", p.id, m.path);
+            eprintln!("{}: no store reached holds {} whole", p.id, m.name);
             failed += 1;
             continue;
         };
@@ -1258,32 +1456,33 @@ fn get(vault: &Vault, targets_: &[String], from: Option<&str>, only: Option<&str
             return Err(format!("{}: {} rebuilt from store {} does not match its sha256", p.id, m.path, reader.name));
         }
         fs::rename(&tmp, &dest).map_err(err)?;
-        if p.bundle {
-            *written.entry(p.id.as_str()).or_default() += 1;
-        } else {
+        if p.kind == Kind::File {
             eprintln!("{}: {} from {}", p.id, p.path, reader.name);
+        } else {
+            *written.entry(p.id.as_str()).or_default() += 1;
         }
     }
     for p in pages.iter().filter(|p| written.contains_key(p.id.as_str())) {
-        eprintln!("{}: {} file(s) under {} from {}", p.id, written[p.id.as_str()], p.path, reader.name);
+        eprintln!("{}: {} from {}", p.id, p.count(written[p.id.as_str()]), reader.name);
     }
     Ok(if failed > 0 { 1 } else { 0 })
 }
 
 /// How much of a page a store holds, as `status` says it.
 fn held_state(p: &Stored, held: &Holdings) -> String {
-    if !p.bundle {
-        return match &held[&p.xet] {
+    if p.kind == Kind::File {
+        return match &held[&p.files[0].xet] {
             Holding::Whole(_) => "whole".to_string(),
             Holding::Partial(n) => format!("missing {n} xorb(s)"),
             Holding::Absent => "-".to_string(),
         };
     }
-    let manifest = matches!(held[&p.xet], Holding::Whole(_));
+    let manifest = p.manifest.as_ref().is_none_or(|m| matches!(held[&m.0], Holding::Whole(_)));
     let whole = p.files.iter().filter(|m| matches!(held[&m.xet], Holding::Whole(_))).count();
     match (manifest, whole) {
         (true, n) if n == p.files.len() => "whole".to_string(),
         (false, 0) => "-".to_string(),
+        (true, 0) if p.kind == Kind::Run => "-".to_string(),
         (m, n) => format!("{n} of {} file(s){}", p.files.len(), if m { "" } else { ", no manifest" }),
     }
 }
@@ -1312,9 +1511,8 @@ fn status(vault: &Vault, targets_: &[String]) -> Res<i32> {
             println!("{}  {}  {}  manifest in no store reached", t.id, t.path, t.size.map(human).unwrap_or_default());
             continue;
         }
-        let members = t.members();
         let (mut present, mut differs) = (0, false);
-        for m in &members {
+        for m in &t.files {
             if let Ok(meta) = fs::metadata(vault.root.join(&m.path)) {
                 present += 1;
                 differs |= m.size.is_some_and(|s| s != meta.len());
@@ -1323,23 +1521,16 @@ fn status(vault: &Vault, targets_: &[String]) -> Res<i32> {
         let here = match present {
             _ if differs => "differs".to_string(),
             0 => "missing".to_string(),
-            n if n == members.len() => "here".to_string(),
-            n => format!("{n} of {} here", members.len()),
+            n if n == t.files.len() => "here".to_string(),
+            n => format!("{n} of {} here", t.files.len()),
         };
         let held: Vec<String> = per_store
             .iter()
             .map(|(name, h)| format!("{name}: {}", h.as_ref().map(|h| held_state(t, h)).unwrap_or_else(|_| "unreachable".to_string())))
             .collect();
         let whole = per_store.iter().filter(|(_, h)| h.as_ref().is_ok_and(|h| t.whole_in(h))).count();
-        println!(
-            "{}  {}  {}  {}  {}  ({whole} cop{})",
-            t.id,
-            t.path,
-            t.size.map(human).unwrap_or_default(),
-            here,
-            held.join(", "),
-            if whole == 1 { "y" } else { "ies" }
-        );
+        let size = t.size.map(|s| format!("{}  ", human(s))).unwrap_or_default();
+        println!("{}  {}  {size}{here}  {}  ({whole} cop{})", t.id, t.path, held.join(", "), if whole == 1 { "y" } else { "ies" });
     }
     Ok(0)
 }
@@ -1409,8 +1600,8 @@ fn drop_cmd(vault: &Vault, targets_: &[String], from: &str) -> Res<i32> {
         return Err(format!("nothing dropped from {from}:\n{}", short.join("\n")));
     }
     // a file another page of the notebook also names stays (a calibration frame in two
-    // sessions, the same file added twice); a bundle whose manifest cannot be read might
-    // name any of them, so it stops the drop
+    // sessions, a run's output promoted to an ART, the same file added twice); a bundle
+    // whose manifest cannot be read might name any of them, so it stops the drop
     let dropping_ids: HashSet<&str> = pages.iter().map(|p| p.id.as_str()).collect();
     let mut others: Vec<Stored> = targets(vault, &[])?.into_iter().filter(|p| !dropping_ids.contains(p.id.as_str())).collect();
     let lost = expand(&all, &mut others, &staging.0)?;
@@ -1502,10 +1693,10 @@ fn free(vault: &Vault, targets_: &[String]) -> Res<i32> {
     let mut refused = 0;
     for p in &pages {
         let mut freed = 0;
-        for m in p.members() {
+        for m in &p.files {
             let dest = vault.root.join(&m.path);
             if !dest.is_file() {
-                if !p.bundle {
+                if p.kind == Kind::File {
                     eprintln!("{}: {} is not here", p.id, m.path);
                 }
                 continue;
@@ -1522,30 +1713,120 @@ fn free(vault: &Vault, targets_: &[String]) -> Res<i32> {
             }
             fs::remove_file(&dest).map_err(|e| format!("{}: {e}", dest.display()))?;
             freed += 1;
-            if !p.bundle {
+            if p.kind == Kind::File {
                 eprintln!("{}: {} freed ({} holds it)", p.id, m.path, held[&m.xet].join(", "));
             }
         }
-        // the folders left empty: a bundle's own, and the per-artifact one `data add` made
-        let top = vault.root.join(&p.path);
-        let mut dirs: Vec<PathBuf> = p.members().iter().filter_map(|m| vault.root.join(&m.path).parent().map(Path::to_path_buf)).collect();
-        dirs.sort_by_key(|d| std::cmp::Reverse(d.components().count()));
-        dirs.dedup();
-        for d in dirs {
-            let mut d = d.as_path();
-            while d.starts_with(&top) {
-                if fs::remove_dir(d).is_err() {
-                    break;
+        if p.kind != Kind::Run {
+            // the folders left empty: a bundle's own, and the per-artifact one `data add` made
+            let top = vault.root.join(&p.path);
+            let mut dirs: Vec<PathBuf> = p.files.iter().filter_map(|m| vault.root.join(&m.path).parent().map(Path::to_path_buf)).collect();
+            dirs.sort_by_key(|d| std::cmp::Reverse(d.components().count()));
+            dirs.dedup();
+            for d in dirs {
+                let mut d = d.as_path();
+                while d.starts_with(&top) {
+                    if fs::remove_dir(d).is_err() {
+                        break;
+                    }
+                    d = d.parent().unwrap();
                 }
-                d = d.parent().unwrap();
+            }
+            if let Some(parent) = top.parent().filter(|d| d.ends_with(&p.id)) {
+                let _ = fs::remove_dir(parent);
             }
         }
-        if let Some(parent) = top.parent().filter(|d| d.ends_with(&p.id)) {
-            let _ = fs::remove_dir(parent);
-        }
-        if p.bundle && freed > 0 {
-            eprintln!("{}: {freed} file(s) under {} freed", p.id, p.path);
+        if p.kind != Kind::File && freed > 0 {
+            eprintln!("{}: {} freed", p.id, p.count(freed));
         }
     }
     Ok(if refused > 0 { 1 } else { 0 })
+}
+
+// --- large files in git ----------------------------------------------------------------
+
+/// Files git holds (in the index; with `staged`, only those staged against HEAD) larger
+/// than `max`: path and size.
+fn large_in_git(root: &Path, staged: bool, max: u64) -> Res<Vec<(String, u64)>> {
+    let git = |args: &[&str]| -> Res<Vec<u8>> {
+        let out = Command::new("git").arg("-C").arg(root).args(args).output().map_err(|e| format!("git: {e}"))?;
+        if !out.status.success() {
+            return Err(format!("git {}: {}", args.join(" "), String::from_utf8_lossy(&out.stderr).trim()));
+        }
+        Ok(out.stdout)
+    };
+    let only: Option<HashSet<String>> = if staged {
+        let out = git(&["diff", "--cached", "--name-only", "-z", "--diff-filter=ACMR", "--no-renames"])?;
+        Some(out.split(|b| *b == 0).filter(|s| !s.is_empty()).map(|s| String::from_utf8_lossy(s).into_owned()).collect())
+    } else {
+        None
+    };
+    // `<mode> <object> <stage>\t<path>`, gitlinks left out
+    let index = git(&["ls-files", "-s", "-z"])?;
+    let entries: Vec<(String, String)> = index
+        .split(|b| *b == 0)
+        .filter_map(|e| {
+            let e = String::from_utf8_lossy(e);
+            let (meta, path) = e.split_once('\t')?;
+            let mut f = meta.split(' ');
+            let (mode, object) = (f.next()?, f.next()?);
+            (mode != "160000" && only.as_ref().is_none_or(|o| o.contains(path))).then(|| (path.to_string(), object.to_string()))
+        })
+        .collect();
+    if entries.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut child = Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .args(["cat-file", "--batch-check=%(objectsize)"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("git: {e}"))?;
+    let list: String = entries.iter().map(|(_, o)| format!("{o}\n")).collect();
+    let mut stdin = child.stdin.take().unwrap();
+    let writer = std::thread::spawn(move || stdin.write_all(list.as_bytes()));
+    let out = child.wait_with_output().map_err(err)?;
+    let _ = writer.join();
+    let sizes: Vec<u64> = String::from_utf8_lossy(&out.stdout).lines().map(|l| l.trim().parse().unwrap_or(0)).collect();
+    Ok(entries.into_iter().zip(sizes).filter(|(_, s)| *s > max).map(|((p, _), s)| (p, s)).collect())
+}
+
+fn git_max(vault: &Vault) -> Res<u64> {
+    size_setting(vault.cfg.data.git_max.as_deref(), "git_max", 5_000_000)
+}
+
+/// `yajna data check [--staged]`: the files git would take that are over `git_max`.
+fn check(vault: &Vault, staged: bool) -> Res<i32> {
+    let max = git_max(vault)?;
+    let big = large_in_git(&vault.root, staged, max)?;
+    for (path, size) in &big {
+        println!("{path}  {}  git rm --cached {} && yajna data add {}", human(*size), q(path), q(path));
+    }
+    if big.is_empty() {
+        return Ok(0);
+    }
+    eprintln!(
+        "{} file(s) {} over [data] git_max ({}): store each in a data store instead (docs/data.md section 8)",
+        big.len(),
+        if staged { "staged" } else { "in git" },
+        human(max)
+    );
+    Ok(1)
+}
+
+fn q(s: &str) -> String {
+    shlex::try_quote(s).map(|c| c.into_owned()).unwrap_or_else(|_| s.to_string())
+}
+
+/// `yajna validate`'s warnings: tracked files over `git_max`. Nothing when this is not a git
+/// checkout or the setting cannot be read (validate reports the config itself).
+pub(crate) fn large_tracked(vault: &Vault) -> Vec<String> {
+    let Ok(max) = git_max(vault) else { return Vec::new() };
+    large_in_git(&vault.root, false, max)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(p, s)| format!("{p} is {} in git, over [data] git_max ({}): `yajna data check` says how to store it instead", human(s), human(max)))
+        .collect()
 }

@@ -128,9 +128,11 @@ one-line instructions under headings such as *Runs*.
   `yajna data add <file> --project PRJ-… [--run RUN-…]` stores the file in this machine's
   data store and writes the page (a folder, such as an imaging session, becomes one
   bundle page; `data get ART-… --only '<glob>'` writes out part of it); `yajna data push` copies it to the notebook's other
-  stores (`[data] push` in `yajna.toml`) and `yajna data get ART-…` brings it back. Ask
-  before adding anything over a few MB to git itself. Never run `yajna data drop` or
-  `data free` unless the human asks: they remove data.
+  stores (`[data] push` in `yajna.toml`) and `yajna data get ART-…` brings it back. A
+  run's large outputs are stored when `run record --outputs` records them; `yajna data get
+  RUN-…` brings them back. Run `yajna data check --staged` before committing and store what
+  it lists instead; ask before adding anything over a few MB to git itself. Never run
+  `yajna data drop` or `data free` unless the human asks: they remove data.
 - **Never delete.** Mark `status: abandoned` or `aborted`; git history is the record.
 
 ## Working in a worktree

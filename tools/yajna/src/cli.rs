@@ -469,11 +469,16 @@ pub enum ImportSource {
 pub enum DataAction {
     /// store files in this machine's `local` store, deduplicated against what it holds,
     /// and write an ART page for each naming it by its Xet hash; the file stays where it is.
-    /// A folder becomes one bundle: one ART for every file under it, named by a manifest
+    /// A folder becomes one bundle: one ART for every file under it, named by a manifest.
+    /// With --art, an existing `store: path` page is converted instead
     Add {
-        /// files and folders
-        #[arg(required = true)]
+        /// files and folders (with --art: where its data is, when not at the page's path)
+        #[arg(required_unless_present = "art")]
         paths: Vec<PathBuf>,
+        /// convert this ART page of `store: path`: store the data at its `path` (or the one
+        /// path given) and rewrite the page as `store: xet`
+        #[arg(long, conflicts_with_all = ["project", "run", "title"], add = ArgValueCandidates::new(crate::complete::artifacts))]
+        art: Option<String>,
         #[arg(long, add = ArgValueCandidates::new(crate::complete::projects))]
         project: Option<String>,
         /// the run that produced them
@@ -491,8 +496,8 @@ pub enum DataAction {
     /// copy what `local` holds of these artifacts to another store: the xorbs it lacks, a
     /// shard with their recipes, the index entries
     Push {
-        /// ART-… IDs or their paths (default: every stored artifact)
-        #[arg(add = ArgValueCandidates::new(crate::complete::stored_artifacts))]
+        /// ART-… IDs, RUN-… IDs (their stored outputs) or paths (default: all of them)
+        #[arg(add = ArgValueCandidates::new(crate::complete::stored_data))]
         targets: Vec<String>,
         /// the store (default: every store in `[data] push` of yajna.toml)
         #[arg(long)]
@@ -500,8 +505,8 @@ pub enum DataAction {
     },
     /// copy these artifacts from another store into `local`, without writing them out
     Pull {
-        /// ART-… IDs or their paths (default: every stored artifact)
-        #[arg(add = ArgValueCandidates::new(crate::complete::stored_artifacts))]
+        /// ART-… IDs, RUN-… IDs (their stored outputs) or paths (default: all of them)
+        #[arg(add = ArgValueCandidates::new(crate::complete::stored_data))]
         targets: Vec<String>,
         /// the store (default: the first that holds each whole)
         #[arg(long)]
@@ -510,8 +515,8 @@ pub enum DataAction {
     /// write each page's file at its `path` from the first store that holds it whole,
     /// checked against its hashes
     Get {
-        /// ART-… IDs or their paths (default: every stored artifact)
-        #[arg(add = ArgValueCandidates::new(crate::complete::stored_artifacts))]
+        /// ART-… IDs, RUN-… IDs (their stored outputs) or paths (default: all of them)
+        #[arg(add = ArgValueCandidates::new(crate::complete::stored_data))]
         targets: Vec<String>,
         /// the store to read from (default: `local`, then the others by name)
         #[arg(long)]
@@ -524,8 +529,8 @@ pub enum DataAction {
     /// free these artifacts' data from one store, when `[data] copies` other stores (1 by
     /// default) hold each whole; xorbs other files still use stay
     Drop {
-        /// ART-… IDs or their paths
-        #[arg(required = true, add = ArgValueCandidates::new(crate::complete::stored_artifacts))]
+        /// ART-… IDs, RUN-… IDs (their stored outputs) or paths
+        #[arg(required = true, add = ArgValueCandidates::new(crate::complete::stored_data))]
         targets: Vec<String>,
         /// the store to free them from
         #[arg(long, required = true)]
@@ -534,14 +539,21 @@ pub enum DataAction {
     /// delete the files written out at these artifacts' paths, when they are unchanged and
     /// a store holds them whole (`data get` brings them back)
     Free {
-        /// ART-… IDs or their paths
-        #[arg(required = true, add = ArgValueCandidates::new(crate::complete::stored_artifacts))]
+        /// ART-… IDs, RUN-… IDs (their stored outputs) or paths
+        #[arg(required = true, add = ArgValueCandidates::new(crate::complete::stored_data))]
         targets: Vec<String>,
+    },
+    /// list the files larger than `[data] git_max` (5 MB by default) that git would take,
+    /// each with the command that stores it instead; exits 1 when there are any
+    Check {
+        /// only what is staged: for a pre-commit hook (default: every tracked file)
+        #[arg(long)]
+        staged: bool,
     },
     /// for each stored artifact: whether it is here at its path, and which stores hold it
     Status {
-        /// ART-… IDs or their paths (default: every stored artifact)
-        #[arg(add = ArgValueCandidates::new(crate::complete::stored_artifacts))]
+        /// ART-… IDs, RUN-… IDs (their stored outputs) or paths (default: all of them)
+        #[arg(add = ArgValueCandidates::new(crate::complete::stored_data))]
         targets: Vec<String>,
     },
 }

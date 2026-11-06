@@ -209,8 +209,15 @@ pub fn phases_to_finish() -> Vec<CompletionCandidate> {
 }
 
 /// `data get` and `status`: artifacts kept in a data store.
-pub fn stored_artifacts() -> Vec<CompletionCandidate> {
-    candidates(&["artifact"], &|_, p| p.field("store") == Some("xet"))
+pub fn stored_data() -> Vec<CompletionCandidate> {
+    candidates(&["artifact", "run"], &|_, p| {
+        p.field("store") == Some("xet") || crate::data::stored_outputs(p).next().is_some()
+    })
+}
+
+/// `data add --art`: artifacts not in a data store yet.
+pub fn artifacts() -> Vec<CompletionCandidate> {
+    candidates(&["artifact"], &|_, p| p.field("store") != Some("xet"))
 }
 
 /// Thread commands: reviews still open.

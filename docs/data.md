@@ -5,8 +5,9 @@ Status: design v0.1, 2026-11-06. Built: step 1, `tools/yajna-xet`, identical to 
 on public stand-ins; step 3, directory stores and `yajna data add`, `get` and `status`
 (0.26.0); step 4, stores over ssh, `push` and `pull`, `[data] push`, and zstd as an option
 (0.27.0); step 5, `[data] copies`, `data drop` with its locks, `data free` (0.28.0);
-step 6, bundles and `data get --only` (0.29.0). Not
-yet: the spec's fragmentation rule (section 3) and the `[data]` keys of later steps. Companion to `architecture.md` (section 5.3
+step 6, bundles and `data get --only` (0.29.0); step 7, run outputs in the store, `data get
+RUN-…` and `data add --art`; step 8, `data check` and `validate`'s warning (0.30.0). Not
+yet: the spec's fragmentation rule (section 3). Companion to `architecture.md` (section 5.3
 and Phase 2 in section 11) and `reproduce.md`, whose run `outputs` it stores. Decision:
 ADR-0035, superseding ADR-0013's leaning towards git-annex.
 
@@ -116,8 +117,8 @@ in `yajna.toml`:
 push = ["lab"]          # where `yajna data push` sends by default
 compression = "lz4"     # or "zstd": smaller, not readable by Hugging Face (section 2)
 copies = 2              # stores that must hold a file whole before one may drop it
-git_max = "5 MB"        # larger staged files are refused (section 8)
-outputs_min = "1 MB"    # run outputs at least this size are stored (section 9)
+git_max = "5 MB"        # larger staged files are refused (section 8); 5 MB when unset
+outputs_min = "1 MB"    # run outputs at least this size are stored (section 9); 1 MB when unset
 ```
 
 A store missing from a machine's config is skipped with a note, so a notebook can name
@@ -144,7 +145,8 @@ remote store gets the xorbs `local` made.
 | `yajna data status [ART…] [--verify]` | For each page: which stores hold it whole, whether it has its `copies`, whether it is materialized here; `--verify` rehashes xorbs |
 | `yajna data drop <ART…> --from <store>` | Frees the pages' data from one store (section 7) |
 | `yajna data free <ART…\|path…>` | Deletes materialized copies in the working tree when a store holds them whole |
-| `yajna data check --staged` | Lists staged files over `git_max`, for a pre-commit hook (section 8) |
+| `yajna data add --art ART-… [<path>]` | Converts a `store: path` page: stores the data at its `path` (or at the path given, when it is elsewhere), checks a file against the page's sha256 first, and rewrites the page as `store: xet` (section 6) |
+| `yajna data check [--staged]` | Lists staged files over `git_max`, for a pre-commit hook (section 8); without `--staged`, every file in git |
 
 Pages and `RUN` IDs complete and pick as other IDs do. Every command works on the
 notebook's stores across worktrees: data added in one worktree is in `local` for all.
@@ -205,7 +207,12 @@ files: 219
   sharing the store are not seen; section 12.
 
 Pages for data added before this (`store: path`) are converted with `yajna data add
---art ART-…`, which stores the bytes at the recorded path and rewrites the page.
+--art ART-…`, which stores the bytes at the recorded path and rewrites the page. As built
+(0.30.0): a path that is not on this machine (`VPI_DATA/results/E1c (on oppy)`) is given
+as a second argument, `data add --art ART-… <path>`; a file must match the page's sha256
+or nothing is stored; a folder becomes a bundle, and its `hash` becomes the manifest's
+(the old one is printed, since what it meant was the page's own convention); `path`
+becomes the data's own when inside the repo, `data/<ART id>/<name>` otherwise.
 
 ## 7. Copies and dropping
 
@@ -239,6 +246,12 @@ pre-commit hook; the notebook's `AGENTS.md` and the skill tell agents to run it,
 hook can be installed by hand or from neusis. `yajna validate` reports tracked files over
 `git_max` as warnings, so a notebook that already has some sees them.
 
+As built (0.30.0): sizes are what git holds in the index (`git ls-files -s`, sizes from
+`git cat-file --batch-check`), so a file larger on disk than its staged version is judged
+by what would be committed; each line gives `git rm --cached <path> && yajna data add
+<path>`. `yajna data check` without `--staged` lists every file in git over `git_max`, the
+same list `validate` warns about. No hook is installed by yajna.
+
 ## 9. Run outputs
 
 `yajna result --outputs` and `run record --outputs` store every output at least
@@ -253,6 +266,14 @@ outputs:
 sha256 as before (reproduce.md section 6) and can fetch the recorded outputs to diff them.
 Outputs are not `ART` pages: results that matter are still promoted to one by hand, which
 then names the same Xet hash and stores nothing twice.
+
+As built (0.30.0): outputs below `outputs_min` are recorded as before; the stored ones
+inside the repo are added to `.gitignore`. A run with stored outputs is a target of every
+`data` command (`push`, `pull`, `status`, `drop`, `free`, and `push` with no target
+includes it); an output under `$VAR/…` is written where the run's recorded `env` puts
+that variable. `data get RUN-…` never writes over an output that exists and differs, since
+it may be a later run's result. `run reproduce` records the new run's outputs without
+storing them; `run record --outputs` on it stores them.
 
 ## 10. What it does not do
 
@@ -274,8 +295,8 @@ then names the same Xet hash and stores nothing twice.
 | 4 | ssh stores; `data push` and `pull` | EXP C against oppy; integration tests through an ssh that runs locally, as for `--on`. Done: push 2.4 times faster than scp of the same files on a slow link, every file back whole |
 | 5 | `copies`, `data drop` and its lock, `data free` | Tests that a drop below `copies` is refused and that shared xorbs survive a drop. Done, with write locks on the other side of the drop lock |
 | 6 | Bundles, `--only` | An imaging session from manthan's PRJ-0005 added as one `ART`. Done on oppy in a scratch notebook: two replicates (219 and 95 files, 1.45 GB) in 3 s each, a 1.32 GB store (LZ4, nothing shared between them); `--only` wrote the 48 QC images, then the rest; from a fresh clone with only the lab store, the second replicate came back identical, its manifest a 14 kB pull |
-| 7 | Run outputs, `data get RUN-…`, `--art` conversion | A run with a checkpoint output reproduced from a fresh clone and a store |
-| 8 | `data check --staged`, the `validate` warning | Tests; the skill and conventions updated |
+| 7 | Run outputs, `data get RUN-…`, `--art` conversion | A run with a checkpoint output reproduced from a fresh clone and a store. Done in a scratch notebook: a 3.6 MB checkpoint recorded with `run record --outputs`, pushed, then in a fresh clone with only the lab store `data get RUN-…` wrote it back with the recorded sha256 and `run reproduce` gave `reproduced` |
+| 8 | `data check --staged`, the `validate` warning | Tests; the skill and conventions updated. Done |
 
 ## 12. Risks
 

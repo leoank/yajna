@@ -149,6 +149,11 @@
           "sha256": {
             "type": "string",
             "pattern": "^[0-9a-f]{64}$"
+          },
+          "xet": {
+            "description": "The output's Xet hash when it is in a data store: outputs at least [data] outputs_min large (docs/data.md section 9)",
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
           }
         },
         "additionalProperties": false

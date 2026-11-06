@@ -186,6 +186,16 @@ whole by `data get`, or in part with `--only <glob>` over paths inside it (`'*.t
 `drop` keeps a file another page of the notebook still names. A single file's page has
 `kind: file`.
 
+A page written before (`store: path`) is converted with `yajna data add --art ART-…`, or
+`yajna data add --art ART-… <path>` when its data is not at the recorded path on this
+machine. Run outputs at least `[data] outputs_min` large (1 MB) are stored when `run
+record --outputs` or `result --outputs` records them, with `xet` beside their `sha256`;
+`yajna data get RUN-…` writes them back, never over a changed one.
+
+Nothing over `[data] git_max` (5 MB) goes into git: `yajna data check --staged` lists the
+staged files over it with the command that stores each instead, and exits 1, for a
+pre-commit hook; `yajna validate` warns about the ones already in git.
+
 ## Experiments
 
 Fill `Question`, `Hypothesis and predictions`, `Plan` and `Success criteria` before the
@@ -214,7 +224,8 @@ variables the run depended on outside git as `env` (data roots, offline flags; `
 the value here, `NAME=VALUE` gives the one it ran with; names that look like credentials are
 refused), and the
 files its result rests on with their sha256 as `outputs`, each relative to the repo root or
-`$VAR/…` under a root named in `env`. Run-local files go in
+`$VAR/…` under a root named in `env`; those at least `[data] outputs_min` large are stored
+too, with their `xet` hash (*Large files*). Run-local files go in
 `runs/RUN-.../` or the experiment's sidecar directory. Not every command you ran is a run;
 one page per result that the experiment's conclusion will rest on.
 

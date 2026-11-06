@@ -171,8 +171,10 @@ pub(crate) fn outputs_of(
                     "--outputs {shown}: outside the repo and under no variable given to --env"
                 ));
             };
-            let bytes = fs::read(&abs).map_err(|e| format!("--outputs {shown}: {e}"))?;
-            Ok((name, format!("{:x}", Sha256::digest(&bytes))))
+            let mut f = fs::File::open(&abs).map_err(|e| format!("--outputs {shown}: {e}"))?;
+            let mut sha = Sha256::new();
+            std::io::copy(&mut f, &mut sha).map_err(|e| format!("--outputs {shown}: {e}"))?;
+            Ok((name, format!("{:x}", sha.finalize())))
         })
         .collect()
 }
@@ -198,12 +200,30 @@ fn put_block(lines: &mut Vec<String>, key: &str, block: Vec<String>) {
     }
 }
 
-/// Write `host`, `env` and `outputs` into a page's frontmatter; empty ones are left alone.
+/// Store in `local` the outputs at least `[data] outputs_min` large (docs/data.md section
+/// 9): their Xet hashes by recorded path. `paths` are as given, `outputs` what
+/// `outputs_of` made of them.
+pub(crate) fn store(
+    vault: &Vault,
+    paths: &[PathBuf],
+    outputs: &[(String, String)],
+) -> Res<HashMap<String, String>> {
+    let files: Vec<(String, PathBuf)> = outputs
+        .iter()
+        .zip(paths)
+        .map(|((name, _), p)| (name.clone(), p.clone()))
+        .collect();
+    crate::data::store_outputs(vault, &files)
+}
+
+/// Write `host`, `env` and `outputs` (with the Xet hash of those stored) into a page's
+/// frontmatter; empty ones are left alone.
 pub(crate) fn put_fields(
     lines: &mut Vec<String>,
     host: Option<&str>,
     env: &[(String, String)],
     outputs: &[(String, String)],
+    xet: &HashMap<String, String>,
 ) {
     if let Some(h) = host {
         set_field(lines, "host", h);
@@ -221,6 +241,9 @@ pub(crate) fn put_fields(
         for (path, sha) in outputs {
             block.push(format!("  - path: {}", dump_scalar(path)));
             block.push(format!("    sha256: {sha}"));
+            if let Some(x) = xet.get(path) {
+                block.push(format!("    xet: {x}"));
+            }
         }
         put_block(lines, "outputs", block);
     }
@@ -254,14 +277,16 @@ fn record(
         None => None,
     };
     let env = env_of(env)?;
-    let outputs = outputs_of(vault, outputs, &env)?;
+    let given = outputs;
+    let outputs = outputs_of(vault, given, &env)?;
+    let xet = store(vault, given, &outputs)?;
 
     let text = crate::vault::read_text(&page.path).map_err(|e| e.to_string())?;
     let text = edit_frontmatter(&text, |fm| {
         if let Some(c) = &commit {
             set_field(fm, "commit", c);
         }
-        put_fields(fm, host.as_deref(), &env, &outputs);
+        put_fields(fm, host.as_deref(), &env, &outputs, &xet);
     });
     fs::write(&page.path, text).map_err(|e| e.to_string())?;
 

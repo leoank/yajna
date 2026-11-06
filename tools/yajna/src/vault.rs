@@ -366,6 +366,12 @@ pub struct DataConfig {
     /// how many other stores must hold a file whole before `yajna data drop` frees it from
     /// one (default 1)
     pub copies: Option<usize>,
+    /// files larger than this are refused by `yajna data check` and warned about by
+    /// `yajna validate` (default "5 MB")
+    pub git_max: Option<String>,
+    /// run outputs at least this large are stored by `result --outputs` and `run record
+    /// --outputs` (default "1 MB")
+    pub outputs_min: Option<String>,
 }
 
 /// `[files]` in yajna.toml: what the files viewer of `yajna serve` shows (ADR-0028).
