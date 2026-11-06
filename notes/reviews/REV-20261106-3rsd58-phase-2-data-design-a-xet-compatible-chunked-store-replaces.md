@@ -8,9 +8,10 @@ target:
   kind: range               # branch | range | page | run | experiment | phase
   ref: HEAD..HEAD
 base: 0bf15b5e2e8c0f9accc1e8d32ecbb0761c977e1c
-head: 0bf15b5e2e8c0f9accc1e8d32ecbb0761c977e1c
+head: 5098d2d62d9b3a41f45c8cba665ad901044098d0
+rounds: [0bf15b5e2e8c0f9accc1e8d32ecbb0761c977e1c]
 paths: []
-about: [PRJ-0001, PHS-20261106-2m7qaq, EXP-20261106-3t3nn2, EXP-20261106-3t40bg, EXP-20261106-3t4cyw]
+about: [PRJ-0001, PHS-20261106-2m7qaq, EXP-20261106-3t3nn2, EXP-20261106-3t40bg, EXP-20261106-3t4cyw, RUN-20261106-4a78zt]
 status: open              # open | changes_requested | approved | merged | closed
 created: 2026-11-06
 author: agent:claude
@@ -32,5 +33,12 @@ on, [[EXP-20261106-3t3nn2]], [[EXP-20261106-3t40bg]] and [[EXP-20261106-3t4cyw]]
 **Worth a second look:** recipes only in stores means a file is lost if every store
 holding its shard is (ADR-0035 *Consequences*); run outputs are recorded with their Xet
 hash, not as `ART` pages; the default materialization path `data/<ART id>/<name>`.
+
+**Step 1, added after you asked for it:** `tools/yajna-xet` (b9d6117): the format in about
+1,200 lines, our only new dependencies `blake3` and `lz4_flex`. Look at `src/shard.rs`
+(the three layouts), `src/file.rs` (`Packer` and `reconstruct`) and `tests/reference.rs`.
+[[RUN-20261106-4a78zt]] (5098d2d) is the comparison with xet-core: its harness is a
+throwaway Cargo project in the run's directory, and its *Notes* list what the reference
+files taught us. `docs/data.md` and AGENTS.md name the crate.
 
 ## Threads
