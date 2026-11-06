@@ -22,72 +22,28 @@ The notebook itself lives in a separate lab repo (`leoank/manthan`); this repo i
 tooling and, from 2026-10-19, its own project notebook under `notes/`.
 
 ## Progress
-What is planned and how far it has got, as a checklist: one item per milestone, ticked
-when it lands. Add items as plans change; keep the done ones. `yajna tasks` lists the
-open items with the rest.
-- [x] Phase 0: conventions, schemas, templates and the CLI (`new`, `log`, `result`, `tasks`, `ref`, `validate`)
-- [ ] Phase 0 verified: two weeks of real bench and ML days captured without the tooling in the way
-- [x] Phase 0b: the Rust CLI at parity, `init lab|project`, namespaced links, `graduate` (ADR-0017, ADR-0018)
-- [x] Phase 0b: `packages.yajna` installed through neusis
-- [x] Phase 0b: a tagged release, v0.2.0, with binaries for Linux and macOS
-- [x] Phase 0b: a machine without Nix running `init project`, `new` and `validate` from the release binary
-- [x] Phase 0b: rc2s2 graduates by the documented procedure and both repos validate
-  (2026-10-25: manthan PRJ-0002 is now github:leoank/rc2s2 as rc2s2/PRJ-0001; the lab paths
-  graduate left in run pages and scripts were fixed in yajna 0.8.2 and in the rc2s2 repo)
-- [x] Phase 0c: the Neovim plugin
-- [x] Phase 1: the index, `show`, `timeline`, `tree` and `runs`, the static site with `--serve`, CI (ADR-0019)
-- [x] Agent tooling: the Claude Code plugin (skill and `/yajna:project` commands), agents as authors, reproducible runs
-- [x] Parallel work: `worktree`, `validate --against`, `renumber` (ADR-0021)
-- [x] `yajna renumber` also rewrites IDs outside markdown: when manthan renumbered g2a (PRJ-0003 to PRJ-0004) and vesicle-protrusions-and-imaging (PRJ-0004 to PRJ-0005) on 2026-10-23, the IDs in their code (`flake.nix` descriptions, `pyproject.toml`, a Python docstring) were left behind and fixed by hand; it should rewrite them, or at least list the files that still name the old ID
-- [x] Phase 1: the one-way ELN exporter, `yajna export` (ADR-0010)
-- [ ] Verify `import benchling` against real exports from the lab's tenant ([[EXP-20261019-j4xp01]])
-- [ ] Phase 1: upload to the institutional ELN, and its import format, once the ELN is named
-- [x] Phase 1b: `yajna sync` publishes marked pages to Google Docs and pulls comments back (ADR-0011)
-- [x] Phase 1b verified: the PI reads and comments on a published page and the comments arrive in the repo ([[EXP-20261021-as4202]])
-- [x] Phase 1b: synced docs mirror the notebook's folders in Drive and follow moved pages; citations render through pandoc with a page's own bibliography (ADR-0024)
-- [x] `yajna adopt`: an existing markdown file becomes a page of any type, its body kept (ADR-0025)
-- [ ] Phase 1b verified: folders and citations against the real Drive ([[EXP-20261023-cy5j5f]])
-- [x] Phase 1b: `mirror` mode: `yajna sync pull` brings edits made in a doc back as an uncommitted change to its page, three-way merged against the published commit recorded on the doc, conflicts left as markers to resolve by hand; the next sync publishes the result (ADR-0026)
-- [x] Phase 1b: the `mirror` cycle against the real Drive, scripted: exports deterministic, guard, pull and republish ([[RUN-20261023-ftnr64]])
-- [ ] Phase 1b verified: a doc edited by a person is pulled, merged with work done in the repo meanwhile, and published back without losing either ([[EXP-20261023-ftnatx]])
-- [ ] Phase 1b later: `import` mode, the doc as the truth
-- [x] User guide on GitHub Pages: an mdBook with the CLI reference, page types and design docs generated at build time
-- [x] Phase 1c designed: `yajna serve` and a live files viewer with tabs and split views, `docs/files-viewer.md` (ADR-0027, ADR-0028, ADR-0029)
-- [x] Phase 1c step 1: `tools/` as a Cargo workspace; `yajna-serve` (axum) serves the site; `yajna serve`, `site --serve` its alias
-- [x] Phase 1c step 2: `[files]` roots in `yajna.toml`; the read-only file API with ranges, path and Host checks ([[EXP-20261023-kjtach]])
-- [x] Phase 1c step 3: the UI (dockview, CodeMirror, markdown, images), the Nix-built committed bundle, files links from the site ([[EXP-20261023-kjv5wy]])
-- [x] Phase 1c step 4: live: watch or poll, SSE, follow mode ([[EXP-20261023-kjtrwp]])
-- [ ] Phase 1c step 5: the paged viewer for files above the cap
-- [ ] Phase 1c verified: ank follows an agent's run on a remote machine from the laptop ([[EXP-20261023-kjvkas]])
-- [x] Phase 1d designed: code review in the notebook, `docs/review.md` (ADR-0030)
-- [x] Phase 1d: `REV` pages, their validation and `yajna review` over branches, commit ranges and pages
-- [x] Phase 1d: reviews of runs, experiments and phases; `yajna phase start`; re-anchoring with `review update`
-- [x] Phase 1d: `review approve`, `merge` and `todo`; the warning in `validate --against`; the skill
-- [x] Phase 1d: the diff view in `yajna serve --review`, behind a token (0.13.0; tried by ank in the browser on a clone of this repo, twice, the first pass reshaping commenting, the overview and focus)
-- [x] Phase 1d: `about` on reviews, approval records and `yajna approve`, `review update --to`, and `yajna validate` checking the conventions with `--since` (0.14.0)
-- [ ] Phase 1d: reviews in Neovim
-- [ ] Phase 1d verified: ank reviews a real agent branch in manthan from the browser and Neovim, the agent addresses the threads, `review merge` brings it into main
-- [x] Phase 1e designed: reproducing runs, `docs/reproduce.md` (ADR-0031)
-- [x] Phase 1e: `host`, `env`, `outputs` on runs, full SHAs, `run record`; a `done` compute run's commit must resolve; manthan's and rc2s2's runs cleaned up (0.21.0) (since 26ca9f5)
-- [x] Phase 1e: `yajna run shell` and `run clean` (0.22.0) (since 7afecdd)
-- [x] Phase 1e: `yajna run diff` and `run reproduce` (0.22.0) (since 7afecdd)
-- [x] Phase 1e: `--on <host>` (0.22.0; tested against a fake ssh, not yet against oppy) (since 7afecdd)
-- [x] Phase 1e: `graduate` remaps run and review commits; rc2s2 remapped with `--commits-only` (0.21.0) (since 0e8c27f)
-- [x] Phase 1e: `--on <host>` driven from the laptop: the other machine needs git and Nix, not yajna, and the new run's page is written here (ADR-0033) (since 2c88d86) (0.23.0; tested against an ssh that runs locally on a second clone, not yet against oppy)
-- [x] Shell completion: subcommands, flags, and IDs from the notebook with their titles (zsh, bash, fish) (since 2c88d86) (0.23.0)
-- [x] Phase 1e: `run record --host` and `--env NAME=VALUE` for a run that ran elsewhere; `--on` clones the host's checkout when it is missing (since 742f1fc) (0.24.0)
-- [x] `yajna worktree` in a project repo names the directory by the topic alone (neusis/<topic>, not neusis/neusis/<topic>) (0.24.1)
-- [ ] Phases as pages: `PHS-` pages (dated IDs) are the source of truth for a project's phases, the project page's *Progress* a one-line-per-phase view linking to them; a simple `yajna phase migrate`, then the phases filled in with ank (since e0fa2ca)
-- [ ] Phase 1e verified: RUN-20261023-g78vwy reproduced from a fresh clone gives the manifest hash it recorded (since 42ae68f)
-- [x] From anywhere designed: todos and log lines into any notebook on the machine, `docs/from-anywhere.md` (ADR-0032)
-- [x] From anywhere: the per-user config and state registry, `yajna repos`, `--in` and `--pick`
-- [x] From anywhere: `log --in` and the one-file commit into another repo
-- [x] From anywhere: `yajna todo` with `due:` and `p:`, `tasks --in`/`--all`, `todo done`
-- [x] From anywhere: `-e`, and graduation moving a project's todos
-- [ ] Phase 2: data and runs (git-annex, `ART` pages, `experiment` and `autoresearch` commands)
-- [ ] Phase 2b: bench planning (run sheets, inventory, schedules)
-- [ ] Phase 3: the server and agents over HTTP and MCP
-- [ ] Phase 4: apps and monitoring
+The project's phases, one line each, ticked when the phase is done; each phase's page holds
+its goal and its own checklist. `yajna new phase` adds one; `yajna tasks` lists the open
+items with the rest.
+- [ ] [[PHS-20261106-2m7gv6]] Phase 0: conventions, schemas, templates and the CLI
+- [x] [[PHS-20261106-2m7hcr]] Phase 0b: the Rust CLI, releases and graduation
+- [x] [[PHS-20261106-2m7hvb]] Phase 0c: the Neovim plugin
+- [ ] [[PHS-20261106-2m7hc6]] Phase 1: queries, the site, and the ELN in and out
+- [x] [[PHS-20261106-2m7jd5]] Agent tooling: the Claude Code plugin, agents as authors, reproducible runs
+- [x] [[PHS-20261106-2m7je7]] Parallel work: worktrees, validate --against, renumber
+- [ ] [[PHS-20261106-2m7kb7]] Phase 1b: Google Docs sync
+- [x] [[PHS-20261106-2m7kgv]] yajna adopt: existing markdown files become pages
+- [x] [[PHS-20261106-2m7ka9]] The user guide on GitHub Pages
+- [ ] [[PHS-20261106-2m7mkz]] Phase 1c: yajna serve and the live files viewer
+- [ ] [[PHS-20261106-2m7m9t]] Phase 1d: code review in the notebook
+- [ ] [[PHS-20261106-2m7nh7]] Phase 1e: reproducing runs
+- [x] [[PHS-20261106-2m7nrk]] Shell completion of subcommands, flags and IDs
+- [ ] [[PHS-20261106-2m7prv]] Phases as pages
+- [x] [[PHS-20261106-2m7qbd]] From anywhere: todos and log lines into any notebook
+- [ ] [[PHS-20261106-2m7qaq]] Phase 2: data and runs (git-annex, ART pages, experiment and autoresearch commands)
+- [ ] [[PHS-20261106-2m7q13]] Phase 2b: bench planning (run sheets, inventory, schedules)
+- [ ] [[PHS-20261106-2m7r6j]] Phase 3: the server and agents over HTTP and MCP
+- [ ] [[PHS-20261106-2m7rq5]] Phase 4: apps and monitoring
 
 ## Open questions
 - New `build` and `artifact` pages fail their own schema: the templates write `null`
