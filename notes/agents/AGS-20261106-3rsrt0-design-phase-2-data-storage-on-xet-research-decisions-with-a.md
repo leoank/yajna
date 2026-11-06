@@ -74,3 +74,12 @@ Under [[REV-20261106-3rsd58]].
   in turn, `data free` (only unchanged files a store holds), copies in `data status`. The
   skill says never to drop or free unasked. Tested on directory stores and over the
   stand-in ssh.
+- Step 6 at ank's request (26488ad, 0.29.0): `data add <folder>` stores a bundle, one `ART`
+  named by a manifest (TSV of path, size, sha256, Xet hash) stored as a Xet file;
+  `data get --only <glob>`; push, pull, status, drop and free work on manifest plus files;
+  drop keeps files another page of the notebook names. Checked on oppy, in a scratch
+  notebook and stores, built from the working tree: PRJ-0005's two imaging replicates (219
+  and 95 files, 1.45 GB) added in about 3 s each into a 1.32 GB store, `--only` wrote the
+  48 QC images, the rest followed, and a fresh clone with only the lab store got the second
+  replicate back identical. The first pass found reading a manifest pulled a 58 MB xorb;
+  manifests now get xorbs of their own (a 14 kB pull). Nothing written to manthan.

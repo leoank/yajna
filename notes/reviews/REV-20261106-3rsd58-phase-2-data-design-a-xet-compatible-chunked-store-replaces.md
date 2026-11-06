@@ -6,10 +6,10 @@ title: "Phase 2 data design: a Xet-compatible chunked store replaces git-annex"
 project: null
 target:
   kind: range               # branch | range | page | run | experiment | phase
-  ref: HEAD..HEAD
+  ref: HEAD..26488ad2f506b546aa06141de4319a75324000ed
 base: 0bf15b5e2e8c0f9accc1e8d32ecbb0761c977e1c
-head: 7ecad1587ad26aa21cddab339d238e67cda0454e
-rounds: [0bf15b5e2e8c0f9accc1e8d32ecbb0761c977e1c, 5098d2d62d9b3a41f45c8cba665ad901044098d0, ab4d5e3f4d10362d2be39335f03e0a16bd6ea9eb, 01fbc42e9c37785d6316588332b0496f2f971bb5]
+head: 26488ad2f506b546aa06141de4319a75324000ed
+rounds: [0bf15b5e2e8c0f9accc1e8d32ecbb0761c977e1c, 5098d2d62d9b3a41f45c8cba665ad901044098d0, ab4d5e3f4d10362d2be39335f03e0a16bd6ea9eb, 01fbc42e9c37785d6316588332b0496f2f971bb5, 7ecad1587ad26aa21cddab339d238e67cda0454e]
 paths: []
 about: [PRJ-0001, PHS-20261106-2m7qaq, EXP-20261106-3t3nn2, EXP-20261106-3t40bg, EXP-20261106-3t4cyw, RUN-20261106-4a78zt, RUN-20261106-4vftn2, RUN-20261106-5g081k, RUN-20261106-5z2189]
 status: open              # open | changes_requested | approved | merged | closed
@@ -71,5 +71,19 @@ the test `data_drop_keeps_copies_and_shared_xorbs_and_free_keeps_what_no_store_h
 one lab store from ever dropping); writers hold `locks/write-*` so a drop cannot delete a
 xorb an add has just deduplicated against, which closes the race section 12 listed; a write
 lock older than six hours counts as dead; `free` requires the file unchanged.
+
+**Step 6, added after you asked for it:** bundles (26488ad, 0.29.0). `yajna data add
+<folder>` makes one `ART` with `kind: bundle` and `files`, named by a manifest stored as a
+Xet file; `data get --only <glob>` writes out part of it. Look at `add`, `expand`,
+`parse_manifest` and the reworked `push`, `get`, `status`, `drop_cmd` and `free` in
+`tools/yajna/src/data.rs`, the test
+`data_add_stores_a_folder_as_one_bundle_get_only_writes_part_and_drop_keeps_files_another_bundle_names`,
+the schema's `kind` and `files`, and `docs/data.md` section 6. Checked on oppy in a scratch
+notebook against PRJ-0005's two imaging replicates (1.45 GB, every file back identical,
+from a fresh clone too); that run is why manifests get xorbs of their own. Settled by me:
+`drop` now keeps any file another page of the notebook names (single files too) and refuses
+while a bundle's manifest cannot be read; reading a manifest pulls it into `local`; `--only`
+on a single file matches its name; symlinks in a folder are refused; file pages now say
+`kind: file`. Not covered: pages in other notebooks sharing a store (`docs/data.md` *Risks*).
 
 ## Threads
