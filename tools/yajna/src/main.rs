@@ -10,6 +10,7 @@ mod index;
 mod init;
 mod mirror;
 mod parallel;
+mod phase;
 mod query;
 mod refs;
 mod reproduce;

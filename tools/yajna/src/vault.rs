@@ -54,6 +54,8 @@ macro_rules! entity {
 pub const ENTITIES: &[Entity] = &[
     entity!("project", "PRJ", "project", "projects"),
     entity!("experiment", "EXP", "experiment", "experiments"),
+    // a project's phase, listed on one line of its Progress (ADR-0034)
+    entity!("phase", "PHS", "phase", "phases"),
     entity!("run", "RUN", "run", "runs"),
     entity!("analysis", "ANA", "analysis", "analyses"),
     entity!("artifact", "ART", "artifact", "artifacts"),
@@ -66,11 +68,11 @@ pub const ENTITIES: &[Entity] = &[
     // opened with `yajna review open`, not `yajna new` (ADR-0030)
     entity!("review", "REV", "review", "reviews"),
 ];
-pub const PROJECT_SCOPED: &[&str] = &["experiment", "run", "analysis", "artifact"];
+pub const PROJECT_SCOPED: &[&str] = &["experiment", "phase", "run", "analysis", "artifact"];
 pub const VOLUME_PREFIXES: &[&str] = &["RUN", "ART", "AGS", "REV"];
 /// Curated entities that take date IDs instead of counter IDs (ADR-0022): the ones created
 /// on branches, where a shared counter collides.
-pub const DATED_PREFIXES: &[&str] = &["EXP", "ANA", "DOC"];
+pub const DATED_PREFIXES: &[&str] = &["EXP", "PHS", "ANA", "DOC"];
 /// Frontmatter fields whose IDs are not links: paths (an ID there is a directory name), a
 /// run's `env` and `outputs`, which hold paths, and `previous_id`, the counter ID a page had
 /// before `yajna migrate-ids`.
@@ -164,7 +166,7 @@ pub fn is_type(name: &str) -> bool {
 
 // Date IDs first, so `EXP-20261021-0k3m9x` is never read as the counter ID `EXP-20261021`.
 // A date ID's suffix is 4 characters (older IDs) or 6 (time-sortable, ADR-0022).
-const ID_PATTERN: &str = r"\b(?:RUN|ART|AGS|EXP|ANA|DOC|REV)-\d{8}-[0-9a-z]{4}(?:[0-9a-z]{2})?\b|\b(?:PRJ|EXP|PRO|MAT|ANA|EQP|BLD)-\d{4,}\b";
+const ID_PATTERN: &str = r"\b(?:RUN|ART|AGS|EXP|PHS|ANA|DOC|REV)-\d{8}-[0-9a-z]{4}(?:[0-9a-z]{2})?\b|\b(?:PRJ|EXP|PRO|MAT|ANA|EQP|BLD)-\d{4,}\b";
 pub static ID_FULL_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(&format!("^(?:{ID_PATTERN})$")).unwrap());
 /// An ID with an optional `namespace/` in front, as it appears in frontmatter and links.

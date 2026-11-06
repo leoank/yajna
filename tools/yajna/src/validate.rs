@@ -16,10 +16,12 @@ use crate::vault::{
 };
 
 static STEP_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(\d+)\.\s+(.*?)\s*$").unwrap());
-/// `- [[ID]] description` list items: what a project page lists its experiments with and an
-/// experiment page its runs; the description is required.
-static LISTED_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^\s*[-*]\s+\[\[([^\]|]+)(?:\|[^\]]*)?\]\]\s*(.*?)\s*$").unwrap());
+/// `- [[ID]] description` list items: what a project page lists its experiments with (and its
+/// phases, as `- [ ] [[PHS-…]] description` in Progress) and an experiment page its runs; the
+/// description is required.
+static LISTED_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^\s*[-*]\s+(?:\[[ xX]\]\s+)?\[\[([^\]|]+)(?:\|[^\]]*)?\]\]\s*(.*?)\s*$").unwrap()
+});
 
 struct Problems {
     root: PathBuf,
@@ -359,20 +361,20 @@ pub fn validate(vault: &Vault) -> Res<(Vec<String>, usize)> {
             }
         }
 
-        // Listed children carry a short description: experiments on a project page, runs on
-        // an experiment page.
-        let child_prefix = match meta.get("type").and_then(|v| v.as_str()) {
-            Some("project") => Some("EXP-"),
-            Some("experiment") => Some("RUN-"),
-            _ => None,
+        // Listed children carry a short description: experiments and phases on a project
+        // page, runs on an experiment page.
+        let child_prefixes: &[&str] = match meta.get("type").and_then(|v| v.as_str()) {
+            Some("project") => &["EXP-", "PHS-"],
+            Some("experiment") => &["RUN-"],
+            _ => &[],
         };
-        if let Some(prefix) = child_prefix {
+        if !child_prefixes.is_empty() {
             for line in prose.lines() {
                 let Some(m) = LISTED_RE.captures(line) else {
                     continue;
                 };
                 let target = m[1].trim();
-                if target.starts_with(prefix) && m[2].is_empty() {
+                if child_prefixes.iter().any(|p| target.starts_with(p)) && m[2].is_empty() {
                     problems.add(
                         &page.path,
                         format!("{target} is listed without a short description after the link"),

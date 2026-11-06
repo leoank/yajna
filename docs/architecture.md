@@ -120,6 +120,7 @@ Entities. Each is a markdown file with YAML frontmatter, living in a predictable
 | Entity | ID prefix | What it is | Wet-lab example | Dry-lab example |
 |--------|-----------|------------|-----------------|-----------------|
 | Project | `PRJ` | A long-running line of inquiry. Has a status page. | "Archaeal division under confinement" | "Broken conservation laws in optimizers" |
+| Phase | `PHS` | A stage of a project: its goal, its own checklist of work, notes, and the commits it ran between (ADR-0034). Listed one line each on the project's *Progress*. | "Phase 1: does the probe see tubules?" | "Phase 1e: reproducing runs" |
 | Experiment | `EXP` | A question with a plan, predictions, outcome, and a conclusion. Belongs to a project. | "Does ncAA X incorporate at site Y?" | "Does weight decay break the scale-symmetry invariant?" |
 | Run | `RUN` | One execution of (part of) an experiment or build. `kind` is `bench`, `compute`, `assembly`, or `calibration`. Produces artifacts. | One bench session or one imaging session | One training job, one `results.tsv` row |
 | Protocol | `PRO` | A reusable, versioned procedure. | Sulfolobus transformation v3 | Standard eval harness v2 |
@@ -136,6 +137,7 @@ Relationships:
 
 ```
 Project 1--* Experiment 1--* Run 1--* Artifact
+Project 1--* Phase
 Experiment *--* Protocol         Run *--* Material (consumed / produced)
 Experiment *--* Experiment       (influenced_by, the dotted lines in AutoGo's tree)
 Analysis *--* Artifact            Log entry --> any entity (mentions)

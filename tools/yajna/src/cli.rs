@@ -320,7 +320,7 @@ pub enum Cmd {
         #[arg(long)]
         author: Option<String>,
     },
-    /// a project's phases: the items of its Progress checklist
+    /// a project's phases: PHS pages, each listed on one line of the project's Progress
     Phase {
         #[command(subcommand)]
         action: PhaseAction,
@@ -462,14 +462,38 @@ pub enum ImportSource {
 
 #[derive(Subcommand, Debug, Clone)]
 pub enum PhaseAction {
-    /// mark a Progress item as started at HEAD: appends `(since <sha>)` to its line, the
-    /// base of a review of the phase
+    /// mark a phase as started: its page gets `status: active` and `since: <HEAD>`; on a
+    /// project not yet migrated, `PRJ-… "<item>"` appends `(since <sha>)` to the item
     Start {
-        /// PRJ-xxxx
-        #[arg(add = ArgValueCandidates::new(crate::complete::projects))]
-        project: String,
-        /// words from the item's text
+        /// PHS-… (or PRJ-… with words from a Progress item)
+        #[arg(add = ArgValueCandidates::new(crate::complete::phases_to_start))]
+        target: String,
+        /// with a project: words from the item's text
         item: Vec<String>,
+        /// the commit it started at, for a phase that began earlier (default: HEAD)
+        #[arg(long)]
+        at: Option<String>,
+    },
+    /// mark a phase as finished: `status: done`, `until: <HEAD>`, and its line ticked on the
+    /// project's Progress
+    Done {
+        /// PHS-… (on a terminal, left out: picked from the phases)
+        #[arg(add = ArgValueCandidates::new(crate::complete::phases_to_finish))]
+        phase: Option<String>,
+        /// the commit it finished at (default: HEAD)
+        #[arg(long)]
+        at: Option<String>,
+    },
+    /// turn a project's Progress items into phase pages: items whose label before `:` is
+    /// the same (`Phase 1e`, `Phase 1e designed`, `Phase 1e verified`) become one phase,
+    /// each item a checkbox on it; Progress keeps one line per phase
+    Migrate {
+        /// PRJ-xxxx (default: the project of a project repo)
+        #[arg(add = ArgValueCandidates::new(crate::complete::projects))]
+        project: Option<String>,
+        /// show the phases it would make and stop
+        #[arg(long)]
+        dry_run: bool,
     },
 }
 

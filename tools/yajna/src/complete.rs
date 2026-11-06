@@ -3,7 +3,7 @@
 //! is in, each ID with its title, or for a run the line its experiment lists it with, and
 //! only the IDs the command can act on: `run shell` runs with a commit, `run reproduce` the
 //! ones with something to compare, `run clean` the ones with a worktree, a thread command the
-//! open reviews, the second run of `run diff` those of the first one's experiment. The picker
+//! open reviews, `phase done` the phases not done, the second run of `run diff` those of the first one's experiment. The picker
 //! searches every ID of the type, so a filter never hides what you are looking for.
 
 use std::collections::{BTreeSet, HashMap};
@@ -191,6 +191,20 @@ pub fn runs_beside_first() -> Vec<CompletionCandidate> {
             exp.is_none() || p.field("experiment") == exp.as_deref()
         }
         None => true,
+    })
+}
+
+/// `phase start`: phases not started, and projects (an item of one not yet migrated).
+pub fn phases_to_start() -> Vec<CompletionCandidate> {
+    candidates(&["phase", "project"], &|_, p| {
+        p.field("type") == Some("project") || p.field("since").is_none()
+    })
+}
+
+/// `phase done`: phases not done.
+pub fn phases_to_finish() -> Vec<CompletionCandidate> {
+    candidates(&["phase"], &|_, p| {
+        !matches!(p.field("status"), Some("done" | "abandoned"))
     })
 }
 

@@ -15,7 +15,7 @@ A research project's page has these sections:
 | Section | What goes there |
 |---------|-----------------|
 | *Introduction* | What the project is and why it exists, for someone who has never heard of it. Written once. |
-| *Progress* | A checklist of milestones, ticked as each lands. Add items as plans change; keep the done ones. |
+| *Progress* | One line per phase, `- [ ] [[PHS-…]] what it is`, ticked when the phase is done. The work itself is the checklist on the phase's page. |
 | *Current belief* | What you think is true right now, in a paragraph. Rewritten, not appended to. |
 | *Open questions* | What you do not know yet. |
 | *What not to try again* | Dead ends and why, so nobody walks into them twice. |
@@ -27,6 +27,35 @@ A project created with `--code` gets the code template instead: *Introduction*,
 *Progress* items are checkboxes, so `yajna tasks` lists the open ones with every other to-do
 in the notebook. `status` in the frontmatter is `active`, `paused`, `concluded`,
 `archived`, or `moved` once a project has left for its own repository.
+
+## Phases
+
+A phase is a `PHS` page under the project's `phases/` (ADR-0034): a *Goal*, its own
+*Progress* checklist, *Notes*, a `status` (`planned`, `active`, `done`, `abandoned`) and the
+commits it ran between, `since` and `until`, which bound a review of it.
+
+```sh
+yajna new phase "Phase 2: tracking" --project PRJ-0005   # the page, and its line on Progress
+yajna phase start PHS-20261103-k2m9qa                     # status: active, since: <HEAD>
+yajna phase done PHS-20261103-k2m9qa                      # status: done, until: <HEAD>, line ticked
+yajna review open PHS-20261103-k2m9qa                     # a review from since to until
+```
+
+`--at <commit>` on `start` or `done` records a phase that began or ended earlier. Checkboxes
+on phase pages are listed by `yajna tasks` like any other.
+
+A project whose *Progress* is still one long checklist becomes phase pages with
+
+```sh
+yajna phase migrate PRJ-0005 --dry-run   # the phases it would make
+yajna phase migrate PRJ-0005
+```
+
+Items whose label before `:` is the same (`Phase 1e:`, `Phase 1e designed:`, `Phase 1e
+verified:`) become one phase named by the label; an item alone becomes a phase titled by its
+text; nested items become the phase's checklist and the item's text its goal. `since` comes
+from the items' `(since …)`, `until` of a finished phase from the commit that ticked its last
+item. The pages are a draft: read them, write each goal, and fix the grouping by hand.
 
 ## Projects with code
 

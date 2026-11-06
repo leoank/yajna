@@ -112,11 +112,16 @@ is reviewed is `git diff base head -- paths`. Resolution is shared with `yajna r
 | page | any page ID | the commit of the last approved review of that page, else the one before the commit that created it | the current commit | the page and its directory |
 | run | `RUN-…` | the `commit` of the previous run of the same experiment that records one, by `started` then `created`, else the one before the commit that created the experiment's page | the run's `commit` | the project's code, the run's page and its directory |
 | experiment | `EXP-…` | the one before the commit that created the page | the last run's `commit`; the current commit while it is `planned` or `active`, or when no run records one | the project's code, the experiment's page and its directory |
-| phase | `PRJ-… --phase "<words>"` | `(since <sha>)` in the item; else the commit that ticked the item before it in *Progress*; else the one before the project page was created | the commit that ticked it; the current commit while it is open | the project's code and notes |
+| phase | `PHS-…` (ADR-0034) | its `since` (`yajna phase start`); refused without one | its `until` (`yajna phase done`); the current commit while it runs | the project's code and notes |
+| phase, not migrated | `PRJ-… --phase "<words>"` | `(since <sha>)` in the item; else the commit that ticked the item before it in *Progress*; else the one before the project page was created | the commit that ticked it; the current commit while it is open | the project's code and notes |
 
 - **The run directory postdates the run** for most runs: `run.sh` is committed after the
   code it ran (`reproduce.md` section 3). A run review therefore shows two diffs: the code
   between the two commits, and the two runs' scripts and pages as they are now.
+- **A phase is a page** since ADR-0034: `yajna phase start PHS-…` records `since`, `phase
+  done PHS-…` records `until`, and the review spans the two. On a migrated project
+  `PRJ-… --phase "<words>"` finds the line that links the phase and reviews its page. What
+  follows is for a project whose *Progress* is still a flat checklist.
 - **A phase starts** with `yajna phase start PRJ-… "<item>"`, which appends
   `(since <short sha of HEAD>)` to the item's line. It is plain text in the page, so it
   survives merges and graduation (where it is remapped like any other commit). Without it,

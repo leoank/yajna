@@ -8,7 +8,7 @@ use std::sync::LazyLock;
 
 use regex::Regex;
 
-use crate::cli::{PhaseAction, ReviewAction};
+use crate::cli::ReviewAction;
 use crate::parallel::git;
 use crate::vault::{date_of, rel, slugify, Page, Res, Vault, ID_FULL_RE};
 use crate::yamlfmt::title_scalar;
@@ -26,8 +26,12 @@ static REPLY_RE: LazyLock<Regex> = LazyLock::new(|| {
     )
     .unwrap()
 });
-static ITEM_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s*- \[([ xX])\] (.*)$").unwrap());
-static SINCE_RE: LazyLock<Regex> =
+pub(crate) static ITEM_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^\s*- \[([ xX])\] (.*)$").unwrap());
+static PHS_LINK_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"\[\[((?:[a-z][a-z0-9_-]*/)?PHS-[0-9a-z-]+)(?:\|[^\]]*)?\]\]").unwrap()
+});
+pub(crate) static SINCE_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\s*\(since ([0-9a-f]{7,40})\)").unwrap());
 static AUTHOR_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^(agent:)?[a-z][a-z0-9_-]*$").unwrap());
@@ -399,7 +403,7 @@ fn parse(text: &str) -> (Vec<Thread>, Vec<String>) {
 
 /// One past the last line of the section whose heading is at `start`: the next `#` or `##`
 /// heading outside a code fence (a quoted markdown heading is not one).
-fn section_end(lines: &[impl AsRef<str>], start: usize) -> usize {
+pub(crate) fn section_end(lines: &[impl AsRef<str>], start: usize) -> usize {
     let mut fence: Option<&str> = None;
     for (i, line) in lines.iter().enumerate().skip(start + 1) {
         let l = line.as_ref();
@@ -566,7 +570,7 @@ pub(crate) fn rev(root: &Path, r: &str) -> Res<String> {
     })
 }
 
-fn short(sha: &str) -> &str {
+pub(crate) fn short(sha: &str) -> &str {
     &sha[..sha.len().min(7)]
 }
 
@@ -624,6 +628,7 @@ fn resolve(vault: &Vault, target: &str, phase: Option<&str>, base_branch: &str) 
         match page.field("type") {
             Some("run") => return resolve_run(vault, &page),
             Some("experiment") => return resolve_experiment(vault, &page),
+            Some("phase") => return resolve_phase_page(vault, &page),
             _ => {}
         }
         let id = page.id().unwrap_or(target).to_string();
@@ -879,14 +884,14 @@ fn resolve_experiment(vault: &Vault, exp: &Page) -> Res<Resolved> {
 /// A Progress item of a project page: its line index, whether it is ticked, and its text
 /// without the checkbox.
 #[derive(Debug)]
-struct Item {
-    line: usize,
-    done: bool,
-    text: String,
+pub(crate) struct Item {
+    pub(crate) line: usize,
+    pub(crate) done: bool,
+    pub(crate) text: String,
 }
 
 /// The items of the project page's `## Progress` section.
-fn progress(text: &str) -> Vec<Item> {
+pub(crate) fn progress(text: &str) -> Vec<Item> {
     let lines: Vec<&str> = text.lines().collect();
     let Some(start) = lines.iter().position(|l| l.trim_end() == "## Progress") else {
         return Vec::new();
@@ -906,7 +911,7 @@ fn progress(text: &str) -> Vec<Item> {
 
 /// The one Progress item whose text contains `words`, ignoring case, code spans and
 /// emphasis.
-fn find_item<'a>(items: &'a [Item], words: &str) -> Res<(usize, &'a Item)> {
+pub(crate) fn find_item<'a>(items: &'a [Item], words: &str) -> Res<(usize, &'a Item)> {
     let plain = |t: &str| t.replace(['`', '*'], "").to_lowercase();
     let want = plain(words);
     let hits: Vec<(usize, &Item)> = items
@@ -929,12 +934,12 @@ fn find_item<'a>(items: &'a [Item], words: &str) -> Res<(usize, &'a Item)> {
 }
 
 /// The item's text as a phase name: without `(since …)`.
-fn phase_name(item: &Item) -> String {
+pub(crate) fn phase_name(item: &Item) -> String {
     SINCE_RE.replace(&item.text, "").trim().to_string()
 }
 
 /// The commit that ticked an item: the first that added its line as it is now.
-fn tick_commit(root: &Path, file: &str, line: &str) -> Res<String> {
+pub(crate) fn tick_commit(root: &Path, file: &str, line: &str) -> Res<String> {
     let found = git(
         root,
         &[
@@ -967,6 +972,10 @@ fn resolve_phase(vault: &Vault, target: &str, words: &str) -> Res<Resolved> {
     let lines: Vec<&str> = text.lines().collect();
     let items = progress(&text);
     let (k, item) = find_item(&items, words)?;
+    // a migrated project lists its phases as pages: review the page
+    if let Some(m) = PHS_LINK_RE.captures(&item.text) {
+        return resolve_phase_page(vault, &vault.find(&m[1])?);
+    }
     let (base, note) = match SINCE_RE.captures(&item.text) {
         Some(m) => (rev(root, &m[1])?, None),
         None => match k.checked_sub(1).map(|j| &items[j]).filter(|p| p.done) {
@@ -1004,9 +1013,54 @@ fn resolve_phase(vault: &Vault, target: &str, words: &str) -> Res<Resolved> {
     })
 }
 
-/// `yajna phase start PRJ-… "<item>"`: append `(since <HEAD>)` to the item's line.
-pub fn phase(vault: &Vault, action: &PhaseAction) -> Res<i32> {
-    let PhaseAction::Start { project, item } = action;
+/// A phase page (ADR-0034): from its `since` to its `until`, or HEAD while it runs, over the
+/// project's code and notes.
+fn resolve_phase_page(vault: &Vault, page: &Page) -> Res<Resolved> {
+    let root = &vault.root;
+    let id = page.id().unwrap_or("").to_string();
+    let base = match page.field("since") {
+        Some(s) => rev(root, s)?,
+        None => {
+            return Err(format!(
+                "{id} has no `since`: start it with yajna phase start {id} (--at <commit> for one that began earlier)"
+            ))
+        }
+    };
+    let head = match page.field("until") {
+        Some(u) => rev(root, u)?,
+        None => rev(root, "HEAD")?,
+    };
+    let project = page.field("project").map(str::to_string);
+    let notes = match &project {
+        Some(p) => vault
+            .find(p)?
+            .path
+            .parent()
+            .map(|d| rel(d, root).to_string()),
+        None => None,
+    };
+    Ok(Resolved {
+        kind: "phase",
+        reference: id.clone(),
+        title: format!("{id} {}", page.field("title").unwrap_or(""))
+            .trim()
+            .to_string(),
+        base,
+        head,
+        paths: joined(
+            code_paths(vault, project.as_deref()),
+            notes.into_iter().collect(),
+        ),
+        project,
+        home: root.clone(),
+        phase: None,
+        note: None,
+    })
+}
+
+/// `yajna phase start PRJ-… "<item>"` on a project not yet migrated to phase pages: append
+/// `(since <HEAD>)` to the item's line.
+pub(crate) fn start_item(vault: &Vault, project: &str, item: &[String]) -> Res<i32> {
     let words = one_line(item);
     let page = vault.find(project)?;
     if page.field("type") != Some("project") {

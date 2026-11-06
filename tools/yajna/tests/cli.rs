@@ -6738,3 +6738,159 @@ fn each_command_completes_what_it_can_act_on_and_the_picker_searches_all() {
         out.stderr
     );
 }
+
+#[test]
+fn phases_are_pages_migrated_from_progress_started_finished_and_reviewed() {
+    let lab = vault();
+    let root = lab.root.canonicalize().unwrap();
+    let commit = |msg: &str| {
+        git(&root, &["add", "notes"]);
+        git(&root, &["commit", "-q", "-m", msg]);
+        git(&root, &["rev-parse", "HEAD"]).trim().to_string()
+    };
+    let out = lab.run(&["new", "project", "Toy model"]);
+    let prj = lab.path(&out);
+    git(&root, &["init", "-q", "-b", "main"]);
+    let c0 = commit("lab");
+    let text = lab.read(&prj).replace(
+        "- [ ] \n",
+        &format!(
+            "- [x] Phase 0: setup of the model\n\
+             - [ ] Phase 0 verified: it runs end to end\n\
+             - [ ] Speed it up (since {})\n\
+             - [ ] Phase 1: steps\n  \
+               - [x] 1. the first step,\n    \
+                 wrapped\n  \
+               - [ ] 2. the second\n",
+            &c0[..7]
+        ),
+    );
+    fs::write(&prj, &text).unwrap();
+    let c1 = commit("progress");
+
+    // a dry run says what it would make and writes nothing
+    let out = lab.run(&["phase", "migrate", "PRJ-0001", "--dry-run"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(
+        out.stdout.contains("Phase 0 [active]\n")
+            && out.stdout.contains("Speed it up [active, since ")
+            && out
+                .stdout
+                .contains("Phase 1: steps [active]\n  goal: Phase 1: steps\n")
+            && out.stdout.contains("3 phase(s) from 4 item(s)"),
+        "{}",
+        out.stdout
+    );
+    assert_eq!(lab.read(&prj), text);
+
+    // items with one label make one phase; Progress keeps one line per phase, in place
+    let out = lab.run(&["phase", "migrate", "PRJ-0001"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let page = lab.read(&prj);
+    let ids: Vec<String> = page
+        .lines()
+        .filter_map(|l| l.strip_prefix("- [ ] [["))
+        .map(|l| l[..l.find("]]").unwrap()].to_string())
+        .collect();
+    assert_eq!(ids.len(), 3, "{page}");
+    assert!(
+        page.contains(&format!(
+            "- [ ] [[{}]] Phase 0\n- [ ] [[{}]] Speed it up\n- [ ] [[{}]] Phase 1: steps\n",
+            ids[0], ids[1], ids[2]
+        )) && !page.contains("the first step"),
+        "{page}"
+    );
+    let phase_file = |id: &str| {
+        fs::read_dir(prj.parent().unwrap().join("phases"))
+            .unwrap()
+            .map(|e| e.unwrap().path())
+            .find(|p| p.file_name().unwrap().to_string_lossy().starts_with(id))
+            .unwrap()
+    };
+    let p0 = lab.read(&phase_file(&ids[0]));
+    assert!(
+        p0.contains("status: active")
+            && p0.contains("since: null")
+            && p0.contains(
+                "- [x] Phase 0: setup of the model\n- [ ] Phase 0 verified: it runs end to end\n"
+            ),
+        "{p0}"
+    );
+    let p1 = lab.read(&phase_file(&ids[1]));
+    assert!(p1.contains(&format!("since: {c0}\n")), "{p1}");
+    let p2 = lab.read(&phase_file(&ids[2]));
+    assert!(
+        p2.contains("## Goal\nPhase 1: steps\n")
+            && p2.contains("- [x] 1. the first step,\n  wrapped\n- [ ] 2. the second\n"),
+        "{p2}"
+    );
+    let out = lab.run(&["validate"]);
+    assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
+    assert!(lab
+        .run(&["phase", "migrate", "PRJ-0001"])
+        .stdout
+        .contains("nothing to migrate"));
+    let c2 = commit("migrated");
+
+    // a new phase is listed on Progress; start and done set its commits and tick it
+    let out = lab.run(&["new", "phase", "Phase 2", "--project", "PRJ-0001"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let p3_path = lab.path(&out);
+    let p3 = p3_path.file_name().unwrap().to_string_lossy()[..19].to_string();
+    assert!(lab
+        .read(&prj)
+        .contains(&format!("- [ ] [[{p3}]] Phase 2\n")));
+    let c3 = commit("phase 2");
+    let out = lab.run(&["phase", "start", &p3]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(lab
+        .read(&p3_path)
+        .contains(&format!("status: active\nsince: {c3}\n")));
+    assert_eq!(lab.run(&["phase", "start", &p3]).code, 1);
+    let c4 = commit("started");
+
+    let open = |args: &[&str]| {
+        let mut all = vec!["review", "open"];
+        all.extend(args);
+        let out = lab.run(&all);
+        assert_eq!(out.code, 0, "{}", out.stderr);
+        let path = lab.path(&out);
+        let page = lab.read(&path);
+        fs::remove_file(path).unwrap();
+        page
+    };
+    let page = open(&[&p3]);
+    assert!(
+        page.contains("kind: phase")
+            && page.contains(&format!("ref: {p3}\n"))
+            && page.contains(&format!("base: {c3}\nhead: {c4}\n")),
+        "{page}"
+    );
+    // --phase on a migrated project finds the page
+    let page = open(&["PRJ-0001", "--phase", "Phase 2"]);
+    assert!(page.contains(&format!("ref: {p3}\n")), "{page}");
+    let page = open(&[&ids[1]]);
+    assert!(page.contains(&format!("base: {c0}\n")), "{page}");
+    // a phase without `since` says how to give it one
+    let out = lab.run(&["review", "open", &ids[0]]);
+    assert_eq!(out.code, 1);
+    assert!(out.stderr.contains("--at <commit>"), "{}", out.stderr);
+    let out = lab.run(&["phase", "start", &ids[0], "--at", &c1]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(lab
+        .read(&phase_file(&ids[0]))
+        .contains(&format!("since: {c1}\n")));
+    let _ = c2;
+
+    let out = lab.run(&["phase", "done", &p3]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(lab
+        .read(&p3_path)
+        .contains(&format!("status: done\nsince: {c3}\nuntil: {c4}\n")));
+    assert!(lab
+        .read(&prj)
+        .contains(&format!("- [x] [[{p3}]] Phase 2\n")));
+    assert_eq!(lab.run(&["phase", "done", &p3]).code, 1);
+    let out = lab.run(&["validate"]);
+    assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
+}

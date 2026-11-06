@@ -252,7 +252,14 @@ stays and names its successor. The project page uses the code template (*Introdu
 *Progress*, *Current belief*, *Open questions*, *What not to try again*, *Experiments*);
 both open with an *Introduction* written once for a reader who has never heard of the
 project, followed by *Progress*, a checklist of what is planned, ticked as it lands, so
-the page shows at a glance how far the project has got. The page
+the page shows at a glance how far the project has got. A project's phases are `PHS`
+pages (ADR-0034) under its `phases/`: *Goal*, the phase's own *Progress* checklist and
+*Notes*, with `status` and the commits it ran between, `since` and `until`. The project's
+*Progress* lists each on one line, `- [ ] [[PHS-…]] <what it is>`, ticked when it is
+done. `yajna new phase "<title>" --project PRJ-…` adds one and its line, `yajna phase
+start PHS-…` and `phase done PHS-…` set its status and commits (`--at <commit>` for an
+earlier one), and `yajna phase migrate PRJ-…` (`--dry-run` first) turns a flat checklist
+into phase pages, grouping items by their label before `:`. The page
 gets `code: code/toy-model`; `yajna validate` fails if that directory
 disappears. The project flake is built on flake-parts and is a normal flake: add whatever
 inputs it needs and commit its own `flake.lock`. The scaffold also registers the directory
@@ -368,11 +375,13 @@ done <words>` ticks the one that matches.
 ## Reviews
 
 A review is a `REV` page with threads on a set of changes (ADR-0030, `docs/review.md`):
-`yajna review open <branch | A..B | ID>` (or `PRJ-… --phase "<words>"`) resolves the target
+`yajna review open <branch | A..B | ID>` (a phase is `PHS-…`; `PRJ-… --phase "<words>"`
+for a project not yet migrated) resolves the target
 to a base and head commit and writes the page, a branch review on the branch itself (in
 its worktree), anything of a project under its `reviews/`. A run is reviewed against the
-run before it, an experiment from its creation to its last run, a phase of *Progress* from
-the `(since <sha>)` that `yajna phase start PRJ-… "<words>"` appends to its item.
+run before it, an experiment from its creation to its last run, a phase from its `since`
+to its `until` (or the `(since <sha>)` that `yajna phase start PRJ-… "<words>"` appends
+to an item of an unmigrated project).
 Comments are threads: `yajna review comment REV-… --at code/x.py:120-126 "<text>"` (or
 `--at <path>#<heading>`, or no `--at` for a general one) quotes the lines at the review's
 head. Replies, `address` (with the commit that fixes it)

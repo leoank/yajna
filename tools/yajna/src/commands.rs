@@ -167,7 +167,7 @@ pub fn run(vault: &Vault, cmd: &Cmd, prompter: &mut dyn Prompter) -> Res<i32> {
             path,
         } => crate::parallel::worktree(vault, project, topic, agent, from, path.as_deref()),
         Cmd::Review { action } => crate::review::run(vault, action),
-        Cmd::Phase { action } => crate::review::phase(vault, action),
+        Cmd::Phase { action } => crate::phase::run(vault, action, prompter),
         Cmd::Index => crate::query::cmd_index(vault),
         Cmd::Show { id } => crate::query::cmd_show(
             vault,
@@ -400,6 +400,7 @@ pub fn create(
     // outcome is known
     match (etype.as_str(), project.as_deref(), experiment) {
         ("experiment", Some(p), _) => list_on(vault, p, "Experiments", &ident, &title)?,
+        ("phase", Some(p), _) => list_on(vault, p, "Progress", &ident, &title)?,
         ("run", _, Some(e)) => list_on(
             vault,
             e,
@@ -423,7 +424,9 @@ pub fn create(
 pub(crate) fn list_on(vault: &Vault, parent: &str, section: &str, id: &str, what: &str) -> Res<()> {
     let page = vault.find(parent)?;
     let text = crate::vault::read_text(&page.path).map_err(|e| e.to_string())?;
-    let item = format!("- [[{id}]] {}", what.trim());
+    // a phase is a Progress item, ticked when it is done
+    let tick = if section == "Progress" { "[ ] " } else { "" };
+    let item = format!("- {tick}[[{id}]] {}", what.trim());
     let mut lines: Vec<&str> = text.lines().collect();
     let heading = format!("## {section}");
     let at = match lines.iter().position(|l| l.trim_end() == heading) {

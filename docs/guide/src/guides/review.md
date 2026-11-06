@@ -10,14 +10,16 @@ yajna review open 84ce40f..a1da1b4             # a commit range
 yajna review open PRO-0012                     # a page, since its last approved review
 yajna review open RUN-20261023-nvfv0n          # a run, against the run before it
 yajna review open EXP-20261021-0k3m9x          # an experiment, from its start to its last run
-yajna review open PRJ-0005 --phase "E1c"       # a phase: an item of the project's Progress
+yajna review open PHS-20261103-k2m9qa         # a phase, from its since to its until
+yajna review open PRJ-0005 --phase "E1c"       # a phase of a project not yet migrated
 ```
 
 | Target | From | To |
 |---|---|---|
 | run | the previous run's `commit` | the run's `commit` |
 | experiment | before its page was created | its last run's `commit`; now, while it is planned or active |
-| phase | the item's `(since <sha>)`, else when the item before it was ticked | when it was ticked; now, while it is open |
+| phase | its `since` | its `until`; now, while it runs |
+| phase, not migrated | the item's `(since <sha>)`, else when the item before it was ticked | when it was ticked; now, while it is open |
 
 A run, experiment or phase review covers the project's code (its `code` field) and the
 page with its directory; when the base or head is a guess the page's `## Summary` says
@@ -25,8 +27,12 @@ how it was found. For a run, `show --diff` adds the two runs' directories as the
 since a run's script is usually committed after the code it ran.
 
 ```sh
-yajna phase start PRJ-0005 "E1c"               # appends (since <HEAD>) to the item
+yajna phase start PHS-20261103-k2m9qa          # status: active, since: <HEAD>
+yajna phase done PHS-20261103-k2m9qa           # status: done, until: <HEAD>, ticked on Progress
+yajna phase start PRJ-0005 "E1c"               # not migrated: appends (since <HEAD>) to the item
 ```
+
+Phases are pages since ADR-0034; the projects guide has `phase migrate`.
 
 `open` resolves the target to a base and a head commit, writes the page and prints its
 path. A branch review is written on the branch, in the worktree that has it checked out, so
