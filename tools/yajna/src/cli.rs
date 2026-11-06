@@ -468,9 +468,10 @@ pub enum ImportSource {
 #[derive(Subcommand, Debug, Clone)]
 pub enum DataAction {
     /// store files in this machine's `local` store, deduplicated against what it holds,
-    /// and write an ART page for each naming it by its Xet hash; the file stays where it is
+    /// and write an ART page for each naming it by its Xet hash; the file stays where it is.
+    /// A folder becomes one bundle: one ART for every file under it, named by a manifest
     Add {
-        /// files (folders come with bundles)
+        /// files and folders
         #[arg(required = true)]
         paths: Vec<PathBuf>,
         #[arg(long, add = ArgValueCandidates::new(crate::complete::projects))]
@@ -515,6 +516,10 @@ pub enum DataAction {
         /// the store to read from (default: `local`, then the others by name)
         #[arg(long)]
         from: Option<String>,
+        /// only a bundle's files whose path inside it matches this glob (`*.tif`, `QC/**`);
+        /// a single file's page is matched by its file name
+        #[arg(long)]
+        only: Option<String>,
     },
     /// free these artifacts' data from one store, when `[data] copies` other stores (1 by
     /// default) hold each whole; xorbs other files still use stay

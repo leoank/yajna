@@ -32,7 +32,7 @@ pub fn run(vault: &Vault, action: &DataAction) -> Res<i32> {
         }
         DataAction::Push { targets, to } => push(vault, targets, to.as_deref()),
         DataAction::Pull { targets, from } => pull(vault, targets, from.as_deref()),
-        DataAction::Get { targets, from } => get(vault, targets, from.as_deref()),
+        DataAction::Get { targets, from, only } => get(vault, targets, from.as_deref(), only.as_deref()),
         DataAction::Status { targets } => status(vault, targets),
         DataAction::Drop { targets, from } => drop_cmd(vault, targets, from),
         DataAction::Free { targets } => free(vault, targets),
@@ -691,6 +691,69 @@ fn compression(vault: &Vault) -> Res<Compression> {
     }
 }
 
+/// What `add` was given: a file, or a folder and the files under it (relative paths, sorted).
+struct Source {
+    path: PathBuf,
+    members: Option<Vec<String>>,
+}
+
+/// The files under `dir`, as sorted relative paths with `/`; symlinks and names a manifest
+/// line cannot hold are refused.
+fn walk_bundle(dir: &Path) -> Res<Vec<String>> {
+    fn walk(base: &Path, p: &Path, out: &mut Vec<String>) -> Res<()> {
+        for e in fs::read_dir(p).map_err(|e| format!("{}: {e}", p.display()))? {
+            let e = e.map_err(err)?;
+            let path = e.path();
+            let t = e.file_type().map_err(err)?;
+            if t.is_symlink() {
+                return Err(format!("{} is a symlink: a bundle holds files and folders only", path.display()));
+            }
+            if t.is_dir() {
+                walk(base, &path, out)?;
+                continue;
+            }
+            let rel = path.strip_prefix(base).unwrap().to_string_lossy().replace('\\', "/");
+            if rel.contains(['\t', '\n', '\r']) {
+                return Err(format!("{}: a name with a tab or newline cannot go in a bundle's manifest", path.display()));
+            }
+            out.push(rel);
+        }
+        Ok(())
+    }
+    let mut out = Vec::new();
+    walk(dir, dir, &mut out)?;
+    if out.is_empty() {
+        return Err(format!("{} has no files", dir.display()));
+    }
+    out.sort();
+    Ok(out)
+}
+
+/// A reader that also takes the sha256 of what passes through.
+struct ShaReader<R> {
+    inner: R,
+    sha: Sha256,
+}
+
+impl<R: Read> Read for ShaReader<R> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let n = self.inner.read(buf)?;
+        self.sha.update(&buf[..n]);
+        Ok(n)
+    }
+}
+
+/// One stored page's worth of what `add` packed: the file, or the bundle's manifest.
+struct Packed {
+    xet: Hash,
+    sha256: String,
+    /// the file's size, or the sum of a bundle's files
+    size: u64,
+    deduped: u64,
+    /// a bundle's file count
+    files: Option<usize>,
+}
+
 #[allow(clippy::too_many_arguments)]
 fn add(vault: &Vault, paths: &[PathBuf], project: Option<&str>, run: Option<&str>, title: Option<&str>, author: Option<&str>, to: Option<&str>) -> Res<i32> {
     if title.is_some() && paths.len() > 1 {
@@ -718,10 +781,9 @@ fn add(vault: &Vault, paths: &[PathBuf], project: Option<&str>, run: Option<&str
     let mut sources = Vec::new();
     for p in paths {
         let meta = fs::metadata(p).map_err(|e| format!("{}: {e}", p.display()))?;
-        if meta.is_dir() {
-            return Err(format!("{} is a folder: folders are added as bundles, step 6 of docs/data.md", p.display()));
-        }
-        sources.push(fs::canonicalize(p).map_err(|e| format!("{}: {e}", p.display()))?);
+        let path = fs::canonicalize(p).map_err(|e| format!("{}: {e}", p.display()))?;
+        let members = if meta.is_dir() { Some(walk_bundle(&path)?) } else { None };
+        sources.push(Source { path, members });
     }
     let local = &all[0];
     local.ensure()?;
@@ -730,42 +792,68 @@ fn add(vault: &Vault, paths: &[PathBuf], project: Option<&str>, run: Option<&str
     // a drop must not delete a xorb this add has just deduplicated against
     let lock = local.lock_write()?;
 
-    // pack, deduplicating against what `local` holds
-    let mut new_xorbs: Vec<XorbInfo> = Vec::new();
-    let mut added = Vec::new();
+    // pack, deduplicating against what `local` holds; bundles' manifests go in xorbs of
+    // their own, so reading one fetches kilobytes, not the last 64 MB of a session
+    let new_xorbs: std::cell::RefCell<Vec<XorbInfo>> = Default::default();
+    let mut packed = Vec::new();
     let files = {
-        let mut packer = Packer::new(compression, |x: Xorb| {
+        let sink = |x: Xorb| {
             let rel = fanned("xorbs", &x.footer.hash);
             if !root.join(&rel).is_file() {
                 write_atomic(&root.join(&rel), &x.bytes).map_err(xet_err)?;
             }
-            new_xorbs.push(XorbInfo::from_footer(&x.footer, x.bytes.len() as u32));
+            new_xorbs.borrow_mut().push(XorbInfo::from_footer(&x.footer, x.bytes.len() as u32));
             Ok(())
-        });
+        };
+        let mut packer = Packer::new(compression, sink);
+        let mut manifests = Packer::new(compression, sink);
         let lookup = |h: &Hash| -> Res<Vec<XorbInfo>> {
             let Ok(hex) = fs::read_to_string(root.join(fanned("chunks", h))) else { return Ok(Vec::new()) };
             let path = root.join("shards").join(hex.trim());
             let bytes = fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
             Ok(Shard::parse(&bytes).map_err(|e| format!("{}: {e}", path.display()))?.xorbs.into_values().collect())
         };
+        let pack = |packer: &mut Packer, path: &Path, reader: &mut dyn Read| -> Res<(yajna_xet::file::Added, String)> {
+            let mut r = ShaReader { inner: BufReader::new(reader), sha: Sha256::new() };
+            let a = packer.add_with(&mut r, &mut |h| lookup(h).map_err(xet_err)).map_err(|e| format!("{}: {e}", path.display()))?;
+            Ok((a, format!("{:x}", r.sha.finalize())))
+        };
         for src in &sources {
-            let f = fs::File::open(src).map_err(|e| format!("{}: {e}", src.display()))?;
-            let a = packer
-                .add_with(BufReader::new(f), &mut |h| lookup(h).map_err(xet_err))
-                .map_err(|e| format!("{}: {e}", src.display()))?;
-            added.push(a);
+            let open = |p: &Path| fs::File::open(p).map_err(|e| format!("{}: {e}", p.display()));
+            match &src.members {
+                None => {
+                    let (a, sha256) = pack(&mut packer, &src.path, &mut open(&src.path)?)?;
+                    packed.push(Packed { xet: a.hash, sha256, size: a.bytes, deduped: a.deduped, files: None });
+                }
+                Some(members) => {
+                    // every file, then the manifest naming them
+                    let mut manifest = String::from(MANIFEST_HEADER);
+                    let (mut size, mut deduped) = (0, 0);
+                    for rel in members {
+                        let path = src.path.join(rel);
+                        let (a, sha256) = pack(&mut packer, &path, &mut open(&path)?)?;
+                        manifest.push_str(&format!("{rel}\t{}\t{sha256}\t{}\n", a.bytes, a.hash.hex()));
+                        size += a.bytes;
+                        deduped += a.deduped;
+                    }
+                    let (a, sha256) = pack(&mut manifests, &src.path, &mut manifest.as_bytes())?;
+                    packed.push(Packed { xet: a.hash, sha256, size, deduped, files: Some(members.len()) });
+                }
+            }
         }
-        packer.finish().map_err(err)?
+        let mut files = packer.finish().map_err(err)?;
+        files.extend(manifests.finish().map_err(err)?);
+        files
     };
-    local.apply(shard_ops(&shard_of(&files, new_xorbs)), &staging.0)?;
+    local.apply(shard_ops(&shard_of(&files, new_xorbs.into_inner())), &staging.0)?;
     std::mem::drop(lock);
 
-    for ((src, info), a) in sources.iter().zip(&files).zip(&added) {
-        let name = src.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    for (src, p) in sources.iter().zip(&packed) {
+        let name = src.path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
         let page = crate::commands::create(vault, "artifact", Some(title.unwrap_or(&name)), project.as_deref(), None, None, false, author, None, None)?;
         let id = page.file_name().unwrap().to_string_lossy()[..19].to_string();
         let vroot = fs::canonicalize(&vault.root).map_err(err)?;
-        let path = match src.strip_prefix(&vroot) {
+        let path = match src.path.strip_prefix(&vroot) {
             Ok(inside) => inside.to_string_lossy().replace('\\', "/"),
             Err(_) => format!("data/{id}/{name}"),
         };
@@ -777,12 +865,22 @@ fn add(vault: &Vault, paths: &[PathBuf], project: Option<&str>, run: Option<&str
             }
             set_field(fm, "store", "xet");
             set_field(fm, "path", &path);
-            set_field(fm, "hash", &format!("sha256:{}", info.sha256.unwrap().hex()));
-            insert_after(fm, "hash", &format!("xet: {}", info.hash.hex()));
-            insert_after(fm, "xet", &format!("size: {}", a.bytes));
+            set_field(fm, "hash", &format!("sha256:{}", p.sha256));
+            insert_after(fm, "hash", &format!("xet: {}", p.xet.hex()));
+            insert_after(fm, "xet", &format!("size: {}", p.size));
+            match p.files {
+                None => insert_after(fm, "size", "kind: file"),
+                Some(n) => {
+                    insert_after(fm, "size", "kind: bundle");
+                    insert_after(fm, "kind", &format!("files: {n}"));
+                }
+            }
         });
         fs::write(&page, text).map_err(err)?;
-        eprintln!("{id}: {name} stored in {} ({}, {} of it already there)", local.name, human(a.bytes), human(a.deduped));
+        match p.files {
+            None => eprintln!("{id}: {name} stored in {} ({}, {} of it already there)", local.name, human(p.size), human(p.deduped)),
+            Some(n) => eprintln!("{id}: {name}/ stored in {} as a bundle of {n} file(s) ({}, {} of it already there)", local.name, human(p.size), human(p.deduped)),
+        }
         println!("{}", rel(&page, &vault.root));
     }
     if let Some(t) = to {
@@ -817,13 +915,54 @@ fn human(n: u64) -> String {
 
 // --- the pages -------------------------------------------------------------------------
 
-/// A stored artifact: its page, Xet hash, sha256, size and path.
+/// The first line of a bundle's manifest; each line after it is one file:
+/// relative path, size, sha256 and Xet hash, tab-separated, sorted by path.
+const MANIFEST_HEADER: &str = "path\tsize\tsha256\txet\n";
+
+/// A file a page names: the page's own file, or one of a bundle's.
+#[derive(Clone)]
+struct Member {
+    /// where it is written out, relative to the notebook root
+    path: String,
+    /// what `--only` matches: the path inside a bundle, or a file's name
+    name: String,
+    xet: Hash,
+    sha256: String,
+    size: Option<u64>,
+}
+
+/// A stored artifact: its page, Xet hash, sha256, size and path; for a bundle, the
+/// manifest's hash and sha256 and, once `expand` has read the manifest, its files.
 struct Stored {
     id: String,
     xet: Hash,
     sha256: String,
     size: Option<u64>,
     path: String,
+    bundle: bool,
+    files: Vec<Member>,
+}
+
+impl Stored {
+    /// Every Xet file the page needs in a store: its file, or a bundle's manifest and files.
+    fn hashes(&self) -> Vec<Hash> {
+        let mut out = vec![self.xet];
+        out.extend(self.files.iter().map(|m| m.xet));
+        out
+    }
+
+    /// The files written out for it.
+    fn members(&self) -> Vec<Member> {
+        if self.bundle {
+            return self.files.clone();
+        }
+        let name = self.path.rsplit('/').next().unwrap_or(&self.path).to_string();
+        vec![Member { path: self.path.clone(), name, xet: self.xet, sha256: self.sha256.clone(), size: self.size }]
+    }
+
+    fn whole_in(&self, held: &Holdings) -> bool {
+        self.hashes().iter().all(|h| matches!(held.get(h), Some(Holding::Whole(_))))
+    }
 }
 
 fn stored(page: &Page) -> Res<Stored> {
@@ -838,6 +977,8 @@ fn stored(page: &Page) -> Res<Stored> {
         sha256: page.field("hash").unwrap_or("").trim_start_matches("sha256:").to_string(),
         size: page.meta.as_ref().and_then(|m| m.get("size")).and_then(|v| v.as_u64()),
         path: page.field("path").unwrap_or("").to_string(),
+        bundle: page.field("kind") == Some("bundle"),
+        files: Vec::new(),
     })
 }
 
@@ -851,13 +992,78 @@ fn targets(vault: &Vault, targets: &[String]) -> Res<Vec<Stored>> {
     targets
         .iter()
         .map(|t| {
-            let by_path = t.trim_start_matches("./");
+            let by_path = t.trim_start_matches("./").trim_end_matches('/');
             match all.iter().find(|p| p.field("path") == Some(by_path)) {
                 Some(p) => stored(p),
                 None => stored(&vault.find(t)?),
             }
         })
         .collect()
+}
+
+/// Read the manifests of the bundles among `pages` from `local`, pulling those it lacks
+/// from the first store holding them (a manifest is small; its files are not pulled).
+/// Returns the bundles whose manifest no store reached holds.
+fn expand(all: &[Store], pages: &mut [Stored], staging: &Path) -> Res<Vec<String>> {
+    let want: Vec<Hash> = pages.iter().filter(|p| p.bundle).map(|p| p.xet).collect();
+    if want.is_empty() {
+        return Ok(Vec::new());
+    }
+    pull_hashes(all, &want, None, staging)?;
+    let local = &all[0];
+    let held = local.holdings(&want, staging)?;
+    let root = local.dir().unwrap();
+    let mut lost = Vec::new();
+    for p in pages.iter_mut().filter(|p| p.bundle) {
+        let Some(Holding::Whole(f)) = held.get(&p.xet) else {
+            lost.push(p.id.clone());
+            continue;
+        };
+        let mut bytes = Vec::new();
+        reconstruct(f, |h| fs::read(root.join(fanned("xorbs", h))).map_err(xet_err), &mut bytes).map_err(|e| format!("{}: manifest: {e}", p.id))?;
+        if format!("{:x}", Sha256::digest(&bytes)) != p.sha256 {
+            return Err(format!("{}: the manifest in store local does not match the page's sha256", p.id));
+        }
+        p.files = parse_manifest(&String::from_utf8_lossy(&bytes), &p.path).map_err(|e| format!("{}: manifest: {e}", p.id))?;
+    }
+    Ok(lost)
+}
+
+fn parse_manifest(text: &str, under: &str) -> Res<Vec<Member>> {
+    let mut lines = text.lines();
+    if lines.next() != Some(MANIFEST_HEADER.trim_end()) {
+        return Err("not a bundle manifest".into());
+    }
+    lines
+        .map(|l| {
+            let f: Vec<&str> = l.split('\t').collect();
+            let [rel, size, sha256, xet] = f[..] else { return Err(format!("bad line {l:?}")) };
+            if rel.is_empty() || rel.starts_with('/') || rel.split('/').any(|c| c == ".." || c.is_empty()) {
+                return Err(format!("path {rel:?} is not inside the bundle"));
+            }
+            Ok(Member {
+                path: format!("{under}/{rel}"),
+                name: rel.to_string(),
+                xet: Hash::from_hex(xet).ok_or_else(|| format!("bad hash in {l:?}"))?,
+                sha256: sha256.to_string(),
+                size: Some(size.parse().map_err(|_| format!("bad size in {l:?}"))?),
+            })
+        })
+        .collect()
+}
+
+/// `expand`, failing on a bundle whose manifest no store reached holds.
+fn expand_all(all: &[Store], pages: &mut [Stored], staging: &Path) -> Res<()> {
+    let lost = expand(all, pages, staging)?;
+    if !lost.is_empty() {
+        return Err(lost.iter().map(|id| format!("{id}: its manifest is in no store reached")).collect::<Vec<_>>().join("\n"));
+    }
+    Ok(())
+}
+
+fn unique_hashes(pages: &[Stored]) -> Vec<Hash> {
+    let set: BTreeSet<Hash> = pages.iter().flat_map(|p| p.hashes()).collect();
+    set.into_iter().collect()
 }
 
 fn sha256_of(path: &Path) -> Option<String> {
@@ -881,10 +1087,18 @@ fn push(vault: &Vault, targets_: &[String], to: Option<&str>) -> Res<i32> {
     let local = &all[0];
     local.ensure()?;
     let staging = Staging::new(local)?;
-    let pages = targets(vault, targets_)?;
-    let hashes: Vec<Hash> = pages.iter().map(|p| p.xet).collect();
-    let here = local.holdings(&hashes, &staging.0)?;
+    let mut pages = targets(vault, targets_)?;
     let mut failed = 0;
+    for id in expand(&all, &mut pages, &staging.0)? {
+        eprintln!("{id}: its manifest is in no store reached");
+        failed += 1;
+    }
+    let hashes = unique_hashes(&pages);
+    let here = local.holdings(&hashes, &staging.0)?;
+    for p in pages.iter().filter(|p| !p.whole_in(&here) && (!p.bundle || !p.files.is_empty())) {
+        eprintln!("{}: local does not hold {} whole; pull or add it first", p.id, p.path);
+        failed += 1;
+    }
     for name in names {
         let store = named(&all, &name)?;
         if store.name == "local" {
@@ -892,17 +1106,14 @@ fn push(vault: &Vault, targets_: &[String], to: Option<&str>) -> Res<i32> {
         }
         store.ensure()?;
         let there = store.holdings(&hashes, &staging.0)?;
-        let mut send = Vec::new();
-        for p in &pages {
-            match (&here[&p.xet], &there[&p.xet]) {
-                (_, Holding::Whole(_)) => {}
-                (Holding::Whole(f), _) => send.push(f.clone()),
-                _ => {
-                    eprintln!("{}: local does not hold {} whole; pull or add it first", p.id, p.path);
-                    failed += 1;
-                }
-            }
-        }
+        let send: Vec<FileInfo> = hashes
+            .iter()
+            .filter(|h| !matches!(there[h], Holding::Whole(_)))
+            .filter_map(|h| match &here[h] {
+                Holding::Whole(f) => Some(f.clone()),
+                _ => None,
+            })
+            .collect();
         if send.is_empty() {
             eprintln!("{}: holds them all already", store.name);
             continue;
@@ -913,13 +1124,12 @@ fn push(vault: &Vault, targets_: &[String], to: Option<&str>) -> Res<i32> {
     Ok(if failed > 0 { 1 } else { 0 })
 }
 
-/// Copy into `local` what it lacks of `pages`, from `from` or the first store holding each
-/// whole; returns the pages nothing could supply.
-fn pull_into_local(all: &[Store], pages: &[&Stored], from: Option<&str>, staging: &Path) -> Res<Vec<String>> {
+/// Copy into `local` what it lacks of the files `hashes`, from `from` or the first store
+/// holding each whole; returns those nothing could supply.
+fn pull_hashes(all: &[Store], hashes: &[Hash], from: Option<&str>, staging: &Path) -> Res<Vec<Hash>> {
     let local = &all[0];
-    let hashes: Vec<Hash> = pages.iter().map(|p| p.xet).collect();
-    let here = local.holdings(&hashes, staging)?;
-    let mut wanted: Vec<&Stored> = pages.iter().copied().filter(|p| !matches!(here[&p.xet], Holding::Whole(_))).collect();
+    let here = local.holdings(hashes, staging)?;
+    let mut wanted: Vec<Hash> = hashes.iter().copied().filter(|h| !matches!(here[h], Holding::Whole(_))).collect();
     let sources: Vec<&Store> = match from {
         Some(n) => vec![named(all, n)?],
         None => all[1..].iter().collect(),
@@ -937,76 +1147,100 @@ fn pull_into_local(all: &[Store], pages: &[&Stored], from: Option<&str>, staging
             }
             Err(e) => return Err(e),
         }
-        let h: Vec<Hash> = wanted.iter().map(|p| p.xet).collect();
-        let there = s.holdings(&h, staging)?;
-        let (take, rest): (Vec<&Stored>, Vec<&Stored>) = wanted.into_iter().partition(|p| matches!(there[&p.xet], Holding::Whole(_)));
+        let there = s.holdings(&wanted, staging)?;
+        let (take, rest): (Vec<Hash>, Vec<Hash>) = wanted.into_iter().partition(|h| matches!(there[h], Holding::Whole(_)));
         if !take.is_empty() {
-            let recipes: Vec<FileInfo> = take.iter().map(|p| match &there[&p.xet] {
-                Holding::Whole(f) => f.clone(),
-                _ => unreachable!(),
-            }).collect();
+            let recipes: Vec<FileInfo> = take
+                .iter()
+                .map(|h| match &there[h] {
+                    Holding::Whole(f) => f.clone(),
+                    _ => unreachable!(),
+                })
+                .collect();
             let (n, bytes) = copy(s, local, &recipes, staging)?;
             eprintln!("pulled {} file(s) from {}: {n} xorb(s), {}", take.len(), s.name, human(bytes));
         }
         wanted = rest;
     }
-    Ok(wanted.iter().map(|p| p.id.clone()).collect())
+    Ok(wanted)
 }
 
 fn pull(vault: &Vault, targets_: &[String], from: Option<&str>) -> Res<i32> {
     let all = stores()?;
     all[0].ensure()?;
     let staging = Staging::new(&all[0])?;
-    let pages = targets(vault, targets_)?;
-    let missing = pull_into_local(&all, &pages.iter().collect::<Vec<_>>(), from, &staging.0)?;
-    for id in &missing {
-        eprintln!("{id}: no store reached holds it whole");
+    let mut pages = targets(vault, targets_)?;
+    let mut failed = 0;
+    for id in expand(&all, &mut pages, &staging.0)? {
+        eprintln!("{id}: its manifest is in no store reached");
+        failed += 1;
     }
-    Ok(if missing.is_empty() { 0 } else { 1 })
+    let missing: HashSet<Hash> = pull_hashes(&all, &unique_hashes(&pages), from, &staging.0)?.into_iter().collect();
+    for p in pages.iter().filter(|p| !p.bundle || !p.files.is_empty()) {
+        if p.hashes().iter().any(|h| missing.contains(h)) {
+            eprintln!("{}: no store reached holds it whole", p.id);
+            failed += 1;
+        }
+    }
+    Ok(if failed > 0 { 1 } else { 0 })
 }
 
-fn get(vault: &Vault, targets_: &[String], from: Option<&str>) -> Res<i32> {
+fn get(vault: &Vault, targets_: &[String], from: Option<&str>, only: Option<&str>) -> Res<i32> {
     let all = stores()?;
     all[0].ensure()?;
     let staging = Staging::new(&all[0])?;
-    let pages = targets(vault, targets_)?;
-    let todo: Vec<&Stored> = pages
-        .iter()
-        .filter(|t| {
-            let dest = vault.root.join(&t.path);
-            let here = dest.is_file() && sha256_of(&dest).as_deref() == Some(t.sha256.as_str());
-            if here {
-                eprintln!("{}: {} is here already", t.id, t.path);
+    let only = only.map(|g| globset::Glob::new(g).map(|g| g.compile_matcher()).map_err(|e| format!("--only {g}: {e}"))).transpose()?;
+    let mut pages = targets(vault, targets_)?;
+    expand_all(&all, &mut pages, &staging.0)?;
+    // (page, file) for every file to write out
+    let mut todo: Vec<(&Stored, Member)> = Vec::new();
+    for p in &pages {
+        let picked: Vec<Member> = p.members().into_iter().filter(|m| only.as_ref().is_none_or(|g| g.is_match(&m.name))).collect();
+        if picked.is_empty() {
+            if only.is_some() && !targets_.is_empty() {
+                eprintln!("{}: no file matches --only", p.id);
             }
-            !here
-        })
-        .collect();
+            continue;
+        }
+        let total = picked.len();
+        let mut here = 0;
+        for m in picked {
+            let dest = vault.root.join(&m.path);
+            if dest.is_file() && sha256_of(&dest).as_deref() == Some(m.sha256.as_str()) {
+                here += 1;
+                if !p.bundle {
+                    eprintln!("{}: {} is here already", p.id, p.path);
+                }
+            } else {
+                todo.push((p, m));
+            }
+        }
+        if p.bundle && here > 0 {
+            eprintln!("{}: {here} of {total} file(s) under {} here already", p.id, p.path);
+        }
+    }
     // read from a directory store where the file is whole; anything else comes into local
     // first, so a remote store's xorbs cross the network once
     let direct: Option<&Store> = match from {
         Some(n) => Some(named(&all, n)?).filter(|s| s.dir().is_some()),
         None => None,
     };
-    let missing = match direct {
-        Some(_) => Vec::new(),
-        None => pull_into_local(&all, &todo, from, &staging.0)?,
-    };
+    let hashes: Vec<Hash> = todo.iter().map(|(_, m)| m.xet).collect::<BTreeSet<_>>().into_iter().collect();
+    if direct.is_none() {
+        pull_hashes(&all, &hashes, from, &staging.0)?;
+    }
     let reader = direct.unwrap_or(&all[0]);
-    let hashes: Vec<Hash> = todo.iter().map(|t| t.xet).collect();
     let held = reader.holdings(&hashes, &staging.0)?;
     let root = reader.dir().unwrap();
     let mut failed = 0;
-    for t in todo {
-        let Holding::Whole(file) = &held[&t.xet] else {
-            if !missing.contains(&t.id) {
-                eprintln!("{}: {} does not hold {} whole", t.id, reader.name, t.path);
-            } else {
-                eprintln!("{}: no store reached holds {} whole", t.id, t.path);
-            }
+    let mut written: BTreeMap<&str, usize> = BTreeMap::new();
+    for (p, m) in &todo {
+        let Holding::Whole(file) = &held[&m.xet] else {
+            eprintln!("{}: no store reached holds {} whole", p.id, m.path);
             failed += 1;
             continue;
         };
-        let dest = vault.root.join(&t.path);
+        let dest = vault.root.join(&m.path);
         if let Some(parent) = dest.parent() {
             fs::create_dir_all(parent).map_err(err)?;
         }
@@ -1017,24 +1251,50 @@ fn get(vault: &Vault, targets_: &[String], from: Option<&str>) -> Res<i32> {
         drop(out);
         if let Err(e) = result {
             let _ = fs::remove_file(&tmp);
-            return Err(format!("{}: {e}", t.id));
+            return Err(format!("{}: {}: {e}", p.id, m.path));
         }
-        if sha256_of(&tmp).as_deref() != Some(t.sha256.as_str()) {
+        if sha256_of(&tmp).as_deref() != Some(m.sha256.as_str()) {
             let _ = fs::remove_file(&tmp);
-            return Err(format!("{}: the file rebuilt from store {} does not match the page's sha256", t.id, reader.name));
+            return Err(format!("{}: {} rebuilt from store {} does not match its sha256", p.id, m.path, reader.name));
         }
         fs::rename(&tmp, &dest).map_err(err)?;
-        eprintln!("{}: {} from {}", t.id, t.path, reader.name);
+        if p.bundle {
+            *written.entry(p.id.as_str()).or_default() += 1;
+        } else {
+            eprintln!("{}: {} from {}", p.id, p.path, reader.name);
+        }
+    }
+    for p in pages.iter().filter(|p| written.contains_key(p.id.as_str())) {
+        eprintln!("{}: {} file(s) under {} from {}", p.id, written[p.id.as_str()], p.path, reader.name);
     }
     Ok(if failed > 0 { 1 } else { 0 })
+}
+
+/// How much of a page a store holds, as `status` says it.
+fn held_state(p: &Stored, held: &Holdings) -> String {
+    if !p.bundle {
+        return match &held[&p.xet] {
+            Holding::Whole(_) => "whole".to_string(),
+            Holding::Partial(n) => format!("missing {n} xorb(s)"),
+            Holding::Absent => "-".to_string(),
+        };
+    }
+    let manifest = matches!(held[&p.xet], Holding::Whole(_));
+    let whole = p.files.iter().filter(|m| matches!(held[&m.xet], Holding::Whole(_))).count();
+    match (manifest, whole) {
+        (true, n) if n == p.files.len() => "whole".to_string(),
+        (false, 0) => "-".to_string(),
+        (m, n) => format!("{n} of {} file(s){}", p.files.len(), if m { "" } else { ", no manifest" }),
+    }
 }
 
 fn status(vault: &Vault, targets_: &[String]) -> Res<i32> {
     let all = stores()?;
     all[0].ensure()?;
     let staging = Staging::new(&all[0])?;
-    let pages = targets(vault, targets_)?;
-    let hashes: Vec<Hash> = pages.iter().map(|p| p.xet).collect();
+    let mut pages = targets(vault, targets_)?;
+    let lost = expand(&all, &mut pages, &staging.0)?;
+    let hashes = unique_hashes(&pages);
     let mut per_store: Vec<(String, Res<Holdings>)> = Vec::new();
     for s in &all {
         let held = match s.is_store() {
@@ -1048,27 +1308,29 @@ fn status(vault: &Vault, targets_: &[String]) -> Res<i32> {
         per_store.push((s.name.clone(), held));
     }
     for t in &pages {
-        let dest = vault.root.join(&t.path);
-        let here = match fs::metadata(&dest) {
-            Err(_) => "missing",
-            Ok(m) if t.size.is_some_and(|s| s != m.len()) => "differs",
-            Ok(_) => "here",
+        if lost.contains(&t.id) {
+            println!("{}  {}  {}  manifest in no store reached", t.id, t.path, t.size.map(human).unwrap_or_default());
+            continue;
+        }
+        let members = t.members();
+        let (mut present, mut differs) = (0, false);
+        for m in &members {
+            if let Ok(meta) = fs::metadata(vault.root.join(&m.path)) {
+                present += 1;
+                differs |= m.size.is_some_and(|s| s != meta.len());
+            }
+        }
+        let here = match present {
+            _ if differs => "differs".to_string(),
+            0 => "missing".to_string(),
+            n if n == members.len() => "here".to_string(),
+            n => format!("{n} of {} here", members.len()),
         };
         let held: Vec<String> = per_store
             .iter()
-            .map(|(name, h)| {
-                let state = match h {
-                    Err(_) => "unreachable".to_string(),
-                    Ok(h) => match &h[&t.xet] {
-                        Holding::Whole(_) => "whole".to_string(),
-                        Holding::Partial(n) => format!("missing {n} xorb(s)"),
-                        Holding::Absent => "-".to_string(),
-                    },
-                };
-                format!("{name}: {state}")
-            })
+            .map(|(name, h)| format!("{name}: {}", h.as_ref().map(|h| held_state(t, h)).unwrap_or_else(|_| "unreachable".to_string())))
             .collect();
-        let whole = per_store.iter().filter(|(_, h)| h.as_ref().is_ok_and(|h| matches!(h[&t.xet], Holding::Whole(_)))).count();
+        let whole = per_store.iter().filter(|(_, h)| h.as_ref().is_ok_and(|h| t.whole_in(h))).count();
         println!(
             "{}  {}  {}  {}  {}  ({whole} cop{})",
             t.id,
@@ -1109,6 +1371,13 @@ fn holders(all: &[Store], except: &str, hashes: &[Hash], staging: &Path) -> Res<
     Ok(out)
 }
 
+/// The stores in `holders` that hold every file of `p`.
+fn holding_page(p: &Stored, holders: &HashMap<Hash, Vec<String>>) -> Vec<String> {
+    let hashes = p.hashes();
+    let first = &holders[&hashes[0]];
+    first.iter().filter(|s| hashes.iter().all(|h| holders[h].contains(s))).cloned().collect()
+}
+
 fn drop_cmd(vault: &Vault, targets_: &[String], from: &str) -> Res<i32> {
     let all = stores()?;
     all[0].ensure()?;
@@ -1117,29 +1386,49 @@ fn drop_cmd(vault: &Vault, targets_: &[String], from: &str) -> Res<i32> {
     if !store.is_store()? {
         return Err(format!("store {from} ({}) is not there", store.describe()));
     }
-    let pages = targets(vault, targets_)?;
-    let hashes: Vec<Hash> = pages.iter().map(|p| p.xet).collect();
+    let mut pages = targets(vault, targets_)?;
+    expand_all(&all, &mut pages, &staging.0)?;
+    let hashes = unique_hashes(&pages);
     let need = copies_needed(vault);
     let elsewhere = holders(&all, from, &hashes, &staging.0)?;
     let short: Vec<String> = pages
         .iter()
-        .filter(|p| elsewhere[&p.xet].len() < need)
-        .map(|p| {
-            let held = &elsewhere[&p.xet];
-            format!(
-                "{}: {} other store(s) hold it whole{}, {need} needed",
-                p.id,
-                held.len(),
-                if held.is_empty() { String::new() } else { format!(" ({})", held.join(", ")) }
-            )
+        .filter_map(|p| {
+            let held = holding_page(p, &elsewhere);
+            (held.len() < need).then(|| {
+                format!(
+                    "{}: {} other store(s) hold it whole{}, {need} needed",
+                    p.id,
+                    held.len(),
+                    if held.is_empty() { String::new() } else { format!(" ({})", held.join(", ")) }
+                )
+            })
         })
         .collect();
     if !short.is_empty() {
         return Err(format!("nothing dropped from {from}:\n{}", short.join("\n")));
     }
-    let dropping: HashSet<Hash> = hashes.into_iter().collect();
+    // a file another page of the notebook also names stays (a calibration frame in two
+    // sessions, the same file added twice); a bundle whose manifest cannot be read might
+    // name any of them, so it stops the drop
+    let dropping_ids: HashSet<&str> = pages.iter().map(|p| p.id.as_str()).collect();
+    let mut others: Vec<Stored> = targets(vault, &[])?.into_iter().filter(|p| !dropping_ids.contains(p.id.as_str())).collect();
+    let lost = expand(&all, &mut others, &staging.0)?;
+    if !lost.is_empty() {
+        return Err(format!(
+            "nothing dropped from {from}: cannot tell which files {} name, their manifests are in no store reached",
+            lost.join(", ")
+        ));
+    }
+    let kept: HashSet<Hash> = others.iter().flat_map(|p| p.hashes()).collect();
+    let dropping: HashSet<Hash> = hashes.into_iter().filter(|h| !kept.contains(h)).collect();
     let (xorbs, bytes) = drop_files(store, &dropping, &staging.0)?;
-    eprintln!("dropped {} file(s) from {from}: {xorbs} xorb(s) no other file there uses, {}", dropping.len(), human(bytes));
+    eprintln!(
+        "dropped {} page(s) from {from}: {} file(s), {xorbs} xorb(s) no other file there uses, {}",
+        pages.len(),
+        dropping.len(),
+        human(bytes)
+    );
     Ok(0)
 }
 
@@ -1207,32 +1496,56 @@ fn free(vault: &Vault, targets_: &[String]) -> Res<i32> {
     let all = stores()?;
     all[0].ensure()?;
     let staging = Staging::new(&all[0])?;
-    let pages = targets(vault, targets_)?;
-    let hashes: Vec<Hash> = pages.iter().map(|p| p.xet).collect();
-    let held = holders(&all, "", &hashes, &staging.0)?;
+    let mut pages = targets(vault, targets_)?;
+    expand_all(&all, &mut pages, &staging.0)?;
+    let held = holders(&all, "", &unique_hashes(&pages), &staging.0)?;
     let mut refused = 0;
     for p in &pages {
-        let dest = vault.root.join(&p.path);
-        if !dest.is_file() {
-            eprintln!("{}: {} is not here", p.id, p.path);
-            continue;
+        let mut freed = 0;
+        for m in p.members() {
+            let dest = vault.root.join(&m.path);
+            if !dest.is_file() {
+                if !p.bundle {
+                    eprintln!("{}: {} is not here", p.id, m.path);
+                }
+                continue;
+            }
+            if sha256_of(&dest).as_deref() != Some(m.sha256.as_str()) {
+                eprintln!("{}: {} differs from what the page names; kept", p.id, m.path);
+                refused += 1;
+                continue;
+            }
+            if held[&m.xet].is_empty() {
+                eprintln!("{}: no store holds {} whole; kept", p.id, m.path);
+                refused += 1;
+                continue;
+            }
+            fs::remove_file(&dest).map_err(|e| format!("{}: {e}", dest.display()))?;
+            freed += 1;
+            if !p.bundle {
+                eprintln!("{}: {} freed ({} holds it)", p.id, m.path, held[&m.xet].join(", "));
+            }
         }
-        if sha256_of(&dest).as_deref() != Some(p.sha256.as_str()) {
-            eprintln!("{}: {} differs from what the page names; kept", p.id, p.path);
-            refused += 1;
-            continue;
+        // the folders left empty: a bundle's own, and the per-artifact one `data add` made
+        let top = vault.root.join(&p.path);
+        let mut dirs: Vec<PathBuf> = p.members().iter().filter_map(|m| vault.root.join(&m.path).parent().map(Path::to_path_buf)).collect();
+        dirs.sort_by_key(|d| std::cmp::Reverse(d.components().count()));
+        dirs.dedup();
+        for d in dirs {
+            let mut d = d.as_path();
+            while d.starts_with(&top) {
+                if fs::remove_dir(d).is_err() {
+                    break;
+                }
+                d = d.parent().unwrap();
+            }
         }
-        if held[&p.xet].is_empty() {
-            eprintln!("{}: no store holds {} whole; kept", p.id, p.path);
-            refused += 1;
-            continue;
-        }
-        fs::remove_file(&dest).map_err(|e| format!("{}: {e}", dest.display()))?;
-        // the per-artifact directory `data add` made, when it is empty now
-        if let Some(parent) = dest.parent().filter(|d| d.ends_with(&p.id)) {
+        if let Some(parent) = top.parent().filter(|d| d.ends_with(&p.id)) {
             let _ = fs::remove_dir(parent);
         }
-        eprintln!("{}: {} freed ({} holds it)", p.id, p.path, held[&p.xet].join(", "));
+        if p.bundle && freed > 0 {
+            eprintln!("{}: {freed} file(s) under {} freed", p.id, p.path);
+        }
     }
     Ok(if refused > 0 { 1 } else { 0 })
 }

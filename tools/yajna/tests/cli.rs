@@ -6989,8 +6989,6 @@ fn data_add_stores_deduplicated_get_rebuilds_and_status_reports_where() {
     assert_eq!(out.code, 0, "{}", out.stderr);
     assert!(lab.read(&lab.path(&out)).contains("path: raw/c.bin"));
     assert!(lab.read(&lab.root.join(".gitignore")).contains("/raw/c.bin\n"));
-    let out = lab.run(&["data", "add", lab.root.join("raw").to_str().unwrap(), "--project", "PRJ-0001"]);
-    assert!(out.code != 0 && out.stderr.contains("bundles"), "{}", out.stderr);
 }
 
 #[cfg(unix)]
@@ -7084,7 +7082,7 @@ fn data_push_and_pull_reach_a_store_over_ssh_and_zstd_is_an_option() {
     // the laptop holds t whole, so oppy may let it go; its xorbs go, a's stay
     let out = run(&["data", "drop", &t_id, "--from", "oppy"], "laptop");
     assert_eq!(out.code, 0, "{}", out.stderr);
-    assert!(out.stderr.contains("dropped 1 file(s) from oppy: 1 xorb(s)"), "{}", out.stderr);
+    assert!(out.stderr.contains("dropped 1 page(s) from oppy: 1 file(s), 1 xorb(s)"), "{}", out.stderr);
     assert!(!store.join("locks/drop").exists());
     let out = run(&["data", "status"], "laptop");
     let line = |id: &str| out.stdout.lines().find(|l| l.starts_with(id)).unwrap_or_default().to_string();
@@ -7189,4 +7187,116 @@ fn data_drop_keeps_copies_and_shared_xorbs_and_free_keeps_what_no_store_holds() 
     let out = lab.run(&["data", "free", &b_id]);
     assert!(out.code != 0 && out.stderr.contains("differs from what the page names"), "{}", out.stderr);
     assert!(lab.root.join(format!("data/{b_id}/b.bin")).exists());
+}
+
+#[test]
+fn data_add_stores_a_folder_as_one_bundle_get_only_writes_part_and_drop_keeps_files_another_bundle_names() {
+    let lab = vault();
+    assert_eq!(lab.run(&["new", "project", "Toy model"]).code, 0);
+    let lab_store = lab.root.join(".cache/lab-store");
+    fs::create_dir_all(lab.root.join(".cache/config/yajna")).unwrap();
+    fs::write(lab.root.join(".cache/config/yajna/config.toml"), format!("[stores]\nlab = {:?}\n", lab_store.to_str().unwrap())).unwrap();
+    let outside = tempfile::tempdir().unwrap();
+    let mut x = 7u64;
+    let mut noise = |n: usize| -> Vec<u8> {
+        (0..n)
+            .map(|_| {
+                x ^= x << 13;
+                x ^= x >> 7;
+                x ^= x << 17;
+                (x >> 24) as u8
+            })
+            .collect()
+    };
+    // two imaging sessions sharing a calibration frame
+    let dark = noise(400_000);
+    let files: Vec<(&str, &str, Vec<u8>)> = vec![
+        ("s1", "frames/t0001.tif", noise(300_000)),
+        ("s1", "frames/t0002.tif", noise(300_000)),
+        ("s1", "calib/dark.tif", dark.clone()),
+        ("s1", "acquisition notes.txt", b"objective 63x\n".to_vec()),
+        ("s1", "empty.log", Vec::new()),
+        ("s2", "frames/t0001.tif", noise(300_000)),
+        ("s2", "calib/dark.tif", dark.clone()),
+    ];
+    for (s, rel, bytes) in &files {
+        let p = outside.path().join(s).join(rel);
+        fs::create_dir_all(p.parent().unwrap()).unwrap();
+        fs::write(p, bytes).unwrap();
+    }
+    let add = |s: &str| {
+        let out = lab.run(&["data", "add", outside.path().join(s).to_str().unwrap(), "--project", "PRJ-0001"]);
+        assert_eq!(out.code, 0, "{}", out.stderr);
+        let page = lab.path(&out);
+        (page.file_name().unwrap().to_string_lossy()[..19].to_string(), out.stderr, lab.read(&page))
+    };
+    let (s1, err, page) = add("s1");
+    assert!(err.contains(&format!("{s1}: s1/ stored in local as a bundle of 5 file(s)")), "{err}");
+    assert!(page.contains("kind: bundle\nfiles: 5\n") && page.contains("size: 1000014\n"), "{page}");
+    assert!(page.contains(&format!("path: data/{s1}/s1\n")), "{page}");
+    let (s2, err, _) = add("s2");
+    assert!(err.contains("bundle of 2 file(s) (700.0 kB, 400.0 kB of it already there)"), "the shared calibration frame is stored once: {err}");
+    assert_eq!(lab.run(&["validate"]).code, 0);
+
+    // part of a bundle, then the rest
+    let out = lab.run(&["data", "get", &s1, "--only", "frames/*"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(out.stderr.contains(&format!("{s1}: 2 file(s) under data/{s1}/s1 from local")), "{}", out.stderr);
+    let under = lab.root.join(format!("data/{s1}/s1"));
+    assert!(under.join("frames/t0002.tif").is_file() && !under.join("calib").exists());
+    let out = lab.run(&["data", "status", &s1]);
+    assert!(out.stdout.contains("2 of 5 here  local: whole, lab: -  (1 copy)"), "{}", out.stdout);
+    let out = lab.run(&["data", "get", &s1]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(out.stderr.contains("2 of 5 file(s)") && out.stderr.contains("3 file(s) under"), "{}", out.stderr);
+    for (s, rel, bytes) in files.iter().filter(|f| f.0 == "s1") {
+        assert_eq!(&fs::read(under.join(rel)).unwrap(), bytes, "{s}/{rel}");
+    }
+    let out = lab.run(&["data", "get", &s1, "--only", "*.nothing"]);
+    assert!(out.stderr.contains(&format!("{s1}: no file matches --only")), "{}", out.stderr);
+
+    // pushed, s1 may leave local; the calibration frame stays, s2 names it
+    assert_eq!(lab.run(&["data", "push", &s1, "--to", "lab"]).code, 0);
+    let out = lab.run(&["data", "status", &s1]);
+    assert!(out.stdout.contains("here  local: whole, lab: whole  (2 copies)"), "{}", out.stdout);
+    let out = lab.run(&["data", "drop", &s1, "--from", "local"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let out = lab.run(&["data", "get", &s2, "--from", "local"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert_eq!(fs::read(lab.root.join(format!("data/{s2}/s2/calib/dark.tif"))).unwrap(), dark);
+
+    // free takes the copies and the folders they leave; an edited file stays
+    fs::write(under.join("acquisition notes.txt"), b"edited").unwrap();
+    let out = lab.run(&["data", "free", &s1]);
+    assert!(out.code != 0 && out.stderr.contains("acquisition notes.txt differs"), "{}", out.stderr);
+    assert!(out.stderr.contains("4 file(s) under"), "{}", out.stderr);
+    assert!(!under.join("frames").exists() && under.join("acquisition notes.txt").is_file());
+    fs::remove_file(under.join("acquisition notes.txt")).unwrap();
+    let out = lab.run(&["data", "get", &s1]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(out.stderr.contains("from local"), "pulled back from lab through local: {}", out.stderr);
+    assert_eq!(lab.run(&["data", "free", &s1]).code, 0);
+    assert!(!lab.root.join(format!("data/{s1}")).exists());
+
+    // a manifest travels alone: reading it on a machine with an empty local fetches one
+    // small xorb, not the session's last one
+    fs::remove_dir_all(lab.root.join(".cache/data/yajna/store")).unwrap();
+    let out = lab.run(&["data", "status", &s1]);
+    assert!(out.stderr.contains("pulled 1 file(s) from lab: 1 xorb(s), ") && out.stderr.contains(" B\n"), "{}", out.stderr);
+    assert!(out.stdout.contains("missing  local: 0 of 5 file(s), lab: whole  (1 copy)"), "{}", out.stdout);
+
+    // a folder in the notebook keeps its path; a symlink is refused
+    let inside = lab.root.join("raw/session");
+    fs::create_dir_all(&inside).unwrap();
+    fs::write(inside.join("a.tif"), noise(10_000)).unwrap();
+    let out = lab.run(&["data", "add", inside.to_str().unwrap(), "--project", "PRJ-0001"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(lab.read(&lab.path(&out)).contains("path: raw/session\n"));
+    assert!(lab.read(&lab.root.join(".gitignore")).contains("/raw/session\n"));
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink(inside.join("a.tif"), inside.join("b.tif")).unwrap();
+        let out = lab.run(&["data", "add", inside.to_str().unwrap(), "--project", "PRJ-0001"]);
+        assert!(out.code != 0 && out.stderr.contains("is a symlink"), "{}", out.stderr);
+    }
 }

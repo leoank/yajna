@@ -4,7 +4,8 @@ Status: design v0.1, 2026-11-06. Built: step 1, `tools/yajna-xet`, identical to 
 1.8.0 on every case EXP-20261106-3t3nn2 tried; step 2, EXP-20261106-3t40bg's measurements
 on public stand-ins; step 3, directory stores and `yajna data add`, `get` and `status`
 (0.26.0); step 4, stores over ssh, `push` and `pull`, `[data] push`, and zstd as an option
-(0.27.0); step 5, `[data] copies`, `data drop` with its locks, `data free` (0.28.0). Not
+(0.27.0); step 5, `[data] copies`, `data drop` with its locks, `data free` (0.28.0);
+step 6, bundles and `data get --only` (0.29.0). Not
 yet: the spec's fragmentation rule (section 3) and the `[data]` keys of later steps. Companion to `architecture.md` (section 5.3
 and Phase 2 in section 11) and `reproduce.md`, whose run `outputs` it stores. Decision:
 ADR-0035, superseding ADR-0013's leaning towards git-annex.
@@ -161,6 +162,8 @@ path: data/ART-20261106-ab12cd/stack.ome.tif   # where `data get` writes it, git
 kind: file          # file | bundle
 ```
 
+`kind: file` is written from 0.29.0 on; a page without it is a file.
+
 `path` defaults to `data/<ART id>/<name>` under the notebook root, and `data/` is added to
 `.gitignore` on first use. A file added from inside the repo keeps its own path, and the
 path is added to `.gitignore`.
@@ -170,6 +173,36 @@ dataset directory. Its manifest, a TSV of relative path, size, sha256 and Xet ha
 file, is itself stored as a Xet file, and the page records the manifest's Xet hash, the file
 count and the total size. `data get ART-… --only '*.tif'` materializes part of a bundle;
 files repeated across sessions (calibration frames, unchanged tiles) are stored once.
+
+As built (0.29.0):
+
+```yaml
+path: data/ART-20261106-r7wv02/replicate1   # the folder; its own path when inside the repo
+hash: sha256:72ff…  # the manifest's sha256
+xet: 1a8a…          # the manifest's Xet hash
+size: 782137564     # the files' total
+kind: bundle
+files: 219
+```
+
+- **The manifest** starts with the line `path	size	sha256	xet`, then one tab-separated
+  line per file, sorted by path, `/` between folders. Every file under the folder goes in,
+  hidden ones too; a symlink, an empty folder tree, or a name with a tab or newline is
+  refused. The files and the manifest naming them are written in one shard, so a store
+  that has the manifest's recipe has the files' recipes too; the manifests go in xorbs of
+  their own, so reading one moves kilobytes, not the last xorb of the session.
+- **Whole** means the manifest and every file in it. `push`, `pull`, `status`, `drop` and
+  `free` work on that set; `status` shows `k of N file(s)` for a store holding part and
+  `k of N here` for a folder written out in part.
+- **Reading a manifest** needs it in `local`: a command that meets a bundle first pulls the
+  manifest (small) from the first store holding it, never its files, so `status` after
+  `drop --from local` brings the manifest back.
+- **`--only <glob>`** matches paths inside the bundle (globset syntax, `*` crossing `/`:
+  `'*.tif'`, `'QC/**'`); on a single file's page it matches the file name.
+- **Dropping** keeps a file another page of the notebook still names (the calibration
+  frame of the next session, or the same file added twice), and refuses while a bundle's
+  manifest cannot be read, since it might name any of them. Pages in other notebooks
+  sharing the store are not seen; section 12.
 
 Pages for data added before this (`store: path`) are converted with `yajna data add
 --art ART-…`, which stores the bytes at the recorded path and rewrites the page.
@@ -240,7 +273,7 @@ then names the same Xet hash and stores nothing twice.
 | 3 | Directory stores, `local`, `[stores]` and `[data]`; `data add` and `get` for files; `ART` fields; `data status` | Integration tests on a scratch vault and two scratch stores |
 | 4 | ssh stores; `data push` and `pull` | EXP C against oppy; integration tests through an ssh that runs locally, as for `--on`. Done: push 2.4 times faster than scp of the same files on a slow link, every file back whole |
 | 5 | `copies`, `data drop` and its lock, `data free` | Tests that a drop below `copies` is refused and that shared xorbs survive a drop. Done, with write locks on the other side of the drop lock |
-| 6 | Bundles, `--only` | An imaging session from manthan's PRJ-0005 added as one `ART` |
+| 6 | Bundles, `--only` | An imaging session from manthan's PRJ-0005 added as one `ART`. Done on oppy in a scratch notebook: two replicates (219 and 95 files, 1.45 GB) in 3 s each, a 1.32 GB store (LZ4, nothing shared between them); `--only` wrote the 48 QC images, then the rest; from a fresh clone with only the lab store, the second replicate came back identical, its manifest a 14 kB pull |
 | 7 | Run outputs, `data get RUN-…`, `--art` conversion | A run with a checkpoint output reproduced from a fresh clone and a store |
 | 8 | `data check --staged`, the `validate` warning | Tests; the skill and conventions updated |
 
@@ -263,6 +296,11 @@ then names the same Xet hash and stores nothing twice.
   user's config makes that one.
 - **Drop racing a push.** Writers and drops exclude each other through `locks/`; a store
   written by hand, or by a yajna older than 0.28.0, is not protected.
+- **A file shared across notebooks.** `drop` keeps a file another page of the same
+  notebook names, but cannot see pages in the other notebooks that share a store: if two
+  notebooks hold the same file (or bundle member), dropping it from one store through one
+  notebook leaves the other's page short there. `copies` still guards it, since the other
+  stores hold it; a store-wide record of who names what would close it, not in Phase 2.
 - **Disk on the laptop.** Materialized files are a second, uncompressed copy beside
   `local`; `data free` and `data drop --from local` are the answer, and `status` shows both.
 

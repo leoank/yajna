@@ -86,6 +86,18 @@
     "path": {
       "type": "string"
     },
+    "kind": {
+      "description": "With store: xet, a single file or a bundle: a folder whose manifest is the file `xet` names (docs/data.md section 6)",
+      "enum": [
+        "file",
+        "bundle"
+      ]
+    },
+    "files": {
+      "description": "A bundle's file count",
+      "type": "integer",
+      "minimum": 0
+    },
     "size": {
       "type": "integer",
       "minimum": 0

@@ -175,8 +175,16 @@ Nothing leaves a store but by `yajna data drop <ART…> --from <store>`, which r
 `[data] copies` other stores (1 when unset) hold each file whole, and keeps the xorbs other
 files there still use; that is how a laptop frees space once the lab store has the data.
 `yajna data free <ART…>` deletes the written-out copy when it is unchanged and a store holds
-it. `yajna data status` gives each file's copies. Folders (bundles) come later
-(`docs/data.md` section 11).
+it. `yajna data status` gives each file's copies.
+
+A folder (an imaging session, an acquisition run, a dataset directory) is added as one
+`ART`, a bundle: `yajna data add <folder>` stores every file under it and a manifest of
+their paths, sizes and hashes, and the page gets `kind: bundle`, `files` (the count), `xet`
+and `hash` of the manifest, and `size`, the files' total. `path` is the folder, written out
+whole by `data get`, or in part with `--only <glob>` over paths inside it (`'*.tif'`,
+`'QC/**'`). A file repeated across sessions (a calibration frame) is stored once, and
+`drop` keeps a file another page of the notebook still names. A single file's page has
+`kind: file`.
 
 ## Experiments
 
