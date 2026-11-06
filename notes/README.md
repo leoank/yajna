@@ -40,7 +40,7 @@ items with the rest.
 - [x] [[PHS-20261106-2m7nrk]] Shell completion of subcommands, flags and IDs
 - [ ] [[PHS-20261106-2m7prv]] Phases as pages
 - [x] [[PHS-20261106-2m7qbd]] From anywhere: todos and log lines into any notebook
-- [ ] [[PHS-20261106-2m7qaq]] Phase 2: data and runs (git-annex, ART pages, experiment and autoresearch commands)
+- [ ] [[PHS-20261106-2m7qaq]] Phase 2: data and runs (Xet-format stores, ART pages, experiment and autoresearch commands)
 - [ ] [[PHS-20261106-2m7q13]] Phase 2b: bench planning (run sheets, inventory, schedules)
 - [ ] [[PHS-20261106-2m7r6j]] Phase 3: the server and agents over HTTP and MCP
 - [ ] [[PHS-20261106-2m7rq5]] Phase 4: apps and monitoring
@@ -140,3 +140,6 @@ rejects a bare link here. Newest last.
 - [[EXP-20261023-kjtrwp]] does filesystem watching see what runs write, per filesystem and host; on the laptop events take 0.27 s and polling 0.5 s once open files are looked at every second, since macOS holds back writes to an open file; the cluster's storage still to run
 - [[EXP-20261023-kjv5wy]] how large a file the CodeMirror viewer handles, the bundle size and the binary growth; planned; first numbers from step 3: 230 KB gzipped on first load, the binary 11.5 to 13.6 MB, large files still to test
 - [[EXP-20261023-kjvkas]] can ank follow an agent's run on a remote machine from the laptop without a shell; planned, the Phase 1c verification
+- [[EXP-20261106-3t3nn2]] does our own Xet crate match xet-core byte for byte; planned, step 1 of `docs/data.md`
+- [[EXP-20261106-3t40bg]] how much chunk-level dedup saves and how fast it runs on checkpoints, imaging, tables and synthetic edits; planned, step 2 of `docs/data.md`
+- [[EXP-20261106-3t4cyw]] is a store on oppy over plain ssh fast enough for add, push, get and dedup lookups; planned, step 4 of `docs/data.md`
