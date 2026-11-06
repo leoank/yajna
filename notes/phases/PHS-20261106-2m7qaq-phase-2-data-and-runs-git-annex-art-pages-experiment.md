@@ -29,8 +29,8 @@ done ones. The project page's *Progress* lists this phase on one line.
 - [x] Step 4: ssh stores, `data push` and `pull` ([[EXP-20261106-3t4cyw]], [[RUN-20261106-5z2189]]); zstd per chunk as an option ([[RUN-20261106-5g081k]]) (1e6f864, 0.27.0)
 - [x] Step 5: `copies`, `data drop`, `data free` (0.28.0)
 - [x] Step 6: bundles: an instrument folder as one `ART`, `--only` (26488ad, 0.29.0; checked on PRJ-0005's imaging replicates on oppy)
-- [ ] Step 7: run outputs in the store, `data get RUN-…`, `--art` conversion of `store: path` pages
-- [ ] Step 8: `data check --staged` and the `validate` warning for large tracked files
+- [x] Step 7: run outputs in the store, `data get RUN-…`, `--art` conversion of `store: path` pages (9d9df5d, 0.30.0; a checkpoint reproduced from a fresh clone and the lab store)
+- [x] Step 8: `data check --staged` and the `validate` warning for large tracked files (9d9df5d, 0.30.0)
 - [ ] `experiment` and `autoresearch` commands that write `EXP`/`RUN` pages and `results.tsv`
 - [ ] Verified: from a fresh clone, an imaging session and a training run's checkpoints materialize from the lab store with matching sha256, and the checkpoints take measurably less space than whole copies
 

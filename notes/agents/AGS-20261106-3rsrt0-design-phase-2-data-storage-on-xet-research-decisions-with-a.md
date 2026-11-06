@@ -83,3 +83,11 @@ Under [[REV-20261106-3rsd58]].
   48 QC images, the rest followed, and a fresh clone with only the lab store got the second
   replicate back identical. The first pass found reading a manifest pulled a 58 MB xorb;
   manifests now get xorbs of their own (a 14 kB pull). Nothing written to manthan.
+- Steps 7 and 8 at ank's request (9d9df5d, 0.30.0): `run record --outputs` and `result
+  --outputs` store outputs of at least `[data] outputs_min` (1 MB) and record their `xet`;
+  every `data` command takes `RUN-…`; `data get RUN-…` never overwrites a changed output;
+  `data add --art ART-… [<path>]` converts `store: path` pages; `data check [--staged]` and
+  a `validate` warning for files over `[data] git_max` (5 MB). Checked in a scratch
+  notebook: a 3.6 MB checkpoint recorded, pushed, back in a fresh clone from the lab store
+  alone with its sha256, and `run reproduce` gave `reproduced`. All eight steps of Phase 2's
+  data plan are built; the phase's own *Verified* item (from a fresh manthan clone) waits.

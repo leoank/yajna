@@ -6,10 +6,10 @@ title: "Phase 2 data design: a Xet-compatible chunked store replaces git-annex"
 project: null
 target:
   kind: range               # branch | range | page | run | experiment | phase
-  ref: HEAD..26488ad2f506b546aa06141de4319a75324000ed
+  ref: HEAD..9d9df5d79b1cd8007c0b0c122ebc59d8c5a3062c
 base: 0bf15b5e2e8c0f9accc1e8d32ecbb0761c977e1c
-head: 26488ad2f506b546aa06141de4319a75324000ed
-rounds: [0bf15b5e2e8c0f9accc1e8d32ecbb0761c977e1c, 5098d2d62d9b3a41f45c8cba665ad901044098d0, ab4d5e3f4d10362d2be39335f03e0a16bd6ea9eb, 01fbc42e9c37785d6316588332b0496f2f971bb5, 7ecad1587ad26aa21cddab339d238e67cda0454e]
+head: 9d9df5d79b1cd8007c0b0c122ebc59d8c5a3062c
+rounds: [0bf15b5e2e8c0f9accc1e8d32ecbb0761c977e1c, 5098d2d62d9b3a41f45c8cba665ad901044098d0, ab4d5e3f4d10362d2be39335f03e0a16bd6ea9eb, 01fbc42e9c37785d6316588332b0496f2f971bb5, 7ecad1587ad26aa21cddab339d238e67cda0454e, 26488ad2f506b546aa06141de4319a75324000ed]
 paths: []
 about: [PRJ-0001, PHS-20261106-2m7qaq, EXP-20261106-3t3nn2, EXP-20261106-3t40bg, EXP-20261106-3t4cyw, RUN-20261106-4a78zt, RUN-20261106-4vftn2, RUN-20261106-5g081k, RUN-20261106-5z2189]
 status: open              # open | changes_requested | approved | merged | closed
@@ -85,5 +85,20 @@ from a fresh clone too); that run is why manifests get xorbs of their own. Settl
 while a bundle's manifest cannot be read; reading a manifest pulls it into `local`; `--only`
 on a single file matches its name; symlinks in a folder are refused; file pages now say
 `kind: file`. Not covered: pages in other notebooks sharing a store (`docs/data.md` *Risks*).
+
+**Steps 7 and 8, added after you asked for them:** one commit (9d9df5d, 0.30.0), as they
+share the size settings and a test. Look at `store_outputs`, `convert`, `pack_local`, the
+`Kind::Run` arms in `tools/yajna/src/data.rs`, `store` and `put_fields` in
+`tools/yajna/src/reproduce.rs`, `check` and `large_in_git` for step 8, the test
+`run_outputs_over_outputs_min_are_stored_data_get_run_brings_them_back_and_add_art_converts_a_path_page`,
+and `docs/data.md` sections 8 and 9. Checked in a scratch notebook: a checkpoint recorded,
+pushed, brought back in a fresh clone with only the lab store, and `run reproduce` gave
+`reproduced`. Settled by me: defaults `outputs_min` 1 MB and `git_max` 5 MB; stored outputs
+inside the repo go into `.gitignore`; `data get RUN-…` never writes over an existing output
+that differs; `run reproduce` does not store its own outputs; `--art` takes the data's
+location as an argument when the recorded path is not on this machine (manthan's E1c page
+says "(on oppy)"), refuses a file whose sha256 differs, and replaces a folder's old hash
+with the manifest's; `data check` without `--staged` lists everything in git; yajna
+installs no hook.
 
 ## Threads
