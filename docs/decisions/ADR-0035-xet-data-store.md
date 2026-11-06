@@ -48,6 +48,10 @@ checked against xet-core: chosen.
 - **In scope:** files and folders added by hand, run outputs above a threshold, large files
   refused before they are committed. **Not in Phase 2:** HTTP remotes (Hugging Face,
   Shardline, S3), git filters, encryption.
+- **Compression** (added 2026-11-06, after EXP-20261106-3t40bg found LZ4 keeping 32% of
+  sparse images where zstd keeps 6%): Xet's LZ4/BG4 stays the default for compatibility; a
+  notebook may choose zstd per chunk (`[data] compression = "zstd"`), a scheme outside the
+  spec (numbered 0x80) that only yajna reads.
 - **Spikes first:** byte-exactness (EXP A), dedup and speed on checkpoints, imaging,
   tables and synthetic data (EXP B), ssh stores against oppy (EXP C).
 

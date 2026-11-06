@@ -1,5 +1,7 @@
 //! Chunk compression in xorbs (huggingface.co/docs/xet/xorb): none, an LZ4 frame, or the
 //! bytes grouped by position mod 4 then an LZ4 frame (BG4), chosen as xet-core chooses.
+//! And one scheme of ours, zstd, outside the spec: much smaller for images and tables
+//! (EXP-20261106-3t40bg), but a xorb holding it is readable by yajna only.
 
 use std::io::{Read, Write};
 
@@ -11,6 +13,9 @@ pub enum Scheme {
     None = 0,
     Lz4 = 1,
     Bg4Lz4 = 2,
+    /// not in the Xet spec: a zstd frame at level 3. Numbered far from the spec's values so
+    /// that a scheme it adds cannot be mistaken for it.
+    Zstd = 0x80,
 }
 
 impl Scheme {
@@ -19,6 +24,7 @@ impl Scheme {
             0 => Ok(Scheme::None),
             1 => Ok(Scheme::Lz4),
             2 => Ok(Scheme::Bg4Lz4),
+            0x80 => Ok(Scheme::Zstd),
             _ => Err(Error::Malformed(format!("unknown compression scheme {b}"))),
         }
     }
@@ -62,6 +68,7 @@ impl Scheme {
             Scheme::None => data.to_vec(),
             Scheme::Lz4 => lz4(data),
             Scheme::Bg4Lz4 => lz4(&bg4_split(data)),
+            Scheme::Zstd => zstd::bulk::compress(data, 3).expect("zstd into memory"),
         }
     }
 
@@ -70,6 +77,9 @@ impl Scheme {
             Scheme::None => Ok(data.to_vec()),
             Scheme::Lz4 => unlz4(data),
             Scheme::Bg4Lz4 => Ok(bg4_regroup(&unlz4(data)?)),
+            // a chunk is at most 128 KiB
+            Scheme::Zstd => zstd::bulk::decompress(data, crate::chunk::MAX_CHUNK_SIZE)
+                .map_err(|e| Error::Malformed(format!("zstd frame: {e}"))),
         }
     }
 }
@@ -131,8 +141,8 @@ mod tests {
 
     #[test]
     fn each_scheme_round_trips() {
-        let data: Vec<u8> = (0..100_000u32).flat_map(|i| (i as f32).to_le_bytes()).collect();
-        for s in [Scheme::None, Scheme::Lz4, Scheme::Bg4Lz4] {
+        let data: Vec<u8> = (0..30_000u32).flat_map(|i| (i as f32).to_le_bytes()).collect(); // a chunk at most 128 KiB
+        for s in [Scheme::None, Scheme::Lz4, Scheme::Bg4Lz4, Scheme::Zstd] {
             assert_eq!(s.decompress(&s.compress(&data)).unwrap(), data);
         }
     }

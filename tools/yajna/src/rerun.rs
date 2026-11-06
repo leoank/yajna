@@ -171,7 +171,7 @@ fn q(s: &str) -> Res<String> {
 }
 
 /// A path from `.yajna/hosts.toml` quoted for sh, `~/` left for the remote to expand.
-fn q_home(path: &str) -> Res<String> {
+pub(crate) fn q_home(path: &str) -> Res<String> {
     match path.strip_prefix("~/") {
         Some(rest) => Ok(format!("~/{}", q(rest)?)),
         None => q(path),

@@ -483,6 +483,28 @@ pub enum DataAction {
         title: Option<String>,
         #[arg(long)]
         author: Option<String>,
+        /// also push them to this store
+        #[arg(long)]
+        to: Option<String>,
+    },
+    /// copy what `local` holds of these artifacts to another store: the xorbs it lacks, a
+    /// shard with their recipes, the index entries
+    Push {
+        /// ART-… IDs or their paths (default: every stored artifact)
+        #[arg(add = ArgValueCandidates::new(crate::complete::stored_artifacts))]
+        targets: Vec<String>,
+        /// the store (default: every store in `[data] push` of yajna.toml)
+        #[arg(long)]
+        to: Option<String>,
+    },
+    /// copy these artifacts from another store into `local`, without writing them out
+    Pull {
+        /// ART-… IDs or their paths (default: every stored artifact)
+        #[arg(add = ArgValueCandidates::new(crate::complete::stored_artifacts))]
+        targets: Vec<String>,
+        /// the store (default: the first that holds each whole)
+        #[arg(long)]
+        from: Option<String>,
     },
     /// write each page's file at its `path` from the first store that holds it whole,
     /// checked against its hashes

@@ -15,7 +15,8 @@ const IDENT_BOUNDARIES: &[u8; 7] = b"XBLBBND";
 /// xet-core chooses the compression of a run of this many chunks from its first.
 const RETEST_INTERVAL: usize = 32;
 
-/// How chunks are compressed: one scheme, or chosen from the data as xet-core does.
+/// How chunks are compressed: one scheme, or chosen from the data as xet-core does
+/// (LZ4 or BG4). `Fixed(Scheme::Zstd)` makes xorbs only yajna reads.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Compression {
     Auto,
@@ -347,6 +348,20 @@ mod tests {
         let without = serialize(&refs, &[0], Compression::Auto, false).unwrap();
         assert_eq!(add_footer(&without.bytes, &with.footer.hash).unwrap(), with.bytes);
         assert!(matches!(add_footer(&without.bytes, &Hash::default()), Err(Error::HashMismatch(_))));
+    }
+
+    #[test]
+    fn a_zstd_xorb_round_trips_and_is_smaller_on_text() {
+        let owned = chunks();
+        let refs: Vec<&[u8]> = owned.iter().map(|c| &c[..]).collect();
+        let z = serialize(&refs, &[0], Compression::Fixed(Scheme::Zstd), true).unwrap();
+        let l = serialize(&refs, &[0], Compression::Auto, true).unwrap();
+        assert_eq!(z.footer.hash, l.footer.hash, "compression is outside the hash");
+        assert_eq!(verify(&z.bytes).unwrap().hash, z.footer.hash);
+        assert_eq!(unpack_chunks(&z.bytes, 4).unwrap(), owned);
+        assert_eq!(z.bytes[4], Scheme::Zstd as u8);
+        let without = serialize(&refs, &[0], Compression::Fixed(Scheme::Zstd), false).unwrap();
+        assert_eq!(add_footer(&without.bytes, &z.footer.hash).unwrap(), z.bytes);
     }
 
     #[test]

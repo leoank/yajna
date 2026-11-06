@@ -6992,3 +6992,98 @@ fn data_add_stores_deduplicated_get_rebuilds_and_status_reports_where() {
     let out = lab.run(&["data", "add", lab.root.join("raw").to_str().unwrap(), "--project", "PRJ-0001"]);
     assert!(out.code != 0 && out.stderr.contains("bundles"), "{}", out.stderr);
 }
+
+#[cfg(unix)]
+#[test]
+fn data_push_and_pull_reach_a_store_over_ssh_and_zstd_is_an_option() {
+    let lab = vault();
+    assert_eq!(lab.run(&["new", "project", "Toy model"]).code, 0);
+    // "oppy": a store reached through an ssh that runs the command here; nothing but sh and
+    // tar on its side, and a space in its path
+    let far = empty();
+    let calls = far.root.join("ssh.log");
+    let (_bin, path) = fake_bin(&[(
+        "ssh",
+        &format!(
+            "echo \"$*\" >> '{}'\n\
+             while [ $# -gt 0 ]; do case \"$1\" in -t|-T) shift;; -o) shift 2;; *) break;; esac; done\n\
+             shift\nexec sh -c \"$*\"",
+            calls.display()
+        ),
+    )]);
+    let store = far.root.join("yajna store");
+    fs::create_dir_all(lab.root.join(".cache/config/yajna")).unwrap();
+    fs::write(
+        lab.root.join(".cache/config/yajna/config.toml"),
+        format!("[stores]\noppy = {{ ssh = \"oppy\", path = {:?} }}\n", store.to_str().unwrap()),
+    )
+    .unwrap();
+    let here = |data: &str| -> Vec<(&'static str, String)> {
+        vec![("PATH", path.clone()), ("XDG_DATA_HOME", lab.root.join(".cache").join(data).to_str().unwrap().to_string())]
+    };
+    let run = |args: &[&str], data: &str| {
+        let env = here(data);
+        let env: Vec<(&str, &str)> = env.iter().map(|(k, v)| (*k, v.as_str())).collect();
+        lab.run_with(args, None, &env)
+    };
+    let outside = tempfile::tempdir().unwrap();
+    let a: Vec<u8> = (0..2_000_000u32).flat_map(|i| (i % 251).to_le_bytes()).collect();
+    fs::write(outside.path().join("a.bin"), &a).unwrap();
+
+    // add --to pushes at once
+    let out = run(&["data", "add", outside.path().join("a.bin").to_str().unwrap(), "--project", "PRJ-0001", "--to", "oppy"], "laptop");
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(out.stderr.contains("pushed 1 file(s) to oppy"), "{}", out.stderr);
+    let id = lab.path(&out).file_name().unwrap().to_string_lossy()[..19].to_string();
+    assert!(store.join("store.toml").is_file());
+    assert!(!walk(&store.join("xorbs")).is_empty());
+    assert!(!store.join(".incoming").exists() || walk(&store.join(".incoming")).is_empty());
+    let out = run(&["data", "status", &id], "laptop");
+    assert!(out.stdout.contains("local: whole, oppy: whole"), "{}", out.stdout);
+
+    // another machine with an empty local store: get pulls from oppy, then writes the file
+    let out = run(&["data", "get", &id], "other");
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(out.stderr.contains("pulled 1 file(s) from oppy"), "{}", out.stderr);
+    assert_eq!(fs::read(lab.root.join(format!("data/{id}/a.bin"))).unwrap(), a);
+    assert!(run(&["data", "status", &id], "other").stdout.contains("local: whole"));
+
+    // push with [data] push, and a second push sends nothing
+    let mut cfg = lab.read(&lab.root.join("yajna.toml"));
+    cfg.push_str("\n[data]\npush = [\"oppy\"]\ncompression = \"zstd\"\n");
+    fs::write(lab.root.join("yajna.toml"), cfg).unwrap();
+    let text = "a line of a table, again and again\n".repeat(60_000);
+    fs::write(outside.path().join("t.csv"), &text).unwrap();
+    let out = run(&["data", "add", outside.path().join("t.csv").to_str().unwrap(), "--project", "PRJ-0001"], "laptop");
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let t_id = lab.path(&out).file_name().unwrap().to_string_lossy()[..19].to_string();
+    // zstd, the scheme outside the Xet spec, in the new xorb
+    let zstd_xorbs = walk(&lab.root.join(".cache/laptop/yajna/store/xorbs"))
+        .into_iter()
+        .filter(|p| fs::read(p).unwrap()[4] == 0x80)
+        .count();
+    assert_eq!(zstd_xorbs, 1);
+    let out = run(&["data", "push"], "laptop");
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(out.stderr.contains("pushed 1 file(s) to oppy"), "{}", out.stderr);
+    assert!(run(&["data", "push"], "laptop").stderr.contains("holds them all already"));
+
+    // pull into a third machine without writing anything out, then get from local alone
+    let out = run(&["data", "pull", &t_id, "--from", "oppy"], "third");
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(!lab.root.join(format!("data/{t_id}/t.csv")).exists());
+    fs::write(lab.root.join(".cache/config/yajna/config.toml"), "").unwrap();
+    let out = run(&["data", "get", &t_id], "third");
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert_eq!(fs::read_to_string(lab.root.join(format!("data/{t_id}/t.csv"))).unwrap(), text);
+    // a store that is not configured is named in the error
+    let out = run(&["data", "push", "--to", "nowhere"], "laptop");
+    assert!(out.code != 0 && out.stderr.contains("no store nowhere"), "{}", out.stderr);
+    // the far side saw only sh commands, no yajna
+    let log = fs::read_to_string(&calls).unwrap();
+    assert!(log.contains("tar -cf - -T -"), "{log}");
+    assert!(
+        log.lines().filter(|l| l.starts_with("-T oppy ")).all(|l| l.starts_with("-T oppy cd ") || l.starts_with("-T oppy mkdir -p ")),
+        "{log}"
+    );
+}

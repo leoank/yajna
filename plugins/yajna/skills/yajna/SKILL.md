@@ -126,8 +126,9 @@ one-line instructions under headings such as *Runs*.
   --to fix/REV-…` (the next round is then the fixes alone) and to merge the branch.
 - **Large files never go into git history.** Results that matter become `ART` pages:
   `yajna data add <file> --project PRJ-… [--run RUN-…]` stores the file in this machine's
-  data store and writes the page; `yajna data get ART-…` brings it back. Ask before adding
-  anything over a few MB to git itself.
+  data store and writes the page; `yajna data push` copies it to the notebook's other
+  stores (`[data] push` in `yajna.toml`) and `yajna data get ART-…` brings it back. Ask
+  before adding anything over a few MB to git itself.
 - **Never delete.** Mark `status: abandoned` or `aborted`; git history is the record.
 
 ## Working in a worktree

@@ -160,10 +160,16 @@ page, whether the file is here and which stores hold it. `local` is
 
 ```toml
 [stores]
-lab = "/mnt/lab-storage/yajna-store"
+lab  = "/mnt/lab-storage/yajna-store"
+oppy = { ssh = "oppy", path = "/data/yajna-store" }   # needs only ssh, sh and tar there
 ```
 
-Folders (bundles), other machines' stores over ssh, copies and dropping come later
+`yajna data push [--to <store>]` copies what `local` holds to another store (by default
+the stores listed under `[data] push` in `yajna.toml`), `yajna data pull [--from <store>]`
+the other way without writing files out, and `data add --to <store>` pushes at once; `get`
+pulls what `local` lacks. `[data] compression = "zstd"` in `yajna.toml` stores new chunks
+with zstd: much smaller for images and tables, but readable by yajna only, not by Hugging
+Face (the default, `lz4`, is Xet's own). Folders (bundles), copies and dropping come later
 (`docs/data.md` section 11).
 
 ## Experiments

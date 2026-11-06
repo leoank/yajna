@@ -349,6 +349,20 @@ pub struct Config {
     pub docs: DocsConfig,
     #[serde(default)]
     pub files: FilesConfig,
+    #[serde(default)]
+    pub data: DataConfig,
+}
+
+/// `[data]` in yajna.toml: how this notebook stores large files (docs/data.md).
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DataConfig {
+    /// the stores `yajna data push` sends to when `--to` is left out
+    #[serde(default)]
+    pub push: Vec<String>,
+    /// `lz4` (the default: Xet's own, readable by Hugging Face) or `zstd` (smaller for
+    /// images and tables, readable by yajna only)
+    pub compression: Option<String>,
 }
 
 /// `[files]` in yajna.toml: what the files viewer of `yajna serve` shows (ADR-0028).

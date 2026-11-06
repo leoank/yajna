@@ -3,8 +3,9 @@
 Status: design v0.1, 2026-11-06. Built: step 1, `tools/yajna-xet`, identical to xet-core
 1.8.0 on every case EXP-20261106-3t3nn2 tried; step 2, EXP-20261106-3t40bg's measurements
 on public stand-ins; step 3, directory stores and `yajna data add`, `get` and `status`
-(0.26.0), without `[data]` (its keys come with the steps that use them) and without the
-spec's fragmentation rule (section 3). Companion to `architecture.md` (section 5.3
+(0.26.0); step 4, stores over ssh, `push` and `pull`, `[data] push`, and zstd as an option
+(0.27.0). Not yet: the spec's fragmentation rule (section 3) and the `[data]` keys of later
+steps. Companion to `architecture.md` (section 5.3
 and Phase 2 in section 11) and `reproduce.md`, whose run `outputs` it stores. Decision:
 ADR-0035, superseding ADR-0013's leaning towards git-annex.
 
@@ -37,6 +38,7 @@ Decided with ank on 2026-11-06, in three rounds.
 |---|---|
 | Role | Xet-style storage is yajna's data layer and replaces git-annex; the `ART` page is the pointer, no annex, LFS or `.dvc` files |
 | Format | Byte-exact Xet: gearhash chunking, keyed BLAKE3 hashes, xorbs and shards as the spec defines them, so Hugging Face or a Shardline server can later be a remote |
+| Compression | Xet's LZ4 and BG4 by default, for compatibility; zstd per chunk as a notebook's choice (`[data] compression = "zstd"`), much smaller for images and tables but readable by yajna only (decided 2026-11-06 after EXP-20261106-3t40bg) |
 | Implementation | Our own crate, `tools/yajna-xet`, written from the spec and checked against xet-core's outputs and Hugging Face's reference files; xet-core is not a dependency |
 | A checkout | Data is materialized on demand by `yajna data get` into gitignored paths; `git clone` and `checkout` never fetch data |
 | Recipes | Only in stores, as in Xet: the repo records a file's Xet hash; any store holding that file's shard can rebuild it |
@@ -111,6 +113,7 @@ in `yajna.toml`:
 ```toml
 [data]
 push = ["lab"]          # where `yajna data push` sends by default
+compression = "lz4"     # or "zstd": smaller, not readable by Hugging Face (section 2)
 copies = 2              # stores that must hold a file whole before one may drop it
 git_max = "5 MB"        # larger staged files are refused (section 8)
 outputs_min = "1 MB"    # run outputs at least this size are stored (section 9)
@@ -119,17 +122,22 @@ outputs_min = "1 MB"    # run outputs at least this size are stored (section 9)
 A store missing from a machine's config is skipped with a note, so a notebook can name
 the lab's store and still work on a laptop that only has `local`.
 
-**Over ssh** a store is read and written with plain commands (`test`, `cat`, `mkdir`,
-`mv`, `ls`) through one multiplexed ssh connection per command, batched; the other machine
-needs ssh and a disk, not yajna, as `--on` needs only git and Nix there (ADR-0033). How
-slow this is for dedup lookups and many small objects is measured first (EXP C).
+**Over ssh** a store is read and written with plain `sh` and `tar`, batched so that an
+operation is a few ssh connections whatever the number of objects: one `while read` loop
+answers which of a list of objects exist, one `tar -cf - -T -` sends a list back, and a
+write is one tar stream of the new objects plus a script that moves each into place only
+if it is absent, objects first, then the shard, then the index entries. The other machine
+needs ssh, `sh`, `tar` and a disk, not yajna, as `--on` needs only git and Nix there
+(ADR-0033). Connection sharing (`ControlMaster`) is left to the user's ssh config. How slow
+this is is measured in EXP C. `data add` looks up dedup candidates in `local` only; a
+remote store gets the xorbs `local` made.
 
 ## 5. Commands
 
 | Command | What it does |
 |---|---|
 | `yajna data add <path>… [--project PRJ] [--run RUN] [--title …] [--to <store>]` (`--to` with push, step 4) | Chunks each file (a directory becomes one bundle, section 6), deduplicates against `local` and the `--to` store, writes new xorbs and a shard to `local` (and pushes to `--to`), and creates an `ART` page with `store: xet`, the Xet hash, sha256, size and the path to materialize at |
-| `yajna data get <ART…\|RUN…\|path…> [--from <store>] [--only <glob>]` | Rebuilds each file from the first store that has its recipe (`--from` to choose), verifies the Xet hash and sha256, and writes it at the page's path; existing identical files are left alone |
+| `yajna data get <ART…\|RUN…\|path…> [--from <store>] [--only <glob>]` | Rebuilds each file from `local`, pulling what it lacks from the first store that holds the file whole (`--from` to choose; a directory store named there is read directly), verifies the Xet hash and sha256, and writes it at the page's path; existing identical files are left alone |
 | `yajna data push [--to <store>] [ART…]` | Copies to a store the xorbs, shards and index entries it lacks for the given pages (default: every `ART` and stored output of the notebook) |
 | `yajna data pull [--from <store>] [ART…]` | The same into `local`, without materializing |
 | `yajna data status [ART…] [--verify]` | For each page: which stores hold it whole, whether it has its `copies`, whether it is materialized here; `--verify` rehashes xorbs |
