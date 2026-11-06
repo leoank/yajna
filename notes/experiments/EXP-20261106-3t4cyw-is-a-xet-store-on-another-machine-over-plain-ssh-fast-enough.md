@@ -4,7 +4,7 @@ type: experiment
 schema_version: 1
 title: Is a Xet store on another machine over plain ssh fast enough for add, push, get and dedup lookups?
 project: PRJ-0001
-status: planned           # planned | active | paused | concluded | abandoned
+status: active            # planned | active | paused | concluded | abandoned
 outcome: null             # null | positive | negative | inconclusive | infra
 influenced_by: []
 created: 2026-11-06
@@ -43,6 +43,7 @@ Throughputs and lookup times for each case in `results.tsv`, and the choice for
 ## Runs
 One line per run after its link, what was tried and what it showed; `yajna validate`
 rejects a bare link here. Metric runs also land in results.tsv.
+- [[RUN-20261106-5z2189]] rogue to oppy over a slow link (1.1 s round trip, scp 1.2 MB/s): push 2.4 times faster than scp of the same 564 MB, get 3.9 MB/s with every file whole, 16k existence checks in 1.9 s batched against ~4 h one ssh each; H1 holds
 
 ## Conclusion
 Written once, by a human, when status becomes `concluded`.

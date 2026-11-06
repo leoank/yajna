@@ -1,0 +1,11 @@
+what	seconds	MB	MB_per_s
+ssh round trip x5	5.63	0.0	0.0
+scp of the files	481.82	564.2	1.2
+data add (local)	2.89	564.2	195.2
+data push (store)	197.68	371.4	1.9
+data push again	6.88	0.0	0.0
+data get from far (pull and write)	143.05	564.2	3.9
+exists, 1000 names, one ssh	1.19	0.0	0.0
+exists, 16000 names, one ssh	1.86	0.0	0.0
+exists, 100000 names, one ssh	7.00	0.0	0.0
+exists, 100 names, one ssh each	94.50	0.0	0.0

@@ -142,4 +142,4 @@ rejects a bare link here. Newest last.
 - [[EXP-20261023-kjvkas]] can ank follow an agent's run on a remote machine from the laptop without a shell; planned, the Phase 1c verification
 - [[EXP-20261106-3t3nn2]] does our own Xet crate match xet-core byte for byte; yes on all 11 cases tried, and on Hugging Face's reference files; conclusion for ank to write
 - [[EXP-20261106-3t40bg]] how much chunk-level dedup saves; on public stand-ins: much where versions share bytes, nothing for full-training checkpoints or a second sample, and LZ4 far behind zstd on sparse images; lab data still to try
-- [[EXP-20261106-3t4cyw]] is a store on oppy over plain ssh fast enough for add, push, get and dedup lookups; planned, step 4 of `docs/data.md`
+- [[EXP-20261106-3t4cyw]] is a store on another machine over plain ssh fast enough; yes once batched: push 2.4 times faster than scp to oppy on a slow link, 16k existence checks in 1.9 s; conclusion for ank to write

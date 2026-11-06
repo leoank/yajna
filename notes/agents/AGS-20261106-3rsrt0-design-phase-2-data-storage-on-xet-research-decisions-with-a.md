@@ -7,7 +7,7 @@ model: "claude-opus-5-5"
 harness: "claude-code"
 started: 2026-11-06T03:26+00:00
 finished: null
-created_entities: [REV-20261106-3rsd58, EXP-20261106-3t3nn2, EXP-20261106-3t40bg, EXP-20261106-3t4cyw, RUN-20261106-4a78zt, RUN-20261106-4vftn2]
+created_entities: [REV-20261106-3rsd58, EXP-20261106-3t3nn2, EXP-20261106-3t40bg, EXP-20261106-3t4cyw, RUN-20261106-4a78zt, RUN-20261106-4vftn2, RUN-20261106-5g081k, RUN-20261106-5z2189]
 edited_entities: [PRJ-0001, PHS-20261106-2m7qaq]
 outcome: pending          # done | failed | aborted | pending
 created: 2026-11-06
@@ -61,3 +61,10 @@ Under [[REV-20261106-3rsd58]].
   124 MB store and got everything back with matching sha256. Found and fixed on the way
   (5bee138): every `yajna new artifact` page failed validation, `run: null` and
   `hash: null` against a schema that wanted strings.
+- ank chose LZ4 for compatibility with zstd as an option, and step 4. [[RUN-20261106-5g081k]]
+  showed zstd per 64 KB chunk keeps most of whole-file zstd's gain (imaging 0.25 against
+  LZ4's 0.43), so the option is zstd -3 per chunk, scheme 0x80 outside the spec,
+  `[data] compression = "zstd"`. Step 4 (1e6f864, 0.27.0): stores over plain ssh (`sh` and
+  `tar` there, batched), `data push`, `pull`, `add --to`, `get` pulling into local first,
+  `[data] push`. [[RUN-20261106-5z2189]] against oppy, over a slow link: push 2.4 times
+  faster than scp of the same files, all 59 back whole, 16k existence checks in 1.9 s.
