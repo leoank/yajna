@@ -34,6 +34,8 @@ pub fn run(vault: &Vault, action: &DataAction) -> Res<i32> {
         DataAction::Pull { targets, from } => pull(vault, targets, from.as_deref()),
         DataAction::Get { targets, from } => get(vault, targets, from.as_deref()),
         DataAction::Status { targets } => status(vault, targets),
+        DataAction::Drop { targets, from } => drop_cmd(vault, targets, from),
+        DataAction::Free { targets } => free(vault, targets),
     }
 }
 
@@ -352,6 +354,130 @@ impl Store {
         Ok(out)
     }
 
+    /// Every object under `dir` (`xorbs`, `shards`, `files`, `chunks`), as relative paths.
+    fn list(&self, dir: &str) -> Res<Vec<String>> {
+        match &self.backend {
+            Backend::Dir(root) => {
+                fn walk(base: &Path, p: &Path, out: &mut Vec<String>) {
+                    for e in fs::read_dir(p).into_iter().flatten().flatten() {
+                        let path = e.path();
+                        let name = e.file_name().to_string_lossy().to_string();
+                        if path.is_dir() {
+                            walk(base, &path, out);
+                        } else if !name.starts_with('.') {
+                            out.push(path.strip_prefix(base).unwrap().to_string_lossy().replace('\\', "/"));
+                        }
+                    }
+                }
+                let mut out = Vec::new();
+                walk(root, &root.join(dir), &mut out);
+                Ok(out)
+            }
+            Backend::Ssh { .. } => {
+                let out = self.ssh_lines(&format!("[ ! -d {dir} ] || find {dir} -type f ! -name '.*'"), "")?;
+                Ok(out.lines().map(str::to_string).collect())
+            }
+        }
+    }
+
+    /// Delete `rels`, in order.
+    fn remove(&self, rels: &[String]) -> Res<()> {
+        if rels.is_empty() {
+            return Ok(());
+        }
+        match &self.backend {
+            Backend::Dir(root) => {
+                for r in rels {
+                    match fs::remove_file(root.join(r)) {
+                        Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(format!("{r}: {e}")),
+                        _ => {}
+                    }
+                }
+                Ok(())
+            }
+            Backend::Ssh { .. } => {
+                self.ssh_lines("while IFS= read -r f; do rm -f \"$f\"; done", &(rels.join("\n") + "\n"))?;
+                Ok(())
+            }
+        }
+    }
+
+    /// Hold off drops while this lives: a `locks/write-*` directory, made only when no
+    /// drop runs (waiting up to `YAJNA_LOCK_WAIT` seconds, 600 by default, for one to end).
+    fn lock_write(&self) -> Res<Lock<'_>> {
+        let name = format!("locks/write-{}-{:x}", std::process::id(), fastrand::u64(..));
+        let wait = lock_wait();
+        match &self.backend {
+            Backend::Dir(root) => {
+                fs::create_dir_all(root.join("locks")).map_err(err)?;
+                let start = std::time::Instant::now();
+                loop {
+                    fs::create_dir(root.join(&name)).map_err(|e| format!("{name}: {e}"))?;
+                    if !root.join("locks/drop").exists() {
+                        break;
+                    }
+                    let _ = fs::remove_dir(root.join(&name));
+                    if start.elapsed().as_secs() >= wait {
+                        return Err(format!("store {} is being dropped from (locks/drop); try again when that ends", self.name));
+                    }
+                    std::thread::sleep(std::time::Duration::from_secs(1));
+                }
+            }
+            Backend::Ssh { .. } => {
+                self.ssh_lines(
+                    &format!(
+                        "mkdir -p locks; i=0; while :; do mkdir {name}; [ -d locks/drop ] || exit 0; rmdir {name}; \
+                         i=$((i+1)); if [ $i -gt {wait} ]; then echo 'store {} is being dropped from (locks/drop); try again when that ends' >&2; exit 3; fi; sleep 1; done",
+                        self.name
+                    ),
+                    "",
+                )?;
+            }
+        }
+        Ok(Lock { store: self, rel: name })
+    }
+
+    /// The drop lock, `locks/drop`, taken once no write lock younger than six hours is held
+    /// (an older one is a writer that died).
+    fn lock_drop(&self) -> Res<Lock<'_>> {
+        let wait = lock_wait();
+        let busy = || format!("store {} is in use by another yajna (locks/write-*); try again when it ends", self.name);
+        match &self.backend {
+            Backend::Dir(root) => {
+                fs::create_dir_all(root.join("locks")).map_err(err)?;
+                fs::create_dir(root.join("locks/drop")).map_err(|_| format!("another drop from store {} runs (locks/drop)", self.name))?;
+                let start = std::time::Instant::now();
+                loop {
+                    let fresh = fs::read_dir(root.join("locks")).map_err(err)?.flatten().any(|e| {
+                        e.file_name().to_string_lossy().starts_with("write-")
+                            && e.metadata().and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).is_some_and(|age| age.as_secs() < 6 * 3600)
+                    });
+                    if !fresh {
+                        break;
+                    }
+                    if start.elapsed().as_secs() >= wait {
+                        let _ = fs::remove_dir(root.join("locks/drop"));
+                        return Err(busy());
+                    }
+                    std::thread::sleep(std::time::Duration::from_secs(1));
+                }
+            }
+            Backend::Ssh { .. } => {
+                self.ssh_lines(
+                    &format!(
+                        "mkdir -p locks; mkdir locks/drop 2>/dev/null || {{ echo 'another drop from store {} runs (locks/drop)' >&2; exit 3; }}; i=0; \
+                         while [ -n \"$(find locks -name 'write-*' -mmin -360 | head -1)\" ]; do i=$((i+1)); \
+                         if [ $i -gt {wait} ]; then rmdir locks/drop; echo {} >&2; exit 3; fi; sleep 1; done",
+                        self.name,
+                        crate::rerun::q_home(&busy()).unwrap_or_default()
+                    ),
+                    "",
+                )?;
+            }
+        }
+        Ok(Lock { store: self, rel: "locks/drop".into() })
+    }
+
     /// The local directory of a directory store.
     fn dir(&self) -> Option<&Path> {
         match &self.backend {
@@ -363,6 +489,29 @@ impl Store {
 
 /// What a store holds of each file asked about.
 type Holdings = HashMap<Hash, Holding>;
+
+/// A lock directory in a store, removed when dropped.
+struct Lock<'a> {
+    store: &'a Store,
+    rel: String,
+}
+
+impl Drop for Lock<'_> {
+    fn drop(&mut self) {
+        match &self.store.backend {
+            Backend::Dir(root) => {
+                let _ = fs::remove_dir(root.join(&self.rel));
+            }
+            Backend::Ssh { .. } => {
+                let _ = self.store.ssh_lines(&format!("rmdir {}", self.rel), "");
+            }
+        }
+    }
+}
+
+fn lock_wait() -> u64 {
+    std::env::var("YAJNA_LOCK_WAIT").ok().and_then(|s| s.parse().ok()).unwrap_or(600)
+}
 
 #[derive(Clone)]
 enum Holding {
@@ -502,6 +651,7 @@ fn footer_of(path: &Path) -> Res<(Footer, u32)> {
 /// shard of their recipes and the new xorbs, then its index entries. Returns the xorbs and
 /// bytes sent.
 fn copy(from: &Store, to: &Store, recipes: &[FileInfo], staging: &Path) -> Res<(usize, u64)> {
+    let _lock = to.lock_write()?;
     let need: BTreeSet<String> = recipes.iter().flat_map(|f| f.terms.iter().map(|t| fanned("xorbs", &t.xorb))).collect();
     let have = to.exists(&need.iter().cloned().collect::<Vec<_>>())?;
     let missing: Vec<String> = need.into_iter().filter(|r| !have.contains(r)).collect();
@@ -577,6 +727,8 @@ fn add(vault: &Vault, paths: &[PathBuf], project: Option<&str>, run: Option<&str
     local.ensure()?;
     let staging = Staging::new(local)?;
     let root = local.dir().unwrap().to_path_buf();
+    // a drop must not delete a xorb this add has just deduplicated against
+    let lock = local.lock_write()?;
 
     // pack, deduplicating against what `local` holds
     let mut new_xorbs: Vec<XorbInfo> = Vec::new();
@@ -606,6 +758,7 @@ fn add(vault: &Vault, paths: &[PathBuf], project: Option<&str>, run: Option<&str
         packer.finish().map_err(err)?
     };
     local.apply(shard_ops(&shard_of(&files, new_xorbs)), &staging.0)?;
+    std::mem::drop(lock);
 
     for ((src, info), a) in sources.iter().zip(&files).zip(&added) {
         let name = src.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
@@ -915,7 +1068,171 @@ fn status(vault: &Vault, targets_: &[String]) -> Res<i32> {
                 format!("{name}: {state}")
             })
             .collect();
-        println!("{}  {}  {}  {}  {}", t.id, t.path, t.size.map(human).unwrap_or_default(), here, held.join(", "));
+        let whole = per_store.iter().filter(|(_, h)| h.as_ref().is_ok_and(|h| matches!(h[&t.xet], Holding::Whole(_)))).count();
+        println!(
+            "{}  {}  {}  {}  {}  ({whole} cop{})",
+            t.id,
+            t.path,
+            t.size.map(human).unwrap_or_default(),
+            here,
+            held.join(", "),
+            if whole == 1 { "y" } else { "ies" }
+        );
     }
     Ok(0)
+}
+
+// --- drop and free ---------------------------------------------------------------------
+
+fn copies_needed(vault: &Vault) -> usize {
+    vault.cfg.data.copies.unwrap_or(1)
+}
+
+/// The other stores that hold each of `hashes` whole, among those that can be reached.
+fn holders(all: &[Store], except: &str, hashes: &[Hash], staging: &Path) -> Res<HashMap<Hash, Vec<String>>> {
+    let mut out: HashMap<Hash, Vec<String>> = hashes.iter().map(|h| (*h, Vec::new())).collect();
+    for s in all.iter().filter(|s| s.name != except) {
+        match s.is_store() {
+            Ok(true) => {}
+            Ok(false) => continue,
+            Err(e) => {
+                eprintln!("{} not counted: {e}", s.name);
+                continue;
+            }
+        }
+        for (h, held) in s.holdings(hashes, staging)? {
+            if matches!(held, Holding::Whole(_)) {
+                out.get_mut(&h).unwrap().push(s.name.clone());
+            }
+        }
+    }
+    Ok(out)
+}
+
+fn drop_cmd(vault: &Vault, targets_: &[String], from: &str) -> Res<i32> {
+    let all = stores()?;
+    all[0].ensure()?;
+    let staging = Staging::new(&all[0])?;
+    let store = named(&all, from)?;
+    if !store.is_store()? {
+        return Err(format!("store {from} ({}) is not there", store.describe()));
+    }
+    let pages = targets(vault, targets_)?;
+    let hashes: Vec<Hash> = pages.iter().map(|p| p.xet).collect();
+    let need = copies_needed(vault);
+    let elsewhere = holders(&all, from, &hashes, &staging.0)?;
+    let short: Vec<String> = pages
+        .iter()
+        .filter(|p| elsewhere[&p.xet].len() < need)
+        .map(|p| {
+            let held = &elsewhere[&p.xet];
+            format!(
+                "{}: {} other store(s) hold it whole{}, {need} needed",
+                p.id,
+                held.len(),
+                if held.is_empty() { String::new() } else { format!(" ({})", held.join(", ")) }
+            )
+        })
+        .collect();
+    if !short.is_empty() {
+        return Err(format!("nothing dropped from {from}:\n{}", short.join("\n")));
+    }
+    let dropping: HashSet<Hash> = hashes.into_iter().collect();
+    let (xorbs, bytes) = drop_files(store, &dropping, &staging.0)?;
+    eprintln!("dropped {} file(s) from {from}: {xorbs} xorb(s) no other file there uses, {}", dropping.len(), human(bytes));
+    Ok(0)
+}
+
+/// Remove `dropping` from a store: their index entries, then the xorbs no file still
+/// indexed there uses, the shards that neither list such a file nor describe a kept xorb,
+/// and the dedup entries pointing at those shards. Under the store's drop lock.
+fn drop_files(store: &Store, dropping: &HashSet<Hash>, staging: &Path) -> Res<(usize, u64)> {
+    let _lock = store.lock_drop()?;
+    let file_rels = store.list("files")?;
+    let lists = store.read(&file_rels, staging)?;
+    let shard_rels = store.list("shards")?;
+    let shards: HashMap<String, Shard> = store
+        .read(&shard_rels, staging)?
+        .into_iter()
+        .map(|(rel, b)| Shard::parse(&b).map(|s| (rel.trim_start_matches("shards/").to_string(), s)).map_err(|e| format!("{rel}: {e}")))
+        .collect::<Res<_>>()?;
+    // the files that stay, and the shards their index entries name
+    let mut keep_xorbs: HashSet<Hash> = HashSet::new();
+    let mut named_shards: HashSet<String> = HashSet::new();
+    let mut gone_entries = Vec::new();
+    for rel in &file_rels {
+        let Some(h) = rel.rsplit('/').next().and_then(Hash::from_hex) else { continue };
+        if dropping.contains(&h) {
+            gone_entries.push(rel.clone());
+            continue;
+        }
+        let listed = String::from_utf8_lossy(lists.get(rel).map(|b| &b[..]).unwrap_or(&[])).into_owned();
+        for hex in listed.lines().filter(|l| !l.is_empty()) {
+            named_shards.insert(hex.to_string());
+            if let Some(f) = shards.get(hex).and_then(|s| s.files.get(&h)) {
+                keep_xorbs.extend(f.terms.iter().map(|t| t.xorb));
+            }
+        }
+    }
+    let xorb_rels = store.list("xorbs")?;
+    let gone_xorbs: Vec<String> = xorb_rels
+        .into_iter()
+        .filter(|r| r.rsplit('/').next().and_then(Hash::from_hex).is_some_and(|h| !keep_xorbs.contains(&h)))
+        .collect();
+    let gone_shards: HashSet<String> = shards
+        .iter()
+        .filter(|(hex, s)| !named_shards.contains(*hex) && !s.xorbs.keys().any(|x| keep_xorbs.contains(x)))
+        .map(|(hex, _)| hex.clone())
+        .collect();
+    let chunk_rels = store.list("chunks")?;
+    let chunk_entries = store.read(&chunk_rels, staging)?;
+    let gone_chunks: Vec<String> = chunk_rels
+        .into_iter()
+        .filter(|r| chunk_entries.get(r).is_some_and(|b| gone_shards.contains(String::from_utf8_lossy(b).trim())))
+        .collect();
+    let bytes: u64 = gone_xorbs
+        .iter()
+        .filter_map(|r| r.rsplit('/').next().and_then(Hash::from_hex))
+        .filter_map(|h| shards.values().find_map(|s| s.xorbs.get(&h)).map(|x| x.serialized_bytes as u64))
+        .sum();
+    // what readers look at first goes first: a dropped file is absent before its xorbs are
+    store.remove(&gone_entries)?;
+    store.remove(&gone_xorbs)?;
+    store.remove(&gone_shards.iter().map(|h| format!("shards/{h}")).collect::<Vec<_>>())?;
+    store.remove(&gone_chunks)?;
+    Ok((gone_xorbs.len(), bytes))
+}
+
+fn free(vault: &Vault, targets_: &[String]) -> Res<i32> {
+    let all = stores()?;
+    all[0].ensure()?;
+    let staging = Staging::new(&all[0])?;
+    let pages = targets(vault, targets_)?;
+    let hashes: Vec<Hash> = pages.iter().map(|p| p.xet).collect();
+    let held = holders(&all, "", &hashes, &staging.0)?;
+    let mut refused = 0;
+    for p in &pages {
+        let dest = vault.root.join(&p.path);
+        if !dest.is_file() {
+            eprintln!("{}: {} is not here", p.id, p.path);
+            continue;
+        }
+        if sha256_of(&dest).as_deref() != Some(p.sha256.as_str()) {
+            eprintln!("{}: {} differs from what the page names; kept", p.id, p.path);
+            refused += 1;
+            continue;
+        }
+        if held[&p.xet].is_empty() {
+            eprintln!("{}: no store holds {} whole; kept", p.id, p.path);
+            refused += 1;
+            continue;
+        }
+        fs::remove_file(&dest).map_err(|e| format!("{}: {e}", dest.display()))?;
+        // the per-artifact directory `data add` made, when it is empty now
+        if let Some(parent) = dest.parent().filter(|d| d.ends_with(&p.id)) {
+            let _ = fs::remove_dir(parent);
+        }
+        eprintln!("{}: {} freed ({} holds it)", p.id, p.path, held[&p.xet].join(", "));
+    }
+    Ok(if refused > 0 { 1 } else { 0 })
 }

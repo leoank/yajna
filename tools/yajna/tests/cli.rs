@@ -7076,6 +7076,20 @@ fn data_push_and_pull_reach_a_store_over_ssh_and_zstd_is_an_option() {
     let out = run(&["data", "get", &t_id], "third");
     assert_eq!(out.code, 0, "{}", out.stderr);
     assert_eq!(fs::read_to_string(lab.root.join(format!("data/{t_id}/t.csv"))).unwrap(), text);
+    fs::write(
+        lab.root.join(".cache/config/yajna/config.toml"),
+        format!("[stores]\noppy = {{ ssh = \"oppy\", path = {:?} }}\n", store.to_str().unwrap()),
+    )
+    .unwrap();
+    // the laptop holds t whole, so oppy may let it go; its xorbs go, a's stay
+    let out = run(&["data", "drop", &t_id, "--from", "oppy"], "laptop");
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(out.stderr.contains("dropped 1 file(s) from oppy: 1 xorb(s)"), "{}", out.stderr);
+    assert!(!store.join("locks/drop").exists());
+    let out = run(&["data", "status"], "laptop");
+    let line = |id: &str| out.stdout.lines().find(|l| l.starts_with(id)).unwrap_or_default().to_string();
+    assert!(line(&t_id).contains("local: whole, oppy: -  (1 copy)"), "{}", out.stdout);
+    assert!(line(&id).contains("local: whole, oppy: whole  (2 copies)"), "{}", out.stdout);
     // a store that is not configured is named in the error
     let out = run(&["data", "push", "--to", "nowhere"], "laptop");
     assert!(out.code != 0 && out.stderr.contains("no store nowhere"), "{}", out.stderr);
@@ -7086,4 +7100,93 @@ fn data_push_and_pull_reach_a_store_over_ssh_and_zstd_is_an_option() {
         log.lines().filter(|l| l.starts_with("-T oppy ")).all(|l| l.starts_with("-T oppy cd ") || l.starts_with("-T oppy mkdir -p ")),
         "{log}"
     );
+}
+
+#[test]
+fn data_drop_keeps_copies_and_shared_xorbs_and_free_keeps_what_no_store_holds() {
+    let lab = vault();
+    assert_eq!(lab.run(&["new", "project", "Toy model"]).code, 0);
+    let lab_store = lab.root.join(".cache/lab-store");
+    fs::create_dir_all(lab.root.join(".cache/config/yajna")).unwrap();
+    fs::write(lab.root.join(".cache/config/yajna/config.toml"), format!("[stores]\nlab = {:?}\n", lab_store.to_str().unwrap())).unwrap();
+    let local = lab.root.join(".cache/data/yajna/store");
+    let outside = tempfile::tempdir().unwrap();
+    let mut x = 11u64;
+    let a: Vec<u8> = (0..3_000_000)
+        .map(|_| {
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            (x >> 24) as u8
+        })
+        .collect();
+    let mut b = a.clone();
+    b.splice(2_000_000..2_000_000, *b"b differs here");
+    fs::write(outside.path().join("a.bin"), &a).unwrap();
+    fs::write(outside.path().join("b.bin"), &b).unwrap();
+    let add = |name: &str| {
+        let out = lab.run(&["data", "add", outside.path().join(name).to_str().unwrap(), "--project", "PRJ-0001"]);
+        assert_eq!(out.code, 0, "{}", out.stderr);
+        lab.path(&out).file_name().unwrap().to_string_lossy()[..19].to_string()
+    };
+    let a_id = add("a.bin");
+    let b_id = add("b.bin");
+
+    // only local holds a: refused, nothing removed
+    let xorbs = |s: &Path| walk(&s.join("xorbs")).len();
+    let before = xorbs(&local);
+    let out = lab.run(&["data", "drop", &a_id, "--from", "local"]);
+    assert!(out.code != 0 && out.stderr.contains("0 other store(s) hold it whole, 1 needed"), "{}", out.stderr);
+    assert_eq!(xorbs(&local), before);
+
+    // once lab holds a, local may let it go; b, which shares most of a's chunks, stays whole
+    assert_eq!(lab.run(&["data", "push", &a_id, "--to", "lab"]).code, 0);
+    let out = lab.run(&["data", "drop", &a_id, "--from", "local"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let out = lab.run(&["data", "status"]);
+    assert!(out.stdout.contains(&format!("{a_id}  data/{a_id}/a.bin  3.0 MB  missing  local: -, lab: whole  (1 copy)")), "{}", out.stdout);
+    assert!(out.stdout.contains(&format!("{b_id}  data/{b_id}/b.bin  3.0 MB  missing  local: whole, lab: -  (1 copy)")), "{}", out.stdout);
+    let out = lab.run(&["data", "get", &b_id, "--from", "local"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert_eq!(fs::read(lab.root.join(format!("data/{b_id}/b.bin"))).unwrap(), b);
+    // and a comes back from lab
+    let out = lab.run(&["data", "get", &a_id]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert_eq!(fs::read(lab.root.join(format!("data/{a_id}/a.bin"))).unwrap(), a);
+
+    // with copies = 2, one other store is not enough
+    let mut cfg = lab.read(&lab.root.join("yajna.toml"));
+    cfg.push_str("\n[data]\ncopies = 2\n");
+    fs::write(lab.root.join("yajna.toml"), &cfg).unwrap();
+    assert_eq!(lab.run(&["data", "push", &b_id, "--to", "lab"]).code, 0);
+    let out = lab.run(&["data", "drop", &b_id, "--from", "local"]);
+    assert!(out.code != 0 && out.stderr.contains("1 other store(s) hold it whole (lab), 2 needed"), "{}", out.stderr);
+    fs::write(lab.root.join("yajna.toml"), cfg.replace("copies = 2", "copies = 1")).unwrap();
+
+    // a drop in progress holds off writers, and a writer holds off a drop
+    let wait = [("YAJNA_LOCK_WAIT", "0")];
+    fs::create_dir_all(local.join("locks/drop")).unwrap();
+    let out = lab.run_with(&["data", "add", outside.path().join("a.bin").to_str().unwrap(), "--project", "PRJ-0001"], None, &wait);
+    assert!(out.code != 0 && out.stderr.contains("being dropped from"), "{}", out.stderr);
+    fs::remove_dir(local.join("locks/drop")).unwrap();
+    fs::create_dir_all(local.join("locks/write-123-abc")).unwrap();
+    let out = lab.run_with(&["data", "drop", &b_id, "--from", "local"], None, &wait);
+    assert!(out.code != 0 && out.stderr.contains("in use by another yajna"), "{}", out.stderr);
+    assert!(!local.join("locks/drop").exists(), "the drop lock is released on giving up");
+    fs::remove_dir(local.join("locks/write-123-abc")).unwrap();
+
+    // `get` pulled a back into local; both dropped from it, local holds no xorb any more
+    let out = lab.run(&["data", "drop", &a_id, &b_id, "--from", "local"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert_eq!(xorbs(&local), 0);
+    assert!(walk(&local.join("files")).is_empty() && walk(&local.join("shards")).is_empty());
+
+    // free: the copy goes when unchanged and held, stays when changed
+    let out = lab.run(&["data", "free", &a_id]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(!lab.root.join(format!("data/{a_id}")).exists());
+    fs::write(lab.root.join(format!("data/{b_id}/b.bin")), b"edited by hand").unwrap();
+    let out = lab.run(&["data", "free", &b_id]);
+    assert!(out.code != 0 && out.stderr.contains("differs from what the page names"), "{}", out.stderr);
+    assert!(lab.root.join(format!("data/{b_id}/b.bin")).exists());
 }

@@ -4,8 +4,8 @@ Status: design v0.1, 2026-11-06. Built: step 1, `tools/yajna-xet`, identical to 
 1.8.0 on every case EXP-20261106-3t3nn2 tried; step 2, EXP-20261106-3t40bg's measurements
 on public stand-ins; step 3, directory stores and `yajna data add`, `get` and `status`
 (0.26.0); step 4, stores over ssh, `push` and `pull`, `[data] push`, and zstd as an option
-(0.27.0). Not yet: the spec's fragmentation rule (section 3) and the `[data]` keys of later
-steps. Companion to `architecture.md` (section 5.3
+(0.27.0); step 5, `[data] copies`, `data drop` with its locks, `data free` (0.28.0). Not
+yet: the spec's fragmentation rule (section 3) and the `[data]` keys of later steps. Companion to `architecture.md` (section 5.3
 and Phase 2 in section 11) and `reproduce.md`, whose run `outputs` it stores. Decision:
 ADR-0035, superseding ADR-0013's leaning towards git-annex.
 
@@ -178,12 +178,21 @@ Pages for data added before this (`store: path`) are converted with `yajna data 
 
 Nothing is removed from a store except by `yajna data drop <ART…> --from <store>`, which:
 
-1. checks, now, that at least `copies` other stores hold each page's file whole (its
-   recipe and every xorb it names), and refuses otherwise, naming the stores it found;
-2. takes the store's drop lock (`mkdir locks/drop`, atomic on local and remote disks),
-   which `add`, `push` and other drops wait for;
-3. removes the pages' `files/` entries, then every xorb and shard no remaining recipe in
-   that store refers to, then the `chunks/` entries pointing at removed shards.
+1. checks, now, that at least `copies` other stores (`[data] copies`, 1 when unset) hold
+   each page's file whole (its recipe and every xorb it names), and refuses otherwise,
+   naming the stores it found; a store it cannot reach does not count;
+2. takes the store's drop lock (`mkdir locks/drop`, atomic on local and remote disks) and
+   waits until no writer holds the store: `add`, `push` and `pull` each hold a
+   `locks/write-*` directory while they decide what the store has and write to it, made
+   only while no drop runs. Either side waits up to `YAJNA_LOCK_WAIT` seconds (600) and
+   then gives up; a write lock older than six hours is taken for a writer that died;
+3. removes the pages' `files/` entries, then every xorb no file still indexed there uses,
+   then the shards that neither list such a file nor describe a kept xorb, then the
+   `chunks/` entries pointing at removed shards.
+
+`yajna data free <ART…>` deletes a file written out at its page's path when it is
+unchanged (its sha256 still the page's) and some store holds it whole; `get` brings it
+back. A changed file is kept, as is one no store holds.
 
 `local` is a store like the others: freeing space on the laptop is `data drop --from
 local` once the lab store and one more hold the data. Removing what no page refers to at
@@ -230,7 +239,7 @@ then names the same Xet hash and stores nothing twice.
 | 2 | Measurement, no commands | EXP B: dedup ratio and throughput on checkpoints, imaging stacks, tables and synthetic edits, ours against xet-core. Done on public stand-ins: compression stays xet-core's automatic LZ4/BG4 choice (BG4 never did worse); our chunker is 20 to 25% slower than xet-core's at about 950 MB/s, enough |
 | 3 | Directory stores, `local`, `[stores]` and `[data]`; `data add` and `get` for files; `ART` fields; `data status` | Integration tests on a scratch vault and two scratch stores |
 | 4 | ssh stores; `data push` and `pull` | EXP C against oppy; integration tests through an ssh that runs locally, as for `--on`. Done: push 2.4 times faster than scp of the same files on a slow link, every file back whole |
-| 5 | `copies`, `data drop` and its lock, `data free` | Tests that a drop below `copies` is refused and that shared xorbs survive a drop |
+| 5 | `copies`, `data drop` and its lock, `data free` | Tests that a drop below `copies` is refused and that shared xorbs survive a drop. Done, with write locks on the other side of the drop lock |
 | 6 | Bundles, `--only` | An imaging session from manthan's PRJ-0005 added as one `ART` |
 | 7 | Run outputs, `data get RUN-…`, `--art` conversion | A run with a checkpoint output reproduced from a fresh clone and a store |
 | 8 | `data check --staged`, the `validate` warning | Tests; the skill and conventions updated |
@@ -252,8 +261,8 @@ then names the same Xet hash and stores nothing twice.
   batched against an estimated 4 hours one ssh each, so every operation is batched. A push
   with nothing to send still costs about six round trips; ssh `ControlMaster` in the
   user's config makes that one.
-- **Drop racing a push.** The lock covers yajna's own writers; a store written by hand
-  is not protected.
+- **Drop racing a push.** Writers and drops exclude each other through `locks/`; a store
+  written by hand, or by a yajna older than 0.28.0, is not protected.
 - **Disk on the laptop.** Materialized files are a second, uncompressed copy beside
   `local`; `data free` and `data drop --from local` are the answer, and `status` shows both.
 

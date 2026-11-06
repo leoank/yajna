@@ -363,6 +363,9 @@ pub struct DataConfig {
     /// `lz4` (the default: Xet's own, readable by Hugging Face) or `zstd` (smaller for
     /// images and tables, readable by yajna only)
     pub compression: Option<String>,
+    /// how many other stores must hold a file whole before `yajna data drop` frees it from
+    /// one (default 1)
+    pub copies: Option<usize>,
 }
 
 /// `[files]` in yajna.toml: what the files viewer of `yajna serve` shows (ADR-0028).

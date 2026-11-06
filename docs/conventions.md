@@ -169,7 +169,13 @@ the stores listed under `[data] push` in `yajna.toml`), `yajna data pull [--from
 the other way without writing files out, and `data add --to <store>` pushes at once; `get`
 pulls what `local` lacks. `[data] compression = "zstd"` in `yajna.toml` stores new chunks
 with zstd: much smaller for images and tables, but readable by yajna only, not by Hugging
-Face (the default, `lz4`, is Xet's own). Folders (bundles), copies and dropping come later
+Face (the default, `lz4`, is Xet's own).
+
+Nothing leaves a store but by `yajna data drop <ART…> --from <store>`, which refuses unless
+`[data] copies` other stores (1 when unset) hold each file whole, and keeps the xorbs other
+files there still use; that is how a laptop frees space once the lab store has the data.
+`yajna data free <ART…>` deletes the written-out copy when it is unchanged and a store holds
+it. `yajna data status` gives each file's copies. Folders (bundles) come later
 (`docs/data.md` section 11).
 
 ## Experiments

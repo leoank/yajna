@@ -516,6 +516,23 @@ pub enum DataAction {
         #[arg(long)]
         from: Option<String>,
     },
+    /// free these artifacts' data from one store, when `[data] copies` other stores (1 by
+    /// default) hold each whole; xorbs other files still use stay
+    Drop {
+        /// ART-… IDs or their paths
+        #[arg(required = true, add = ArgValueCandidates::new(crate::complete::stored_artifacts))]
+        targets: Vec<String>,
+        /// the store to free them from
+        #[arg(long, required = true)]
+        from: String,
+    },
+    /// delete the files written out at these artifacts' paths, when they are unchanged and
+    /// a store holds them whole (`data get` brings them back)
+    Free {
+        /// ART-… IDs or their paths
+        #[arg(required = true, add = ArgValueCandidates::new(crate::complete::stored_artifacts))]
+        targets: Vec<String>,
+    },
     /// for each stored artifact: whether it is here at its path, and which stores hold it
     Status {
         /// ART-… IDs or their paths (default: every stored artifact)
