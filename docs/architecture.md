@@ -377,6 +377,11 @@ content addressing and no way to know which bytes a page refers to once files mo
 | DVC | Designed for ML, nice pipelines, S3 and local backends. | Second metadata layer (`.dvc` files), pipeline features overlap with Nix. |
 | **git-annex (recommended)** | Content-addressed, many remotes at once (LMB storage, NFS, laptop, S3), partial checkouts, in nixpkgs, handles TB scale, works for imaging and checkpoints alike. | Learning curve; symlink mode is awkward on macOS (use unlocked files). |
 
+Superseded on 2026-11-06 by ADR-0035 and `docs/data.md`: large data lives in Xet-format
+stores (content-defined chunks stored once across files and versions, in compressed xorbs),
+the `ART` page recording the file's Xet hash, with stores on local disks or other machines
+over ssh. The recommendation below was the earlier plan.
+
 Recommendation: git-annex under `data/`, with `ART` pages recording the annex key (a content
 hash) in frontmatter. The `ART` page is the stable handle; bytes can move between remotes
 without touching markdown. NFS or LMB storage becomes one annex remote, so the AutoGo-style
@@ -897,7 +902,7 @@ Each phase has a verification that proves it worked before the next starts.
 | 1c. Live files | `yajna serve` (axum, `tools/yajna-serve`), the files viewer: configured roots, lazy live listing, tabs and split views, text, markdown and image viewers, follow mode (`docs/files-viewer.md`). | ank follows an agent's run on a remote machine from the laptop, logs, new files and plots, without opening a shell there (EXP-20261023-kjvkas). |
 | 1d. Review | `REV` pages and `yajna review` over branches, commit ranges, pages, runs, experiments and project phases; threads anchored to lines and re-anchored as the head moves; agents address, a human resolves and `review merge` merges; a diff view in `yajna serve --review`, Neovim (`docs/review.md`). | ank reviews a real agent branch in manthan from the browser and Neovim, the agent addresses the threads from its branch, and `review merge` brings it into main. |
 | 1e. Reproduce | `yajna run shell` (a worktree at the run's commit with its directory overlaid, the project's dev shell, its `env`), `run reproduce`, `run diff`, `--on <host>`; `host`, `env` and `outputs` on runs; commits that resolve, remapped by `graduate` (`docs/reproduce.md`). | RUN-20261023-g78vwy reproduced from a fresh clone gives the manifest hash it recorded; a graduated run opens at its mapped commit. |
-| 2. Data and runs | git-annex under `data/`, `ART` pages, AutoGo-style `experiment` and `autoresearch` commands in `.claude/` that write `EXP`/`RUN` pages and `results.tsv`. | A training sweep and an imaging session are both fully reconstructible from the repo plus annex. An agent runs an overnight autoresearch loop and the notebook has every run. |
+| 2. Data and runs | Xet-format stores and `yajna data` (`docs/data.md`, ADR-0035; was git-annex), `ART` pages, AutoGo-style `experiment` and `autoresearch` commands in `.claude/` that write `EXP`/`RUN` pages and `results.tsv`. | A training sweep and an imaging session are both fully reconstructible from the repo plus a store. An agent runs an overnight autoresearch loop and the notebook has every run. |
 | 2b. Bench planning | `plan-bench` agent command, run sheets, inventory resolution, schedule computation, checklist ticking from the phone with `events.jsonl`. `BLD` pages, `kind: part` materials, and assembly run sheets ride on the same work. | An agent drafts a run sheet for a real experiment, the human approves it with few edits, executes from the phone, and actual timings land on the `RUN` page. |
 | 3. Server and agents | Server as git remote plus HTTP and MCP, `AGS` sessions, agent write rules, review UI for `pending` edits. | An agent reads a project, appends log entries, launches a sweep, and proposes a conclusion that shows up for review. |
 | 4. Apps and monitoring | Native phone capture (voice, photo), streaming event API, sampled-frame bench watcher, then full-duplex copresence. | A bench day is captured from the phone only. The watcher catches a deliberately skipped step and a wrong tube during a test session. |
@@ -909,7 +914,8 @@ good enough to not break it.
 
 Resolved on 2026-10-15 and recorded in `docs/decisions/`:
 
-- Large data storage: deferred to Phase 2, leaning git-annex (ADR-0013).
+- Large data storage: deferred to Phase 2, leaning git-annex (ADR-0013); decided on
+  2026-11-06 for Xet-format stores (ADR-0035, `docs/data.md`).
 - Institutional ELN: a plain one-way exporter, built at the start of Phase 1 (ADR-0010).
 - Authors: one human plus agents (ADR-0008).
 - Dry-lab code: starts under `code/` here, moves to its own repo when it matures (ADR-0009).
@@ -985,7 +991,7 @@ Companion documents: `docs/protocol-framework.md` (protocols as code, 2026-10-15
 `docs/protocol-corpus.md` (published protocols as test fixtures for it, 2026-10-15),
 `docs/microfluidic-compiler.md` (codified protocols compiled to printable chips,
 2026-10-15), `docs/files-viewer.md` (the live files viewer and
-`yajna serve`, 2026-10-23) and the project log under `notes/log/` (timestamped, migrated from `docs/progress.md` on 2026-10-19).
+`yajna serve`, 2026-10-23), `docs/data.md` (Xet-format data stores, 2026-11-06) and the project log under `notes/log/` (timestamped, migrated from `docs/progress.md` on 2026-10-19).
 
 Changes from v0.4 to v0.5:
 

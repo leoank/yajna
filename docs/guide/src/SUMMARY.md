@@ -45,6 +45,7 @@
   - [Code review](design/review.md)
   - [Reproducing runs](design/reproduce.md)
   - [Todos and logs from anywhere](design/from-anywhere.md)
+  - [Data stores](design/data.md)
 - [Conventions](design/conventions.md)
 - [Decision records](design/decisions/README.md)
 <!-- ADRS -->

@@ -19,7 +19,7 @@ one rather than an edit.
 | [0010](ADR-0010-eln-exporter.md) | A plain one-way exporter satisfies the ELN requirement | accepted |
 | [0011](ADR-0011-google-docs-ownership.md) | Personal Google account owns synced docs | accepted |
 | [0012](ADR-0012-voice-and-photo-capture.md) | Server-side transcription; photos are log attachments or artifacts | accepted |
-| [0013](ADR-0013-large-data-storage.md) | Large data storage, leaning git-annex | deferred |
+| [0013](ADR-0013-large-data-storage.md) | Large data storage, leaning git-annex | superseded by 0035 |
 | [0014](ADR-0014-two-stage-protocols.md) | Protocols jotted as text first, codified later | accepted |
 | [0015](ADR-0015-python-for-cli-and-indexer.md) | Python for the CLI and indexer | superseded by 0017 |
 | [0016](ADR-0016-references.md) | References: Zotero for capture, citation keys as identity, notes in the vault | accepted |
@@ -41,3 +41,4 @@ one rather than an edit.
 | [0032](ADR-0032-todos-and-logs-from-anywhere.md) | Todos and log lines from anywhere: a per-user registry (config plus state), `--in <repo>[/<project>]`, `yajna todo` with todo.txt tokens, `-e`, one-file commits into other repos | accepted |
 | [0033](ADR-0033-remote-runs-from-the-laptop.md) | `--on <host>` is driven from the laptop over ssh: the worktree is made there with git, the run's directory streamed over, the new run written here; the other machine needs git and Nix, not yajna (amends 0031) | accepted |
 | [0034](ADR-0034-phases-as-pages.md) | A project's phases are `PHS` pages (status, `since`, `until`, goal, own checklist, notes); the project's *Progress* lists them one line each; `phase start`/`done`/`migrate`, and `review open PHS-…` (amends 0030) | accepted |
+| [0035](ADR-0035-xet-data-store.md) | Large data lives in Xet-format stores (content-defined chunks, keyed BLAKE3, xorbs and shards) through our own crate; the `ART` page is the pointer, stores are directories local or over ssh, shared per machine, append-only with `copies` before a drop (supersedes 0013) | proposed |

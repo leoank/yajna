@@ -1,6 +1,6 @@
 # ADR-0013: Large data storage
 
-Status: deferred
+Status: superseded by ADR-0035
 Date: 2026-10-15
 Phase: 2
 Source: `docs/architecture.md` sections 5.3 and 12
