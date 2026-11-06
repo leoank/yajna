@@ -1,6 +1,7 @@
 # Data: a chunked, deduplicated store for large files
 
-Status: design v0.1, 2026-11-06, nothing built. Companion to `architecture.md` (section 5.3
+Status: design v0.1, 2026-11-06; step 1 built: `tools/yajna-xet`, identical to xet-core
+1.8.0 on every case EXP-20261106-3t3nn2 tried. Companion to `architecture.md` (section 5.3
 and Phase 2 in section 11) and `reproduce.md`, whose run `outputs` it stores. Decision:
 ADR-0035, superseding ADR-0013's leaning towards git-annex.
 

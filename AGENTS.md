@@ -11,10 +11,14 @@ reasoning; check the ADRs before changing anything they cover.
 Everything runs through the flake. Enter with `nix develop` at the root; `yajna` on PATH
 then runs the checked-out source through `cargo run`, so edits take effect immediately.
 
-- `tools/` is a Cargo workspace (`tools/Cargo.toml`, one `Cargo.lock`) with two crates.
+- `tools/` is a Cargo workspace (`tools/Cargo.toml`, one `Cargo.lock`) with three crates.
   `tools/yajna/` is the CLI, which embeds `schema/` and `templates/` (ADR-0017);
   `tools/yajna-serve/` is the library behind `yajna serve`, axum on tokio, which knows HTTP
-  and files but not the notebook (ADR-0027, `docs/files-viewer.md`). `cargo test
+  and files but not the notebook (ADR-0027, `docs/files-viewer.md`); `tools/yajna-xet/` is
+  the Xet format behind the data stores, which knows bytes but not stores or notebooks
+  (ADR-0035, `docs/data.md`), byte-exact with xet-core: its `tests/reference.rs` checks it
+  against Hugging Face's reference files, and a change to it reruns EXP-20261106-3t3nn2's
+  comparison (`notes/runs/RUN-20261106-4a78zt/run.sh`). `cargo test
   --workspace` and `cargo clippy --workspace --all-targets` in `tools/` must pass,
   and `nix build .#yajna` runs the same tests in the sandbox. The integration tests in
   `tools/yajna/tests/cli.rs` drive the binary against scratch vaults; add one for every

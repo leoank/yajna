@@ -1,6 +1,7 @@
-# The Rust workspace: the CLI and the server it links (ADR-0017, ADR-0027).
+# The Rust workspace: the CLI, the server it links (ADR-0017, ADR-0027) and the Xet
+# format for data stores (ADR-0035).
 [workspace]
-members = ["yajna", "yajna-serve"]
+members = ["yajna", "yajna-serve", "yajna-xet"]
 resolver = "2"
 
 [profile.release]

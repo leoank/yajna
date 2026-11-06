@@ -1,0 +1,11 @@
+[package]
+name = "yajna-xet"
+version = "0.1.0"
+edition = "2021"
+description = "The Xet storage format (content-defined chunks, keyed BLAKE3 hashes, xorbs, shards), written from the specification for yajna's data stores (ADR-0035)"
+license = "MIT"
+
+[dependencies]
+blake3 = "1.8"
+lz4_flex = "0.13"
+sha2 = "0.10"
