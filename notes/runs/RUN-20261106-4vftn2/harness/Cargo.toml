@@ -1,0 +1,19 @@
+# EXP-20261106-3t40bg's harness: how much Xet chunk-level dedup saves on each data set of
+# manifest.tsv, and how fast chunking runs, ours against xet-core 1.8.0. Not part of the
+# tools workspace; run.sh builds it.
+[package]
+name = "xet-dedup"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+sha2 = "0.10"
+xet-data = "=1.8.0"
+yajna-xet = { path = "../../../../tools/yajna-xet" }
+zstd = "0.13"
+
+[profile.release]
+debug = false

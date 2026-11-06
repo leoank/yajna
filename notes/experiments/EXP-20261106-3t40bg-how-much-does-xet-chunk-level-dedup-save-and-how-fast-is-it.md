@@ -4,7 +4,7 @@ type: experiment
 schema_version: 1
 title: How much does Xet chunk-level dedup save, and how fast is it, on model checkpoints, imaging stacks, tables and synthetic edits?
 project: PRJ-0001
-status: planned           # planned | active | paused | concluded | abandoned
+status: active            # planned | active | paused | concluded | abandoned
 outcome: null             # null | positive | negative | inconclusive | infra
 influenced_by: []
 created: 2026-11-06
@@ -56,6 +56,7 @@ indexes, and what *Risks* says about imaging.
 ## Runs
 One line per run after its link, what was tried and what it showed; `yajna validate`
 rejects a bare link here. Metric runs also land in results.tsv.
+- [[RUN-20261106-4vftn2]] eight public data sets (1.07 GB): dedup saves where versions share bytes (appended rows 1%, local edits 0.5%, a time-lapse's repeated regions half), nothing for full-training checkpoints or a second sample; LZ4 is far behind zstd on sparse images (32% against 6%); our chunker 20-25% slower than xet-core's at ~950 MB/s
 
 ## Conclusion
 Written once, by a human, when status becomes `concluded`.
