@@ -19,7 +19,7 @@ Keep a project page short however long the project runs: each phase a `PHS` page
 One item per piece of work, ticked when it lands; add items as the plan grows and keep the
 done ones. The project page's *Progress* lists this phase on one line.
 - [x] `PHS` pages, `yajna new phase`, `phase start`, `done` and `migrate`, `review open PHS-…` (ADR-0034, 0.25.0) (since e0fa2ca)
-- [ ] This repo's *Progress* migrated, and its phases' titles, groups and goals settled with ank
+- [x] This repo's *Progress* migrated, and its phases' titles, groups and goals settled with ank ([[REV-20261106-2m58z0]])
 - [ ] rc2s2, manthan's PRJ-0005 and neusis migrated with their authors
 
 ## Notes

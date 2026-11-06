@@ -6,10 +6,10 @@ title: Migrate this repo's Progress to PHS pages and update the skill
 model: "claude-opus-5-5"
 harness: "claude-code"
 started: 2026-11-06T02:23+00:00
-finished: null
+finished: 2026-11-06T03:01+00:00
 created_entities: [REV-20261106-2m58z0, PHS-20261106-2m7gv6, PHS-20261106-2m7hcr, PHS-20261106-2m7hvb, PHS-20261106-2m7hc6, PHS-20261106-2m7jd5, PHS-20261106-2m7je7, PHS-20261106-2m7kb7, PHS-20261106-2m7kgv, PHS-20261106-2m7ka9, PHS-20261106-2m7mkz, PHS-20261106-2m7m9t, PHS-20261106-2m7nh7, PHS-20261106-2m7nrk, PHS-20261106-2m7prv, PHS-20261106-2m7qbd, PHS-20261106-2m7qaq, PHS-20261106-2m7q13, PHS-20261106-2m7r6j, PHS-20261106-2m7rq5]
 edited_entities: [PRJ-0001]
-outcome: pending          # done | failed | aborted | pending
+outcome: done             # done | failed | aborted | pending
 created: 2026-11-06
 author: agent:claude
 ---
@@ -35,3 +35,4 @@ ank's request of 2026-11-06. Under [[REV-20261106-2m58z0]].
   first phase's line is the first item.
 - The skill (*The plan goes in phases*), `/yajna:project` and `/yajna:code-project`, the
   project templates' *Progress* guidance and AGENTS.md describe phases; 0.25.1.
+- Approved by ank in REV-20261106-2m58z0 on 2026-11-06; committed as fe8908f, c75bf30 and 8c657c5.

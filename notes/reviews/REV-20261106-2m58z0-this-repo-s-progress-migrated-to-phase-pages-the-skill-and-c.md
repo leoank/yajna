@@ -12,7 +12,7 @@ head: c75bf30b4781f5bf403aaac9752dc64168fe49b2
 rounds: [7315c58bdc3f10c4245a90594c3d9260fd31c14f]
 paths: []
 about: [PRJ-0001, PHS-20261106-2m7prv]
-status: open              # open | changes_requested | approved | merged | closed
+status: approved          # open | changes_requested | approved | merged | closed
 created: 2026-11-06
 author: agent:claude
 ---
@@ -36,5 +36,6 @@ and `AGENTS.md`.
 stays open: the conventions have not been tried properly on wet-lab projects. The new
 project templates no longer start *Progress* with an empty `- [ ] ` (the test of phases
 checks it).
+- 2026-11-06 03:00 ank approved: Looks good. approved.
 
 ## Threads
