@@ -229,7 +229,7 @@ then names the same Xet hash and stores nothing twice.
 | 1 | `tools/yajna-xet`: the gear table and chunker, the hashes, xorb and shard serialization and parsing, reconstruction from terms | EXP A: byte-identical chunks, hashes, xorbs and shards against xet-core and Hugging Face's reference files |
 | 2 | Measurement, no commands | EXP B: dedup ratio and throughput on checkpoints, imaging stacks, tables and synthetic edits, ours against xet-core. Done on public stand-ins: compression stays xet-core's automatic LZ4/BG4 choice (BG4 never did worse); our chunker is 20 to 25% slower than xet-core's at about 950 MB/s, enough |
 | 3 | Directory stores, `local`, `[stores]` and `[data]`; `data add` and `get` for files; `ART` fields; `data status` | Integration tests on a scratch vault and two scratch stores |
-| 4 | ssh stores; `data push` and `pull` | EXP C against oppy; integration tests through an ssh that runs locally, as for `--on` |
+| 4 | ssh stores; `data push` and `pull` | EXP C against oppy; integration tests through an ssh that runs locally, as for `--on`. Done: push 2.4 times faster than scp of the same files on a slow link, every file back whole |
 | 5 | `copies`, `data drop` and its lock, `data free` | Tests that a drop below `copies` is refused and that shared xorbs survive a drop |
 | 6 | Bundles, `--only` | An imaging session from manthan's PRJ-0005 added as one `ART` |
 | 7 | Run outputs, `data get RUN-…`, `--art` conversion | A run with a checkpoint output reproduced from a fresh clone and a store |
@@ -247,9 +247,11 @@ then names the same Xet hash and stores nothing twice.
   only LZ4 and byte-grouped LZ4 (BG4), so a store of such data is several times larger than
   zstd'd copies would be. Open, for ank: accept it for compatibility, add a zstd scheme of
   our own (a xorb Hugging Face cannot read), or zstd what dedup cannot help.
-- **ssh latency.** One round trip per object is slow; lookups are batched and the
-  connection multiplexed, and EXP C decides whether a remote store's `chunks/` index is
-  queried during `add` or only `local`'s.
+- **ssh latency.** Measured in EXP-20261106-3t4cyw over a slow link (1.1 s a round trip):
+  push and get ran faster than scp of the same files, and 16k existence checks took 1.9 s
+  batched against an estimated 4 hours one ssh each, so every operation is batched. A push
+  with nothing to send still costs about six round trips; ssh `ControlMaster` in the
+  user's config makes that one.
 - **Drop racing a push.** The lock covers yajna's own writers; a store written by hand
   is not protected.
 - **Disk on the laptop.** Materialized files are a second, uncompressed copy beside
