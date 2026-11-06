@@ -24,8 +24,8 @@ One item per piece of work, ticked when it lands; add items as the plan grows an
 done ones. The project page's *Progress* lists this phase on one line.
 - [x] Designed: Xet-format data stores, `docs/data.md` (ADR-0035, supersedes ADR-0013's git-annex)
 - [x] Step 1: `tools/yajna-xet`, the format byte-exact with xet-core ([[EXP-20261106-3t3nn2]], [[RUN-20261106-4a78zt]]: 88 of 88 fields identical) (b9d6117)
-- [ ] Step 2: dedup and speed on checkpoints, imaging, tables and synthetic data ([[EXP-20261106-3t40bg]])
-- [ ] Step 3: directory stores, `local`, `[stores]` and `[data]`; `data add`, `get`, `status`; `ART` fields
+- [x] Step 2: dedup and speed on checkpoints, imaging, tables and synthetic data ([[EXP-20261106-3t40bg]], [[RUN-20261106-4vftn2]], public stand-ins) (ace0dd0)
+- [x] Step 3: directory stores, `local`, `[stores]`; `data add`, `get`, `status`; `ART` fields (ab4d5e3, 0.26.0; `[data]` waits for the steps that use it)
 - [ ] Step 4: ssh stores, `data push` and `pull` ([[EXP-20261106-3t4cyw]])
 - [ ] Step 5: `copies`, `data drop`, `data free`
 - [ ] Step 6: bundles: an instrument folder as one `ART`, `--only`

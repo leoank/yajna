@@ -7,7 +7,7 @@ model: "claude-opus-5-5"
 harness: "claude-code"
 started: 2026-11-06T03:26+00:00
 finished: null
-created_entities: [REV-20261106-3rsd58, EXP-20261106-3t3nn2, EXP-20261106-3t40bg, EXP-20261106-3t4cyw, RUN-20261106-4a78zt]
+created_entities: [REV-20261106-3rsd58, EXP-20261106-3t3nn2, EXP-20261106-3t40bg, EXP-20261106-3t4cyw, RUN-20261106-4a78zt, RUN-20261106-4vftn2]
 edited_entities: [PRJ-0001, PHS-20261106-2m7qaq]
 outcome: pending          # done | failed | aborted | pending
 created: 2026-11-06
@@ -49,3 +49,15 @@ Under [[REV-20261106-3rsd58]].
   the way: the shard layout without lookup tables, the sha256's word order (both from the
   reference files). Proposed conclusion for [[EXP-20261106-3t3nn2]]: H1 holds; the format
   is safe to build the stores on.
+- Steps 2 and 3, at ank's request with no lab data at hand. Step 2: [[RUN-20261106-4vftn2]]
+  measured eight public data sets (564 MB downloaded, pinned by sha256: Pythia-14m
+  checkpoints, BERT-tiny fine-tunes, an OME-TIFF time-lapse and MitoCheck, JHU daily CSVs,
+  a CSV with rows appended, edited and deleted, synthetic edits). Dedup pays where versions
+  share bytes, not for full-training checkpoints or a second sample; LZ4 keeps 32% of
+  sparse images where zstd keeps 6%, an open question for ank in `docs/data.md` *Risks*.
+- Step 3 (ab4d5e3, 0.26.0): `Packer` deduplicates against stored xorbs through lookups of
+  a file's first chunk and the eligible ones; `yajna data add`, `get`, `status`; `local`
+  and `[stores]` in the user config. A smoke test on the downloaded data put 194 MB in a
+  124 MB store and got everything back with matching sha256. Found and fixed on the way
+  (5bee138): every `yajna new artifact` page failed validation, `run: null` and
+  `hash: null` against a schema that wanted strings.

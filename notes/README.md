@@ -141,5 +141,5 @@ rejects a bare link here. Newest last.
 - [[EXP-20261023-kjv5wy]] how large a file the CodeMirror viewer handles, the bundle size and the binary growth; planned; first numbers from step 3: 230 KB gzipped on first load, the binary 11.5 to 13.6 MB, large files still to test
 - [[EXP-20261023-kjvkas]] can ank follow an agent's run on a remote machine from the laptop without a shell; planned, the Phase 1c verification
 - [[EXP-20261106-3t3nn2]] does our own Xet crate match xet-core byte for byte; yes on all 11 cases tried, and on Hugging Face's reference files; conclusion for ank to write
-- [[EXP-20261106-3t40bg]] how much chunk-level dedup saves and how fast it runs on checkpoints, imaging, tables and synthetic edits; planned, step 2 of `docs/data.md`
+- [[EXP-20261106-3t40bg]] how much chunk-level dedup saves; on public stand-ins: much where versions share bytes, nothing for full-training checkpoints or a second sample, and LZ4 far behind zstd on sparse images; lab data still to try
 - [[EXP-20261106-3t4cyw]] is a store on oppy over plain ssh fast enough for add, push, get and dedup lookups; planned, step 4 of `docs/data.md`
