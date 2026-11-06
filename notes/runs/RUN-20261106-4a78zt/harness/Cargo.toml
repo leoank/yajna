@@ -1,0 +1,20 @@
+# EXP-20261106-3t3nn2's harness: the same cases through xet-core 1.8.0 (`xetcore`) and
+# through tools/yajna-xet (`ours`). Not part of the tools workspace; run.sh builds it.
+[package]
+name = "xet-compare"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+blake3 = "1.8"
+bytes = "1"
+sha2 = "0.10"
+xet-core-structures = "=1.8.0"
+xet-data = "=1.8.0"
+yajna-xet = { path = "../../../../tools/yajna-xet" }
+
+[profile.release]
+debug = false

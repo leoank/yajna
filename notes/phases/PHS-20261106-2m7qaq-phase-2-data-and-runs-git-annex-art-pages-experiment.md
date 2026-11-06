@@ -23,7 +23,7 @@ the notebook.
 One item per piece of work, ticked when it lands; add items as the plan grows and keep the
 done ones. The project page's *Progress* lists this phase on one line.
 - [x] Designed: Xet-format data stores, `docs/data.md` (ADR-0035, supersedes ADR-0013's git-annex)
-- [ ] Step 1: `tools/yajna-xet`, the format byte-exact with xet-core ([[EXP-20261106-3t3nn2]])
+- [x] Step 1: `tools/yajna-xet`, the format byte-exact with xet-core ([[EXP-20261106-3t3nn2]], [[RUN-20261106-4a78zt]]: 88 of 88 fields identical) (b9d6117)
 - [ ] Step 2: dedup and speed on checkpoints, imaging, tables and synthetic data ([[EXP-20261106-3t40bg]])
 - [ ] Step 3: directory stores, `local`, `[stores]` and `[data]`; `data add`, `get`, `status`; `ART` fields
 - [ ] Step 4: ssh stores, `data push` and `pull` ([[EXP-20261106-3t4cyw]])

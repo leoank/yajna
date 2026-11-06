@@ -7,7 +7,7 @@ model: "claude-opus-5-5"
 harness: "claude-code"
 started: 2026-11-06T03:26+00:00
 finished: null
-created_entities: [REV-20261106-3rsd58, EXP-20261106-3t3nn2, EXP-20261106-3t40bg, EXP-20261106-3t4cyw]
+created_entities: [REV-20261106-3rsd58, EXP-20261106-3t3nn2, EXP-20261106-3t40bg, EXP-20261106-3t4cyw, RUN-20261106-4a78zt]
 edited_entities: [PRJ-0001, PHS-20261106-2m7qaq]
 outcome: pending          # done | failed | aborted | pending
 created: 2026-11-06
@@ -40,3 +40,12 @@ Under [[REV-20261106-3rsd58]].
   index directories), config in `[stores]` and `[data]`, `data/<ART id>/` as the default
   path, the drop lock, outputs recorded with `xet` beside `sha256` rather than as `ART`
   pages, `data free` for working-tree copies.
+- Step 1, at ank's request after committing the design: `tools/yajna-xet` (b9d6117), written
+  from the spec and xet-core's source (chunker, hashes, compression and its automatic
+  choice, xorbs with and without footer, shards in three layouts, packing files into xorbs,
+  rebuilding them), with Hugging Face's small reference files as test fixtures.
+  [[RUN-20261106-4a78zt]] put 11 cases through xet-core 1.8.0 and through it: 88 of 88
+  fields identical, and our xorb for the reference CSV is byte-identical to theirs. Fixed on
+  the way: the shard layout without lookup tables, the sha256's word order (both from the
+  reference files). Proposed conclusion for [[EXP-20261106-3t3nn2]]: H1 holds; the format
+  is safe to build the stores on.

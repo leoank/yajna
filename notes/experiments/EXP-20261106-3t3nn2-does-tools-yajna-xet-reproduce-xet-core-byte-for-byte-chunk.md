@@ -4,7 +4,7 @@ type: experiment
 schema_version: 1
 title: "Does tools/yajna-xet reproduce xet-core byte for byte: chunk boundaries, chunk, xorb and file hashes, serialized xorbs and shards?"
 project: PRJ-0001
-status: planned           # planned | active | paused | concluded | abandoned
+status: active            # planned | active | paused | concluded | abandoned
 outcome: null             # null | positive | negative | inconclusive | infra
 influenced_by: []
 created: 2026-11-06
@@ -49,6 +49,7 @@ verified format.
 ## Runs
 One line per run after its link, what was tried and what it showed; `yajna validate`
 rejects a bare link here. Metric runs also land in results.tsv.
+- [[RUN-20261106-4a78zt]] 11 cases through xet-core 1.8.0 and our crate at b9d6117, 88 of 88 fields identical (boundaries, chunk/file/xorb hashes, serialized xorbs and shards); our xorb for Hugging Face's reference CSV is byte-identical to theirs, and their four reference shards round-trip byte for byte
 
 ## Conclusion
 Written once, by a human, when status becomes `concluded`.
