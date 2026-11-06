@@ -61,8 +61,10 @@ finish with `yajna validate` there. Do not commit in the lab repo from here.
 This repo is a `project`-shaped yajna repo (`yajna.toml`, namespace `yajna`), so its own
 work is recorded the way it records everyone else's; load the `yajna` skill.
 
-- `notes/README.md` is the project page. Tick its *Progress* items as work lands, add
-  items when the plan grows, and keep *Open questions* and *Lessons* current.
+- `notes/README.md` is the project page. Its *Progress* lists the phases, `PHS` pages in
+  `notes/phases/` (ADR-0034): tick a phase's own items as work lands, add items when the
+  plan grows, `yajna phase start` and `phase done` it, and keep *Open questions* and
+  *Lessons* current.
 - What landed and when goes in the log: `yajna log --author agent:<name> "..."`, one line
   per change, with real times. This replaces the old `docs/progress.md`.
 - Spikes and benchmarks the design rests on are experiments with reproducible runs.

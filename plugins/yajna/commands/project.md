@@ -52,7 +52,7 @@ experiments, open questions) and get an explicit yes before writing anything.
 
 1. `yajna new project "<title>"` (add `--code` when the project will have code; the
    domain-specific commands say when). Fill the page: *Introduction* for a reader who has
-   never heard of it, *Progress* as a checklist of the milestones agreed in the interview, *Current belief* as a paragraph in the author's words, *Open
+   never heard of it, *Progress* as the phases agreed in the interview, each made with `yajna new phase "<title>"` and its page's *Goal* and checklist filled, *Current belief* as a paragraph in the author's words, *Open
    questions* and *What not to try again* as lists (a code project's page has *Design*
    and *Lessons* in place of *Current belief* and *What not to try again*), and the decisions under a heading of their
    own with the reason for each.

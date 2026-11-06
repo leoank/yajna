@@ -158,9 +158,10 @@ Design work is recorded as it is done, not reconstructed afterwards.
   speed. Its predictions say what result changes the plan, and it runs before the step
   that depends on it. Check what an external system really returns before designing a
   round trip on it.
-- **The plan goes on the project page**: a *Progress* item per buildable step, naming the
-  experiment that de-risks it; new questions in *Open questions*; the experiments with
-  their one-line descriptions.
+- **The plan goes in phases**: a `PHS` page per phase (`yajna new phase`), its *Goal*
+  saying what it is for and its *Progress* an item per buildable step, naming the
+  experiment that de-risks it; the project page lists the phases, new questions in *Open
+  questions* and the experiments with their one-line descriptions.
 - **When an approach is dropped**, add a line to *Lessons* (or *What not to try again*):
   what was tried, why it failed, with links. A safety check that trusts a record of an
   action instead of looking at its result is a typical entry.

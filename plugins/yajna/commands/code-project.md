@@ -43,5 +43,6 @@ questions and files a code project needs. Load the `yajna` skill first.
   a question the architecture rests on, run as `compute` runs with a reproducible script.
 - The project page uses the code template (`--code`): *Introduction*, *Progress*, *Open
   questions* (what the spikes must answer), *Design* (linking the design doc and
-  decisions), *Lessons*, *Experiments*. The phases go into *Progress* as
-  its checklist.
+  decisions), *Lessons*, *Experiments*. Each phase is a `PHS` page
+  (`yajna new phase "<title>"`, which lists it on *Progress*), its *Goal* filled and
+  its own *Progress* the steps of that phase.

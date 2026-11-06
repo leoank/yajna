@@ -4421,8 +4421,8 @@ fn review_a_run_an_experiment_a_phase_and_update() {
         .read(&prj)
         .replace("code: null", "code: code/toy-model")
         .replace(
-            "- [ ] \n",
-            "- [x] Setup of the model\n- [ ] Speed it up\n- [ ] Write it down\n",
+            "items with the rest.\n",
+            "items with the rest.\n- [x] Setup of the model\n- [ ] Speed it up\n- [ ] Write it down\n",
         );
     fs::write(&prj, text).unwrap();
     let file: Vec<String> = (1..=12).map(|i| format!("line{i} = {i}")).collect();
@@ -6750,12 +6750,14 @@ fn phases_are_pages_migrated_from_progress_started_finished_and_reviewed() {
     };
     let out = lab.run(&["new", "project", "Toy model"]);
     let prj = lab.path(&out);
+    // a new project's Progress starts empty, ready for its phases
+    assert!(!lab.read(&prj).contains("- [ ]"), "{}", lab.read(&prj));
     git(&root, &["init", "-q", "-b", "main"]);
     let c0 = commit("lab");
     let text = lab.read(&prj).replace(
-        "- [ ] \n",
+        "items with the rest.\n",
         &format!(
-            "- [x] Phase 0: setup of the model\n\
+            "items with the rest.\n- [x] Phase 0: setup of the model\n\
              - [ ] Phase 0 verified: it runs end to end\n\
              - [ ] Speed it up (since {})\n\
              - [ ] Phase 1: steps\n  \
