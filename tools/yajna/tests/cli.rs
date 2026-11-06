@@ -6896,3 +6896,12 @@ fn phases_are_pages_migrated_from_progress_started_finished_and_reviewed() {
     let out = lab.run(&["validate"]);
     assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
 }
+
+#[test]
+fn a_new_artifact_page_validates_with_run_and_hash_still_null() {
+    let lab = vault();
+    assert_eq!(lab.run(&["new", "project", "Toy model"]).code, 0);
+    assert_eq!(lab.run(&["new", "artifact", "Plain", "--project", "PRJ-0001"]).code, 0);
+    let out = lab.run(&["validate"]);
+    assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
+}

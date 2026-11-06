@@ -53,7 +53,10 @@
       "type": "string"
     },
     "run": {
-      "type": "string",
+      "type": [
+        "string",
+        "null"
+      ],
       "pattern": "^([a-z][a-z0-9_-]*/)?RUN-\\d{8}-[0-9a-z]{4}([0-9a-z]{2})?$"
     },
     "project": {
@@ -61,7 +64,10 @@
       "pattern": "^([a-z][a-z0-9_-]*/)?PRJ-\\d{4,}$"
     },
     "hash": {
-      "type": "string",
+      "type": [
+        "string",
+        "null"
+      ],
       "pattern": "^sha256:[0-9a-f]{64}$"
     },
     "store": {
