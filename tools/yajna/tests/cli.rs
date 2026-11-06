@@ -95,6 +95,7 @@ impl Vault {
             // the user registry (ADR-0032) stays out of the real home
             .env("XDG_STATE_HOME", self.root.join(".cache/state"))
             .env("XDG_CONFIG_HOME", self.root.join(".cache/config"))
+            .env("XDG_DATA_HOME", self.root.join(".cache/data"))
             // reproducible date IDs: EXP-20261021-000001 of the counter days is EXP-20261021-000001 here
             .env("YAJNA_FIXED_TIME", "2026-10-21T00:00:00Z");
         for (k, v) in env {
@@ -6904,4 +6905,90 @@ fn a_new_artifact_page_validates_with_run_and_hash_still_null() {
     assert_eq!(lab.run(&["new", "artifact", "Plain", "--project", "PRJ-0001"]).code, 0);
     let out = lab.run(&["validate"]);
     assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
+}
+
+#[test]
+fn data_add_stores_deduplicated_get_rebuilds_and_status_reports_where() {
+    let lab = vault();
+    assert_eq!(lab.run(&["new", "project", "Toy model"]).code, 0);
+    let outside = tempfile::tempdir().unwrap();
+    let mut x = 7u64;
+    let a: Vec<u8> = (0..3_000_000)
+        .map(|_| {
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            (x >> 24) as u8
+        })
+        .collect();
+    let mut b = a.clone();
+    b.splice(1_000_000..1_000_000, *b"a small edit");
+    fs::write(outside.path().join("a.bin"), &a).unwrap();
+    fs::write(outside.path().join("b.bin"), &b).unwrap();
+    let a_path = outside.path().join("a.bin");
+    let out = lab.run(&["data", "add", a_path.to_str().unwrap(), "--project", "PRJ-0001"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let page = lab.read(&lab.path(&out));
+    assert!(page.contains("store: xet"), "{page}");
+    assert!(page.contains("size: 3000000\n"), "{page}");
+    let id = &lab.path(&out).file_name().unwrap().to_string_lossy()[..19].to_string();
+    assert!(page.contains(&format!("path: data/{id}/a.bin")), "{page}");
+    assert!(lab.read(&lab.root.join(".gitignore")).contains("/data/\n"));
+    let store = lab.root.join(".cache/data/yajna/store");
+    assert!(store.join("store.toml").is_file());
+
+    // the second version finds the first's chunks and stores little
+    let b_path = outside.path().join("b.bin");
+    let out = lab.run(&["data", "add", b_path.to_str().unwrap(), "--title", "Edited"]);
+    assert!(out.code != 0 && out.stderr.contains("--project"), "{}", out.stderr);
+    assert_eq!(walk(&store.join("shards")).len(), 1, "nothing stored for a refused add");
+    let out = lab.run(&["data", "add", b_path.to_str().unwrap(), "--title", "Edited", "--project", "PRJ-0001"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(out.stderr.contains("of it already there"), "{}", out.stderr);
+    let xorb_bytes: u64 = walk(&store.join("xorbs")).iter().map(|p| fs::metadata(p).unwrap().len()).sum();
+    assert!(xorb_bytes < 3_000_000 + 500_000, "{xorb_bytes} bytes of xorbs for two versions");
+    let out = lab.run(&["validate"]);
+    assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
+
+    // get writes it where the page says, status says so
+    let out = lab.run(&["data", "status", id]);
+    assert!(out.stdout.contains("missing") && out.stdout.contains("local: whole"), "{}", out.stdout);
+    let out = lab.run(&["data", "get", id]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert_eq!(fs::read(lab.root.join(format!("data/{id}/a.bin"))).unwrap(), a);
+    assert!(lab.run(&["data", "status"]).stdout.contains(&format!("data/{id}/a.bin  3.0 MB  here")));
+    assert!(lab.run(&["data", "get", &format!("data/{id}/a.bin")]).stderr.contains("here already"));
+
+    // another machine: empty `local`, the first one's store configured as `lab`
+    fs::remove_file(lab.root.join(format!("data/{id}/a.bin"))).unwrap();
+    fs::create_dir_all(lab.root.join(".cache/config/yajna")).unwrap();
+    fs::write(lab.root.join(".cache/config/yajna/config.toml"), format!("[stores]\nlab = {:?}\n", store.to_str().unwrap())).unwrap();
+    let other = [("XDG_DATA_HOME", lab.root.join(".cache/other").to_str().unwrap().to_string())];
+    let other: Vec<(&str, &str)> = other.iter().map(|(k, v)| (*k, v.as_str())).collect();
+    let out = lab.run_with(&["data", "status", id], None, &other);
+    assert!(out.stdout.contains("local: -, lab: whole"), "{}", out.stdout);
+    let out = lab.run_with(&["data", "get", id, "--from", "lab"], None, &other);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert_eq!(fs::read(lab.root.join(format!("data/{id}/a.bin"))).unwrap(), a);
+
+    // a damaged xorb is caught, not written out
+    fs::remove_file(lab.root.join(format!("data/{id}/a.bin"))).unwrap();
+    for p in walk(&store.join("xorbs")) {
+        let mut bytes = fs::read(&p).unwrap();
+        bytes[100] ^= 0xff;
+        fs::write(&p, bytes).unwrap();
+    }
+    let out = lab.run(&["data", "get", id]);
+    assert_ne!(out.code, 0);
+    assert!(!lab.root.join(format!("data/{id}/a.bin")).exists());
+
+    // a file inside the repo keeps its path; a folder waits for bundles
+    fs::create_dir_all(lab.root.join("raw")).unwrap();
+    fs::write(lab.root.join("raw/c.bin"), b"inside the repo").unwrap();
+    let out = lab.run(&["data", "add", lab.root.join("raw/c.bin").to_str().unwrap(), "--project", "PRJ-0001"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(lab.read(&lab.path(&out)).contains("path: raw/c.bin"));
+    assert!(lab.read(&lab.root.join(".gitignore")).contains("/raw/c.bin\n"));
+    let out = lab.run(&["data", "add", lab.root.join("raw").to_str().unwrap(), "--project", "PRJ-0001"]);
+    assert!(out.code != 0 && out.stderr.contains("bundles"), "{}", out.stderr);
 }

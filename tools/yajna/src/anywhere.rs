@@ -97,6 +97,17 @@ pub struct UserConfig {
     /// pinned notebooks, `name = "path"` or `name = { path = "..." }`; they win over the state
     #[serde(default)]
     pub repos: BTreeMap<String, UserRepo>,
+    /// data stores on this machine (docs/data.md), `name = "path"` or `name = { path = "..." }`,
+    /// `{ ssh = "host", path = "..." }` for another machine's; `local` is always there
+    #[serde(default)]
+    pub stores: BTreeMap<String, UserStore>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+pub enum UserStore {
+    Path(String),
+    Table { path: String, ssh: Option<String> },
 }
 
 #[derive(Debug, Deserialize)]
@@ -144,7 +155,7 @@ pub fn home() -> PathBuf {
         .unwrap_or_default()
 }
 
-fn xdg(var: &str, fallback: &str) -> PathBuf {
+pub(crate) fn xdg(var: &str, fallback: &str) -> PathBuf {
     std::env::var(var)
         .ok()
         .filter(|s| !s.is_empty())
@@ -168,7 +179,7 @@ fn state_dir() -> PathBuf {
     xdg("XDG_STATE_HOME", ".local/state").join("yajna")
 }
 
-fn user_config() -> Res<UserConfig> {
+pub(crate) fn user_config() -> Res<UserConfig> {
     let path = config_path();
     match fs::read_to_string(&path) {
         Ok(text) => toml::from_str(&text).map_err(|e| format!("{}: {e}", path.display())),

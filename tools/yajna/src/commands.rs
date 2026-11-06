@@ -168,6 +168,7 @@ pub fn run(vault: &Vault, cmd: &Cmd, prompter: &mut dyn Prompter) -> Res<i32> {
         } => crate::parallel::worktree(vault, project, topic, agent, from, path.as_deref()),
         Cmd::Review { action } => crate::review::run(vault, action),
         Cmd::Phase { action } => crate::phase::run(vault, action, prompter),
+        Cmd::Data { action } => crate::data::run(vault, action),
         Cmd::Index => crate::query::cmd_index(vault),
         Cmd::Show { id } => crate::query::cmd_show(
             vault,

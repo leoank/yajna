@@ -208,6 +208,11 @@ pub fn phases_to_finish() -> Vec<CompletionCandidate> {
     })
 }
 
+/// `data get` and `status`: artifacts kept in a data store.
+pub fn stored_artifacts() -> Vec<CompletionCandidate> {
+    candidates(&["artifact"], &|_, p| p.field("store") == Some("xet"))
+}
+
 /// Thread commands: reviews still open.
 pub fn open_reviews() -> Vec<CompletionCandidate> {
     candidates(&["review"], &|_, p| {

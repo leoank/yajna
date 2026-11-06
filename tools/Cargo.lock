@@ -2432,7 +2432,7 @@ checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
 
 [[package]]
 name = "yajna"
-version = "0.25.1"
+version = "0.26.0"
 dependencies = [
  "clap",
  "clap_complete",
@@ -2456,6 +2456,7 @@ dependencies = [
  "toml",
  "ureq",
  "yajna-serve",
+ "yajna-xet",
 ]
 
 [[package]]

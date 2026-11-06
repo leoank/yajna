@@ -1,7 +1,10 @@
 # Data: a chunked, deduplicated store for large files
 
-Status: design v0.1, 2026-11-06; step 1 built: `tools/yajna-xet`, identical to xet-core
-1.8.0 on every case EXP-20261106-3t3nn2 tried. Companion to `architecture.md` (section 5.3
+Status: design v0.1, 2026-11-06. Built: step 1, `tools/yajna-xet`, identical to xet-core
+1.8.0 on every case EXP-20261106-3t3nn2 tried; step 2, EXP-20261106-3t40bg's measurements
+on public stand-ins; step 3, directory stores and `yajna data add`, `get` and `status`
+(0.26.0), without `[data]` (its keys come with the steps that use them) and without the
+spec's fragmentation rule (section 3). Companion to `architecture.md` (section 5.3
 and Phase 2 in section 11) and `reproduce.md`, whose run `outputs` it stores. Decision:
 ADR-0035, superseding ADR-0013's leaning towards git-annex.
 
@@ -66,7 +69,8 @@ Implemented exactly; the numbers below are the spec's (`XET-BLAKE3-GEARHASH-LZ4`
   (each xorb's chunk hashes and offsets, the dedup index).
 - **Deduplication.** Within an add, against the stores named for it (section 5), with the
   spec's rule against fragmentation: a match is used only in runs of at least 8 chunks or
-  1 MiB.
+  1 MiB. Not built yet: step 3 uses every match, which can leave a much-edited file in
+  many short terms, slower to read but not wrong.
 
 The sha256 of every file is computed alongside and kept on the `ART` page, so
 `run reproduce`, `validate` and anything outside yajna can check a file without Xet.
@@ -124,7 +128,7 @@ slow this is for dedup lookups and many small objects is measured first (EXP C).
 
 | Command | What it does |
 |---|---|
-| `yajna data add <path>… [--project PRJ] [--run RUN] [--title …] [--to <store>]` | Chunks each file (a directory becomes one bundle, section 6), deduplicates against `local` and the `--to` store, writes new xorbs and a shard to `local` (and pushes to `--to`), and creates an `ART` page with `store: xet`, the Xet hash, sha256, size and the path to materialize at |
+| `yajna data add <path>… [--project PRJ] [--run RUN] [--title …] [--to <store>]` (`--to` with push, step 4) | Chunks each file (a directory becomes one bundle, section 6), deduplicates against `local` and the `--to` store, writes new xorbs and a shard to `local` (and pushes to `--to`), and creates an `ART` page with `store: xet`, the Xet hash, sha256, size and the path to materialize at |
 | `yajna data get <ART…\|RUN…\|path…> [--from <store>] [--only <glob>]` | Rebuilds each file from the first store that has its recipe (`--from` to choose), verifies the Xet hash and sha256, and writes it at the page's path; existing identical files are left alone |
 | `yajna data push [--to <store>] [ART…]` | Copies to a store the xorbs, shards and index entries it lacks for the given pages (default: every `ART` and stored output of the notebook) |
 | `yajna data pull [--from <store>] [ART…]` | The same into `local`, without materializing |
@@ -215,7 +219,7 @@ then names the same Xet hash and stores nothing twice.
 | Step | Build | Verify |
 |---|---|---|
 | 1 | `tools/yajna-xet`: the gear table and chunker, the hashes, xorb and shard serialization and parsing, reconstruction from terms | EXP A: byte-identical chunks, hashes, xorbs and shards against xet-core and Hugging Face's reference files |
-| 2 | Measurement, no commands | EXP B: dedup ratio and throughput on checkpoints, imaging stacks, tables and synthetic edits, ours against xet-core |
+| 2 | Measurement, no commands | EXP B: dedup ratio and throughput on checkpoints, imaging stacks, tables and synthetic edits, ours against xet-core. Done on public stand-ins: compression stays xet-core's automatic LZ4/BG4 choice (BG4 never did worse); our chunker is 20 to 25% slower than xet-core's at about 950 MB/s, enough |
 | 3 | Directory stores, `local`, `[stores]` and `[data]`; `data add` and `get` for files; `ART` fields; `data status` | Integration tests on a scratch vault and two scratch stores |
 | 4 | ssh stores; `data push` and `pull` | EXP C against oppy; integration tests through an ssh that runs locally, as for `--on` |
 | 5 | `copies`, `data drop` and its lock, `data free` | Tests that a drop below `copies` is refused and that shared xorbs survive a drop |
@@ -227,9 +231,14 @@ then names the same Xet hash and stores nothing twice.
 
 - **Byte-exactness drifts.** The spec is versioned and xet-core changes often; the
   vectors from EXP A become tests, and the spec version is recorded in `store.toml`.
-- **Raw images may not dedup.** Content-defined chunking finds repeated bytes; two
-  imaging sessions of different samples share little. The gain there is a safe copy and
-  partial fetches, not space; EXP B says how much.
+- **Raw images may not dedup, and LZ4 compresses them poorly.** Measured in
+  EXP-20261106-3t40bg on public stand-ins: a second sample shares nothing with the first,
+  frames of one time-lapse share half their chunks, and successive checkpoints of full
+  training share nothing. On sparse microscopy images zstd of each whole file keeps 6% of
+  the bytes and Xet's LZ4 xorbs 32%; on daily CSVs 35% against 64%. The Xet format allows
+  only LZ4 and byte-grouped LZ4 (BG4), so a store of such data is several times larger than
+  zstd'd copies would be. Open, for ank: accept it for compatibility, add a zstd scheme of
+  our own (a xorb Hugging Face cannot read), or zstd what dedup cannot help.
 - **ssh latency.** One round trip per object is slow; lookups are batched and the
   connection multiplexed, and EXP C decides whether a remote store's `chunks/` index is
   queried during `add` or only `local`'s.

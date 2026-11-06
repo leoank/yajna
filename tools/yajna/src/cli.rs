@@ -325,6 +325,11 @@ pub enum Cmd {
         #[command(subcommand)]
         action: PhaseAction,
     },
+    /// large files in Xet-format stores, named by ART pages (docs/data.md, ADR-0035)
+    Data {
+        #[command(subcommand)]
+        action: DataAction,
+    },
     /// rebuild the SQLite index (a cache outside the repo; queries rebuild it when stale)
     Index,
     /// one entity: frontmatter, links out, links in, log mentions
@@ -457,6 +462,43 @@ pub enum ImportSource {
         /// list what would be imported and stop
         #[arg(long)]
         dry_run: bool,
+    },
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum DataAction {
+    /// store files in this machine's `local` store, deduplicated against what it holds,
+    /// and write an ART page for each naming it by its Xet hash; the file stays where it is
+    Add {
+        /// files (folders come with bundles)
+        #[arg(required = true)]
+        paths: Vec<PathBuf>,
+        #[arg(long, add = ArgValueCandidates::new(crate::complete::projects))]
+        project: Option<String>,
+        /// the run that produced them
+        #[arg(long, add = ArgValueCandidates::new(crate::complete::runs))]
+        run: Option<String>,
+        /// the page's title (default: the file's name; one file only)
+        #[arg(long)]
+        title: Option<String>,
+        #[arg(long)]
+        author: Option<String>,
+    },
+    /// write each page's file at its `path` from the first store that holds it whole,
+    /// checked against its hashes
+    Get {
+        /// ART-… IDs or their paths (default: every stored artifact)
+        #[arg(add = ArgValueCandidates::new(crate::complete::stored_artifacts))]
+        targets: Vec<String>,
+        /// the store to read from (default: `local`, then the others by name)
+        #[arg(long)]
+        from: Option<String>,
+    },
+    /// for each stored artifact: whether it is here at its path, and which stores hold it
+    Status {
+        /// ART-… IDs or their paths (default: every stored artifact)
+        #[arg(add = ArgValueCandidates::new(crate::complete::stored_artifacts))]
+        targets: Vec<String>,
     },
 }
 

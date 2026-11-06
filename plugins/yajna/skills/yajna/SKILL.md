@@ -124,8 +124,10 @@ one-line instructions under headings such as *Runs*.
   `git worktree add ../fix-REV-… -b fix/REV-… <head>`, commit the fixes there, address
   the threads with those commits, and tell the human to run `yajna review update REV-…
   --to fix/REV-…` (the next round is then the fixes alone) and to merge the branch.
-- **Large files never go into git history.** Results that matter become `ART` pages;
-  ask before adding anything over a few MB.
+- **Large files never go into git history.** Results that matter become `ART` pages:
+  `yajna data add <file> --project PRJ-… [--run RUN-…]` stores the file in this machine's
+  data store and writes the page; `yajna data get ART-…` brings it back. Ask before adding
+  anything over a few MB to git itself.
 - **Never delete.** Mark `status: abandoned` or `aborted`; git history is the record.
 
 ## Working in a worktree

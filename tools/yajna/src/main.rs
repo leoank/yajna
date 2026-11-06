@@ -4,6 +4,7 @@ mod cli;
 mod commands;
 mod complete;
 mod conventions;
+mod data;
 mod export;
 mod import;
 mod index;

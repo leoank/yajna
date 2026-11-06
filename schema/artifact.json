@@ -74,8 +74,14 @@
       "enum": [
         "git",
         "path",
-        "annex"
+        "annex",
+        "xet"
       ]
+    },
+    "xet": {
+      "description": "With store: xet, the file's Xet hash: its name in every data store (docs/data.md)",
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
     },
     "path": {
       "type": "string"

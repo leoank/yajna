@@ -144,6 +144,28 @@ checkout, the log file is committed there on its own (section *From anywhere*).
 Photos and audio that document the process go in `notes/log/<year>/<date>/` and are embedded
 from the entry. If they are a result of a run they become an `ART` page instead (ADR-0012).
 
+## Large files
+
+Files too large for git go into a data store (`docs/data.md`, ADR-0035): `yajna data add
+<file>… --project PRJ-0001 [--run RUN-…]` cuts each into content-defined chunks, stores the
+chunks this machine's `local` store does not hold yet, and writes an `ART` page with
+`store: xet`, `xet` (the file's Xet hash, its name in every store), `hash` (sha256), `size`
+and `path`: where `yajna data get` writes it, `data/<ART id>/<name>` for a file from outside
+the repo, its own path for one inside; either is added to `.gitignore`. The file itself is
+left where it was. `yajna data get [ART-…|path…] [--from <store>]` rebuilds files from the
+first store that holds them whole and checks both hashes; `yajna data status` says, per
+page, whether the file is here and which stores hold it. `local` is
+`~/.local/share/yajna/store`; other stores on the machine are named in
+`~/.config/yajna/config.toml`:
+
+```toml
+[stores]
+lab = "/mnt/lab-storage/yajna-store"
+```
+
+Folders (bundles), other machines' stores over ssh, copies and dropping come later
+(`docs/data.md` section 11).
+
 ## Experiments
 
 Fill `Question`, `Hypothesis and predictions`, `Plan` and `Success criteria` before the

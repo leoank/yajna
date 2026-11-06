@@ -1,6 +1,6 @@
 [package]
 name = "yajna"
-version = "0.25.1"
+version = "0.26.0"
 edition = "2021"
 description = "The yajna lab-notebook command: new, log, todo, review, result, tasks, ref, validate, index, timeline, tree, site, serve"
 license = "MIT"
@@ -31,6 +31,7 @@ shlex = "1"
 toml = "1"
 ureq = { version = "3", default-features = false, features = ["rustls"] }
 yajna-serve = { path = "../yajna-serve" }
+yajna-xet = { path = "../yajna-xet" }
 clap_complete = { version = "4", features = ["unstable-dynamic"] }
 
 [dev-dependencies]

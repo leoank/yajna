@@ -1,6 +1,5 @@
-//! Files in and out: packing files' chunks into xorbs with their recipes, and rebuilding a
-//! file from its recipe. Deduplication comes with the stores (`docs/data.md` step 3); here
-//! every chunk is stored.
+//! Files in and out: packing files' chunks into xorbs with their recipes, deduplicating
+//! against chunks already stored, and rebuilding a file from its recipe.
 
 use std::collections::HashMap;
 use std::io::{Read, Write};
@@ -9,21 +8,39 @@ use sha2::{Digest, Sha256};
 
 use crate::chunk::Chunker;
 use crate::hash::{chunk_hash, file_hash, verification_hash, Hash};
-use crate::shard::{FileInfo, Term};
+use crate::shard::{FileInfo, Term, XorbInfo};
 use crate::xorb::{self, Compression, Xorb, MAX_XORB_BYTES, MAX_XORB_CHUNKS};
 use crate::Error;
 
-/// A term before its xorb is closed: chunks `start..end` of the `seq`-th xorb.
+/// Where a chunk is: in a stored xorb, or in the `seq`-th xorb this packer makes.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Place {
+    Stored(Hash),
+    New(usize),
+}
+
+/// A term before its xorb is closed: chunks `start..end` of a xorb.
 struct Pending {
-    seq: usize,
+    place: Place,
     start: u32,
     end: u32,
     bytes: u32,
     hashes: Vec<Hash>,
 }
 
+/// What `add` learned: the chunks of the file, how many were stored already.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Added {
+    pub hash: Hash,
+    pub bytes: u64,
+    /// bytes found in xorbs already stored, or earlier in this packer
+    pub deduped: u64,
+}
+
 /// Packs files into xorbs: a xorb closes when the next chunk would take it past 64 MiB or
-/// 8192 chunks, and is handed to `sink` then; files share xorbs.
+/// 8192 chunks, and is handed to `sink` then; files share xorbs. A chunk already known
+/// (from `learn`, from the lookups `add_with` makes, or packed earlier) is referenced, not
+/// stored again.
 pub struct Packer<'s> {
     compression: Compression,
     sink: Box<dyn FnMut(Xorb) -> Result<(), Error> + 's>,
@@ -32,6 +49,7 @@ pub struct Packer<'s> {
     file_starts: Vec<usize>,
     seq: usize,
     closed: HashMap<usize, Hash>,
+    known: HashMap<Hash, (Place, u32)>,
     files: Vec<(Hash, Vec<Pending>, Hash)>,
 }
 
@@ -45,12 +63,28 @@ impl<'s> Packer<'s> {
             file_starts: Vec::new(),
             seq: 0,
             closed: HashMap::new(),
+            known: HashMap::new(),
             files: Vec::new(),
         }
     }
 
-    /// Chunk and pack one file; its recipe comes from `finish`.
-    pub fn add(&mut self, mut reader: impl Read) -> Result<Hash, Error> {
+    /// Make the chunks of a stored xorb available for deduplication.
+    pub fn learn(&mut self, xorb: &XorbInfo) {
+        for (i, c) in xorb.chunks.iter().enumerate() {
+            self.known.entry(c.hash).or_insert((Place::Stored(xorb.hash), i as u32));
+        }
+    }
+
+    /// Chunk and pack one file, storing every chunk not already known; its recipe comes
+    /// from `finish`.
+    pub fn add(&mut self, reader: impl Read) -> Result<Added, Error> {
+        self.add_with(reader, &mut |_| Ok(Vec::new()))
+    }
+
+    /// As `add`, asking `lookup` about the chunks a store indexes (a file's first chunk and
+    /// those eligible for global dedup) when they are not known yet; the xorbs it returns
+    /// are learned.
+    pub fn add_with(&mut self, mut reader: impl Read, lookup: &mut dyn FnMut(&Hash) -> Result<Vec<XorbInfo>, Error>) -> Result<Added, Error> {
         let mut chunker = Chunker::new();
         let mut sha = Sha256::new();
         let mut leaves = Vec::new();
@@ -58,6 +92,7 @@ impl<'s> Packer<'s> {
         let mut buf = vec![0u8; 1 << 20];
         let mut carry: Vec<u8> = Vec::new();
         let mut first = true;
+        let mut deduped = 0u64;
         loop {
             let n = reader.read(&mut buf)?;
             let data = &buf[..n];
@@ -70,7 +105,21 @@ impl<'s> Packer<'s> {
                 let mut chunk = carry.drain(..from_carry).collect::<Vec<u8>>();
                 chunk.extend_from_slice(&data[at..at + len - from_carry]);
                 at += len - from_carry;
-                self.put(chunk, &mut pending, &mut leaves, &mut first)?;
+                let h = chunk_hash(&chunk);
+                leaves.push((h, chunk.len() as u64));
+                if (first || h.global_dedup_eligible()) && !self.known.contains_key(&h) {
+                    for x in lookup(&h)? {
+                        self.learn(&x);
+                    }
+                }
+                let is_first = std::mem::take(&mut first);
+                match self.known.get(&h).copied() {
+                    Some((place, index)) => {
+                        deduped += chunk.len() as u64;
+                        extend(&mut pending, place, index, h, chunk.len() as u32);
+                    }
+                    None => self.put(chunk, h, &mut pending, is_first)?,
+                }
             }
             carry.extend_from_slice(&data[at..]);
             if n == 0 {
@@ -78,30 +127,22 @@ impl<'s> Packer<'s> {
             }
         }
         let hash = file_hash(&leaves);
+        let bytes = leaves.iter().map(|l| l.1).sum();
         self.files.push((hash, pending, Hash::from_sha256(sha.finalize().into())));
-        Ok(hash)
+        Ok(Added { hash, bytes, deduped })
     }
 
-    fn put(&mut self, chunk: Vec<u8>, pending: &mut Vec<Pending>, leaves: &mut Vec<(Hash, u64)>, first: &mut bool) -> Result<(), Error> {
+    fn put(&mut self, chunk: Vec<u8>, h: Hash, pending: &mut Vec<Pending>, is_first: bool) -> Result<(), Error> {
         if self.bytes + chunk.len() > MAX_XORB_BYTES || self.chunks.len() + 1 > MAX_XORB_CHUNKS {
             self.close()?;
         }
         // compression is chosen afresh where a xorb or a file starts
-        let is_first = std::mem::take(first);
         if self.chunks.is_empty() || is_first {
             self.file_starts.push(self.chunks.len());
         }
-        let h = chunk_hash(&chunk);
-        leaves.push((h, chunk.len() as u64));
         let index = self.chunks.len() as u32;
-        match pending.last_mut() {
-            Some(p) if p.seq == self.seq && p.end == index => {
-                p.end += 1;
-                p.bytes += chunk.len() as u32;
-                p.hashes.push(h);
-            }
-            _ => pending.push(Pending { seq: self.seq, start: index, end: index + 1, bytes: chunk.len() as u32, hashes: vec![h] }),
-        }
+        self.known.insert(h, (Place::New(self.seq), index));
+        extend(pending, Place::New(self.seq), index, h, chunk.len() as u32);
         self.bytes += chunk.len();
         self.chunks.push(chunk);
         Ok(())
@@ -133,11 +174,31 @@ impl<'s> Packer<'s> {
                 let verification = pending.iter().map(|p| verification_hash(&p.hashes)).collect();
                 let terms = pending
                     .into_iter()
-                    .map(|p| Term { xorb: closed[&p.seq], unpacked_bytes: p.bytes, start: p.start, end: p.end })
+                    .map(|p| Term {
+                        xorb: match p.place {
+                            Place::Stored(h) => h,
+                            Place::New(seq) => closed[&seq],
+                        },
+                        unpacked_bytes: p.bytes,
+                        start: p.start,
+                        end: p.end,
+                    })
                     .collect();
                 FileInfo { hash, terms, verification: Some(verification), sha256: Some(sha) }
             })
             .collect())
+    }
+}
+
+/// Add a chunk to a recipe: the last term grows when the chunk follows it in the same xorb.
+fn extend(pending: &mut Vec<Pending>, place: Place, index: u32, h: Hash, len: u32) {
+    match pending.last_mut() {
+        Some(p) if p.place == place && p.end == index => {
+            p.end += 1;
+            p.bytes += len;
+            p.hashes.push(h);
+        }
+        _ => pending.push(Pending { place, start: index, end: index + 1, bytes: len, hashes: vec![h] }),
     }
 }
 
@@ -234,6 +295,61 @@ mod tests {
     }
 
     #[test]
+    fn a_second_version_stores_only_its_changed_chunks() {
+        let a = bytes(5_000_000, 5);
+        let mut b = a.clone();
+        b.splice(2_000_000..2_000_000, *b"an insertion");
+        let mut xorbs = HashMap::new();
+        let mut infos = Vec::new();
+        let mut p = Packer::new(Compression::Auto, |x: Xorb| {
+            infos.push(XorbInfo::from_footer(&x.footer, x.bytes.len() as u32));
+            xorbs.insert(x.footer.hash, x.bytes);
+            Ok(())
+        });
+        assert_eq!(p.add(&a[..]).unwrap().deduped, 0);
+        let first = p.finish().unwrap().remove(0);
+        // a later session knows the stored xorbs only through its lookups
+        let mut new_bytes = 0;
+        let mut lookups = 0;
+        let mut p = Packer::new(Compression::Auto, |x: Xorb| {
+            new_bytes += x.footer.unpacked_ends.last().copied().unwrap_or(0);
+            xorbs.insert(x.footer.hash, x.bytes);
+            Ok(())
+        });
+        let added = p
+            .add_with(&b[..], &mut |_| {
+                lookups += 1;
+                Ok(infos.clone())
+            })
+            .unwrap();
+        let second = p.finish().unwrap().remove(0);
+        assert_eq!(lookups, 1, "the first chunk's lookup brings the whole stored xorb");
+        assert!(new_bytes < 300_000, "{new_bytes} bytes stored again");
+        assert_eq!(added.deduped + new_bytes as u64, b.len() as u64);
+        for (f, data) in [(&first, &a), (&second, &b)] {
+            let mut out = Vec::new();
+            reconstruct(f, |h| Ok(xorbs[h].clone()), &mut out).unwrap();
+            assert!(&out == data);
+        }
+    }
+
+    #[test]
+    fn repeated_chunks_in_one_file_are_stored_once() {
+        let mut xorbs = HashMap::new();
+        let mut p = Packer::new(Compression::Auto, |x: Xorb| {
+            xorbs.insert(x.footer.hash, x.bytes);
+            Ok(())
+        });
+        let zeros = vec![0u8; 10 * crate::chunk::MAX_CHUNK_SIZE];
+        let added = p.add(&zeros[..]).unwrap();
+        assert_eq!(added.deduped, 9 * crate::chunk::MAX_CHUNK_SIZE as u64);
+        let f = p.finish().unwrap().remove(0);
+        let mut out = Vec::new();
+        reconstruct(&f, |h| Ok(xorbs[h].clone()), &mut out).unwrap();
+        assert!(out == zeros);
+    }
+
+    #[test]
     fn a_large_file_spans_xorbs_and_the_chunking_matches_one_pass() {
         let data = bytes(70 * 1024 * 1024, 3);
         let mut xorbs = HashMap::new();
@@ -242,7 +358,7 @@ mod tests {
             xorbs.insert(x.footer.hash, x.bytes);
             Ok(())
         });
-        let hash = p.add(&data[..]).unwrap();
+        let hash = p.add(&data[..]).unwrap().hash;
         let files = p.finish().unwrap();
         assert_eq!(xorbs.len(), 2);
         assert_eq!(files[0].terms.len(), 2);
