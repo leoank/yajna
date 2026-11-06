@@ -68,3 +68,9 @@ Under [[REV-20261106-3rsd58]].
   `tar` there, batched), `data push`, `pull`, `add --to`, `get` pulling into local first,
   `[data] push`. [[RUN-20261106-5z2189]] against oppy, over a slow link: push 2.4 times
   faster than scp of the same files, all 59 back whole, 16k existence checks in 1.9 s.
+- Step 5 at ank's request (0.28.0): `[data] copies` (1 when unset), `data drop` (refuses
+  below copies, keeps xorbs other files use, removes index entries first), a drop lock that
+  `add`, `push` and `pull` respect through write locks of their own and that waits for them
+  in turn, `data free` (only unchanged files a store holds), copies in `data status`. The
+  skill says never to drop or free unasked. Tested on directory stores and over the
+  stand-in ssh.

@@ -8,8 +8,8 @@ target:
   kind: range               # branch | range | page | run | experiment | phase
   ref: HEAD..HEAD
 base: 0bf15b5e2e8c0f9accc1e8d32ecbb0761c977e1c
-head: 01fbc42e9c37785d6316588332b0496f2f971bb5
-rounds: [0bf15b5e2e8c0f9accc1e8d32ecbb0761c977e1c, 5098d2d62d9b3a41f45c8cba665ad901044098d0, ab4d5e3f4d10362d2be39335f03e0a16bd6ea9eb]
+head: 7ecad1587ad26aa21cddab339d238e67cda0454e
+rounds: [0bf15b5e2e8c0f9accc1e8d32ecbb0761c977e1c, 5098d2d62d9b3a41f45c8cba665ad901044098d0, ab4d5e3f4d10362d2be39335f03e0a16bd6ea9eb, 01fbc42e9c37785d6316588332b0496f2f971bb5]
 paths: []
 about: [PRJ-0001, PHS-20261106-2m7qaq, EXP-20261106-3t3nn2, EXP-20261106-3t40bg, EXP-20261106-3t4cyw, RUN-20261106-4a78zt, RUN-20261106-4vftn2, RUN-20261106-5g081k, RUN-20261106-5z2189]
 status: open              # open | changes_requested | approved | merged | closed
@@ -63,5 +63,13 @@ files taught us. `docs/data.md` and AGENTS.md name the crate.
   `push`, `pull`, `get` pulling into local; the test
   `data_push_and_pull_reach_a_store_over_ssh_and_zstd_is_an_option`.
 - [[RUN-20261106-5z2189]] against oppy, and what it decided in `docs/data.md` (01fbc42).
+
+**Step 5, added after you asked for it:** `data drop`, `data free` and `[data] copies`
+(0.28.0). Look at `drop_files`, `lock_write` and `lock_drop` in `tools/yajna/src/data.rs`,
+the test `data_drop_keeps_copies_and_shared_xorbs_and_free_keeps_what_no_store_holds`, and
+`docs/data.md` section 7. Settled by me: `copies` defaults to 1 (2 would forbid a laptop with
+one lab store from ever dropping); writers hold `locks/write-*` so a drop cannot delete a
+xorb an add has just deduplicated against, which closes the race section 12 listed; a write
+lock older than six hours counts as dead; `free` requires the file unchanged.
 
 ## Threads

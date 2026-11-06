@@ -27,7 +27,7 @@ done ones. The project page's *Progress* lists this phase on one line.
 - [x] Step 2: dedup and speed on checkpoints, imaging, tables and synthetic data ([[EXP-20261106-3t40bg]], [[RUN-20261106-4vftn2]], public stand-ins) (ace0dd0)
 - [x] Step 3: directory stores, `local`, `[stores]`; `data add`, `get`, `status`; `ART` fields (ab4d5e3, 0.26.0; `[data]` waits for the steps that use it)
 - [x] Step 4: ssh stores, `data push` and `pull` ([[EXP-20261106-3t4cyw]], [[RUN-20261106-5z2189]]); zstd per chunk as an option ([[RUN-20261106-5g081k]]) (1e6f864, 0.27.0)
-- [ ] Step 5: `copies`, `data drop`, `data free`
+- [x] Step 5: `copies`, `data drop`, `data free` (0.28.0)
 - [ ] Step 6: bundles: an instrument folder as one `ART`, `--only`
 - [ ] Step 7: run outputs in the store, `data get RUN-…`, `--art` conversion of `store: path` pages
 - [ ] Step 8: `data check --staged` and the `validate` warning for large tracked files
