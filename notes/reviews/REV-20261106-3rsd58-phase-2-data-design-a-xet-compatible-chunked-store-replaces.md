@@ -6,10 +6,10 @@ title: "Phase 2 data design: a Xet-compatible chunked store replaces git-annex"
 project: null
 target:
   kind: range               # branch | range | page | run | experiment | phase
-  ref: HEAD..9d9df5d79b1cd8007c0b0c122ebc59d8c5a3062c
+  ref: HEAD..0acf574d50e9064248648e34267aaee90da098f6
 base: 0bf15b5e2e8c0f9accc1e8d32ecbb0761c977e1c
-head: 9d9df5d79b1cd8007c0b0c122ebc59d8c5a3062c
-rounds: [0bf15b5e2e8c0f9accc1e8d32ecbb0761c977e1c, 5098d2d62d9b3a41f45c8cba665ad901044098d0, ab4d5e3f4d10362d2be39335f03e0a16bd6ea9eb, 01fbc42e9c37785d6316588332b0496f2f971bb5, 7ecad1587ad26aa21cddab339d238e67cda0454e, 26488ad2f506b546aa06141de4319a75324000ed]
+head: 0acf574d50e9064248648e34267aaee90da098f6
+rounds: [0bf15b5e2e8c0f9accc1e8d32ecbb0761c977e1c, 5098d2d62d9b3a41f45c8cba665ad901044098d0, ab4d5e3f4d10362d2be39335f03e0a16bd6ea9eb, 01fbc42e9c37785d6316588332b0496f2f971bb5, 7ecad1587ad26aa21cddab339d238e67cda0454e, 26488ad2f506b546aa06141de4319a75324000ed, 9d9df5d79b1cd8007c0b0c122ebc59d8c5a3062c]
 paths: []
 about: [PRJ-0001, PHS-20261106-2m7qaq, EXP-20261106-3t3nn2, EXP-20261106-3t40bg, EXP-20261106-3t4cyw, RUN-20261106-4a78zt, RUN-20261106-4vftn2, RUN-20261106-5g081k, RUN-20261106-5z2189]
 status: open              # open | changes_requested | approved | merged | closed
@@ -100,5 +100,17 @@ location as an argument when the recorded path is not on this machine (manthan's
 says "(on oppy)"), refuses a file whose sha256 differs, and replaces a folder's old hash
 with the manifest's; `data check` without `--staged` lists everything in git; yajna
 installs no hook.
+
+**A walkthrough to test by hand, and the fix it found:** `docs/data-walkthrough.sh` sets up
+a scratch notebook, two machines (own `local` stores, caches and `$WALK_MODELS`) and a lab
+store under `~/.cache/yajna-data-walkthrough`, and `docs/data-walkthrough.md` says what to
+run and what to look for, steps 3 to 8 on machine A and a fresh clone on machine B (0acf574);
+every expected output was checked on a fresh run, and the optional ssh section against
+oppy. It showed that `data get RUN-…` wrote a `$VAR/…` output under the run's recorded value
+of the variable, machine A's path on machine B. Fixed in 4b13e9e (0.30.1): this machine's
+`$VAR` when set, the recorded one only otherwise; look at `stored` in
+`tools/yajna/src/data.rs` and the new assertion in the step 7 test. Its *Things to look at*
+lists what I left as is: `drop` frees a xorb only when nothing uses it (the open
+fragmentation rule), `status` does not hash, `get --only` fetches whole xorbs.
 
 ## Threads
