@@ -37,7 +37,7 @@
         # Neovim plugin (phase 0c): follow [[ID]] links and @citekeys, find entities, backlinks.
         yajna-nvim = pkgs.vimUtils.buildVimPlugin {
           pname = "yajna.nvim";
-          version = "0.1.0";
+          version = "0.2.0";
           src = ./tools/yajna.nvim;
         };
         # The user guide for GitHub Pages: mdBook, with the CLI reference, page types and
@@ -101,10 +101,11 @@
         '';
         # the guide builds and every relative link in it resolves
         docs = self.packages.${pkgs.system}.docs;
+        # the review tests drive the CLI and git against a scratch repo
         yajna-nvim = pkgs.runCommand "yajna-nvim-tests" {
-          nativeBuildInputs = [ pkgs.neovim ];
+          nativeBuildInputs = [ pkgs.neovim pkgs.git self.packages.${pkgs.system}.yajna ];
         } ''
-          export HOME=$TMPDIR
+          export HOME=$TMPDIR YAJNA_BIN=yajna
           nvim --headless -u NONE --cmd "set rtp^=${self}/tools/yajna.nvim" -l ${self}/tools/yajna.nvim/tests/run.lua
           touch $out
         '';

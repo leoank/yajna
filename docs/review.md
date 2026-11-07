@@ -1,6 +1,6 @@
 # Code review in the notebook
 
-Status: design v0.8, 2026-10-30; steps 1 to 4 built (yajna 0.10.0 to 0.13.0), `about` and approval records in 0.14.0, rounds and fixes in 0.16.0, the viewer's author in 0.20.0. Companion to `architecture.md` (section 11,
+Status: design v0.8, 2026-10-30; steps 1 to 4 built (yajna 0.10.0 to 0.13.0), `about` and approval records in 0.14.0, rounds and fixes in 0.16.0, the viewer's author in 0.20.0, Neovim (step 5) in yajna.nvim 0.2.0. Companion to `architecture.md` (section 11,
 Phase 1d) and `reproduce.md`, which shares its commit resolution. Decision: ADR-0030.
 
 ## 1. What it is for
@@ -323,6 +323,17 @@ yajna phase start PRJ-… "<item>"
 as extmarks at their anchors and in the quickfix list. `:YajnaComment` on a visual
 selection, `:YajnaReply`, `:YajnaResolve` call the CLI. Reading needs no binary, as for
 links (Phase 0c); writing does.
+
+As built (yajna.nvim 0.2.0): `:YajnaReview` opens an overview tab (summary, changed files,
+threads) rather than the files at once; `<CR>` opens one file's diff in its own tab, base
+left and head right, as read-only `yajna://<commit><root>//<path>` buffers read with
+`git show`. Threads are signs on their lines with the replies as virtual lines under them,
+and in the quickfix list. `:YajnaComment` (a range, or the cursor line; general from the
+overview), `:YajnaReply` and `:YajnaResolve` (the thread under the cursor, or `T<n>`) call
+`yajna review …` with `--author` set as the files viewer chooses it, and refuse comments on
+the base side. A file at a fix's commit takes comments with `--commit`. Not built: address,
+reopen, approve and request-changes (the CLI does them), and the *Since round N* and fix
+groups of the served view.
 
 ### 7.4 By hand
 

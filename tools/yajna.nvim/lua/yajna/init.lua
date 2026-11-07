@@ -43,7 +43,7 @@ function M.root(buf)
   return found and vim.fs.dirname(found) or nil
 end
 
---- The parts of yajna.toml the plugin needs: vault, shape, bibliography, [repos] paths.
+--- The parts of yajna.toml the plugin needs: vault, shape, bibliography, author, [repos] paths.
 function M.config(root)
   local cfg = { vault = "notes", shape = "lab", bibliography = nil, repos = {} }
   local lines = read_lines(root .. "/yajna.toml") or {}
@@ -55,7 +55,7 @@ function M.config(root)
       section = sec
     elseif section == nil then
       local k, v = line:match('^([%w_]+)%s*=%s*"(.-)"$')
-      if k == "vault" or k == "shape" or k == "bibliography" then
+      if k == "vault" or k == "shape" or k == "bibliography" or k == "author" then
         cfg[k] = v
       end
     elseif section == "repos" then

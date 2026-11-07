@@ -113,6 +113,10 @@ local qf = vim.fn.getqflist()
 eq(#qf, 1, "one backlink")
 check(qf[1] and vim.fs.basename(vim.fn.bufname(qf[1].bufnr)) == "EXP-0001-timing.md", "backlink from the experiment")
 
+-- reviews (needs git and yajna)
+local here = vim.fs.dirname(debug.getinfo(1, "S").source:sub(2))
+dofile(here .. "/review.lua")({ check = check, eq = eq, write = write, tmp = tmp })
+
 if failures > 0 then
   io.stderr:write(failures .. " failure(s)\n")
   os.exit(1)
