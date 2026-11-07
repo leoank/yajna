@@ -270,8 +270,9 @@ then names the same Xet hash and stores nothing twice.
 As built (0.30.0): outputs below `outputs_min` are recorded as before; the stored ones
 inside the repo are added to `.gitignore`. A run with stored outputs is a target of every
 `data` command (`push`, `pull`, `status`, `drop`, `free`, and `push` with no target
-includes it); an output under `$VAR/…` is written where the run's recorded `env` puts
-that variable. `data get RUN-…` never writes over an output that exists and differs, since
+includes it); an output under `$VAR/…` is written under this machine's `$VAR` when it is
+set and under the run's recorded value otherwise (0.30.1: before, always the recorded one,
+which on another machine named a path that machine may not have). `data get RUN-…` never writes over an output that exists and differs, since
 it may be a later run's result. `run reproduce` records the new run's outputs without
 storing them; `run record --outputs` on it stores them.
 

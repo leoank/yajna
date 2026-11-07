@@ -7384,6 +7384,11 @@ fn run_outputs_over_outputs_min_are_stored_data_get_run_brings_them_back_and_add
     let out = v.run(&["data", "get", &id]);
     assert!(out.code != 0 && out.stderr.contains("checkpoint.bin differs from the recorded output; kept"), "{}", out.stderr);
     assert_eq!(fs::read(dir.join("checkpoint.bin")).unwrap(), b"a later run's");
+    // on a machine whose VPI_DATA is elsewhere, the output goes there, not to the recorded path
+    let elsewhere = empty();
+    let out = v.run_with(&["data", "get", &id], None, &[("VPI_DATA", elsewhere.root.to_str().unwrap())]);
+    assert!(out.stderr.contains(&format!("{id}: 1 output(s) from local")), "{}", out.stderr);
+    assert_eq!(fs::read(elsewhere.root.join("model.bin")).unwrap(), model);
 
     // result --outputs stores too
     let out = v.run_with(

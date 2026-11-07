@@ -1137,9 +1137,12 @@ fn stored(page: &Page) -> Res<Stored> {
             .map(|(name, sha256, xet)| {
                 let path = match name.strip_prefix('$').and_then(|r| r.split_once('/')) {
                     None => name.clone(),
+                    // this machine's value first: the recorded one is where the run's
+                    // machine kept it, which may not exist here
                     Some((var, rest)) => {
-                        let base = env.iter().find(|(k, _)| k == var).map(|(_, v)| v.clone());
-                        format!("{}/{rest}", base.ok_or_else(|| format!("{id}: output {name}: ${var} is not in its env"))?)
+                        let here = std::env::var(var).ok().filter(|v| !v.is_empty());
+                        let base = here.or_else(|| env.iter().find(|(k, _)| k == var).map(|(_, v)| v.clone()));
+                        format!("{}/{rest}", base.ok_or_else(|| format!("{id}: output {name}: ${var} is neither set here nor in its env"))?)
                     }
                 };
                 Ok(Member { path, name, xet, sha256, size: None })
