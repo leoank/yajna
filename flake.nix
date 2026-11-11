@@ -17,6 +17,10 @@
           # the workspace: the CLI and the yajna-serve library it links (ADR-0027)
           sourceRoot = "source/tools";
           cargoLock.lockFile = ./tools/Cargo.lock;
+          # nixpkgs' cargo hook makes libsqlite3-sys and zstd-sys link the system libraries
+          # through pkg-config instead of their bundled copies, so the build provides them
+          nativeBuildInputs = [ pkgs.pkg-config ];
+          buildInputs = [ pkgs.sqlite pkgs.zstd ];
           # the graduate test drives `git subtree`; the sync test renders citations with pandoc
           nativeCheckInputs = [ pkgs.git pkgs.pandoc ];
         };
