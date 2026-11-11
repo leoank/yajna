@@ -15,7 +15,7 @@ path = "notes"
 
 [[files.roots]]
 name = "code"
-path = "code"
+path = "."
 
 [[files.roots]]
 name = "scratch"
