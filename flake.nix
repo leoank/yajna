@@ -23,6 +23,8 @@
           buildInputs = [ pkgs.sqlite pkgs.zstd ];
           # the graduate test drives `git subtree`; the sync test renders citations with pandoc
           nativeCheckInputs = [ pkgs.git pkgs.pandoc ];
+          # lib.getExe (home-manager, nix run) warns without it
+          meta.mainProgram = "yajna";
         };
         default = yajna;
         # The files viewer's frontend (ADR-0029): type-checked and bundled with tsc and
