@@ -97,6 +97,8 @@ code.
   ranges the same way.
 - Adding todos and log lines to any notebook from any shell is designed in
   `docs/from-anywhere.md` (ADR-0032).
+- One per-user `yajna serve` on a unix socket serves every registered notebook; the
+  phone reaches it through saarthi's hub, not a server of yajna's own (ADR-0036).
 - Future work is designed in `docs/protocol-framework.md`, `docs/protocol-corpus.md` and
   `docs/microfluidic-compiler.md`.
 

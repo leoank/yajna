@@ -7,6 +7,7 @@ timezone = "Europe/London"
 bibliography = "notes/references/library.bib"
 
 [repos]             # namespaces this repo links to, e.g. rc2s2 = "github:leoank/rc2s2"
+saarthi = { url = "github:leoank/saarthi", path = "../../../hub/leoank/saarthi" }
 
 [files]
 [[files.roots]]

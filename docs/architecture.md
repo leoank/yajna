@@ -835,6 +835,13 @@ Server responsibilities, deliberately small:
   private by default, reachable over the Tailscale network the `neusis` tailscale module
   already manages.
 
+Since ADR-0036 (2026-11-14) the phone does not talk to a central server: each machine runs
+one per-user `yajna serve` on a unix socket for every notebook in its registry, and
+saarthi (`github:leoank/saarthi`, its ADR-0052 and ADR-0053) relays the owner's app to it
+through its hub, over the link its node daemon already holds. The service appends and
+creates pages, never commits in a working tree, and allocates counter IDs under a lock the
+CLI takes too. Whether a central git remote is still wanted is left to phase 3.
+
 Phone capture has a zero-build first version: `neusis` already ships a `claude-remote`
 module that keeps a `claude --remote-control` session alive for the iOS app. Pointed at this
 repo, the Claude app on the phone can run `yajna log "..."` and commit. A native capture app
@@ -904,8 +911,8 @@ Each phase has a verification that proves it worked before the next starts.
 | 1e. Reproduce | `yajna run shell` (a worktree at the run's commit with its directory overlaid, the project's dev shell, its `env`), `run reproduce`, `run diff`, `--on <host>`; `host`, `env` and `outputs` on runs; commits that resolve, remapped by `graduate` (`docs/reproduce.md`). | RUN-20261023-g78vwy reproduced from a fresh clone gives the manifest hash it recorded; a graduated run opens at its mapped commit. |
 | 2. Data and runs | Xet-format stores and `yajna data` (`docs/data.md`, ADR-0035; was git-annex), `ART` pages, AutoGo-style `experiment` and `autoresearch` commands in `.claude/` that write `EXP`/`RUN` pages and `results.tsv`. | A training sweep and an imaging session are both fully reconstructible from the repo plus a store. An agent runs an overnight autoresearch loop and the notebook has every run. |
 | 2b. Bench planning | `plan-bench` agent command, run sheets, inventory resolution, schedule computation, checklist ticking from the phone with `events.jsonl`. `BLD` pages, `kind: part` materials, and assembly run sheets ride on the same work. | An agent drafts a run sheet for a real experiment, the human approves it with few edits, executes from the phone, and actual timings land on the `RUN` page. |
-| 3. Server and agents | Server as git remote plus HTTP and MCP, `AGS` sessions, agent write rules, review UI for `pending` edits. | An agent reads a project, appends log entries, launches a sweep, and proposes a conclusion that shows up for review. |
-| 4. Apps and monitoring | Native phone capture (voice, photo), streaming event API, sampled-frame bench watcher, then full-duplex copresence. | A bench day is captured from the phone only. The watcher catches a deliberately skipped step and a wrong tube during a test session. |
+| 3. Server and agents | The per-user service on a unix socket, reached through saarthi (ADR-0036), its HTTP write API, MCP, a git remote if still wanted, `AGS` sessions, agent write rules, review UI for `pending` edits. | An agent reads a project, appends log entries, launches a sweep, and proposes a conclusion that shows up for review. |
+| 4. Apps and monitoring | Native phone capture (voice, photo) in saarthi's app (ADR-0036), streaming event API, sampled-frame bench watcher, then full-duplex copresence. | A bench day is captured from the phone only. The watcher catches a deliberately skipped step and a wrong tube during a test session. |
 
 Phase 0 should take days, not weeks. The value is in the habit, and the tooling only has to be
 good enough to not break it.

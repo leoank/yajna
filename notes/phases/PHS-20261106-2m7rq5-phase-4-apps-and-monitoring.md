@@ -22,3 +22,6 @@ done ones. The project page's *Progress* lists this phase on one line.
 
 ## Notes
 Migrated from PRJ-0001's Progress by `yajna phase migrate`.
+
+The phone app is saarthi's (ADR-0036; saarthi's ADR-0053): capture, voice and bench
+screens are built there against this repo's API.
