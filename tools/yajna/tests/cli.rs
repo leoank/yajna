@@ -94,6 +94,7 @@ impl Vault {
             .env("YAJNA_CACHE", self.root.join(".cache"))
             // the user registry (ADR-0032) stays out of the real home
             .env("XDG_STATE_HOME", self.root.join(".cache/state"))
+            .env("YAJNA_REMEMBER_TEMP", "1")
             .env("XDG_CONFIG_HOME", self.root.join(".cache/config"))
             .env("XDG_DATA_HOME", self.root.join(".cache/data"))
             // reproducible date IDs: EXP-20261021-000001 of the counter days is EXP-20261021-000001 here
@@ -3363,6 +3364,9 @@ fn spawn_server(v: &Vault, args: &[&str]) -> (std::process::Child, String) {
         .args(["--port", "0", "--out"])
         .arg(v.root.join("site"))
         .env("YAJNA_CACHE", v.root.join(".cache"))
+        // the user registry (ADR-0032) stays out of the real home
+        .env("XDG_STATE_HOME", v.root.join(".cache/state"))
+        .env("XDG_CONFIG_HOME", v.root.join(".cache/config"))
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()
@@ -3991,6 +3995,7 @@ impl Home {
             .env_remove("YAJNA_AUTHOR")
             .env("YAJNA_CACHE", self.dir.path().join("cache"))
             .env("XDG_STATE_HOME", self.dir.path().join("state"))
+            .env("YAJNA_REMEMBER_TEMP", "1")
             .env("XDG_CONFIG_HOME", self.dir.path().join("config"))
             .env("GIT_AUTHOR_NAME", "t")
             .env("GIT_AUTHOR_EMAIL", "t@example.com")
@@ -4009,6 +4014,31 @@ impl Home {
             stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
         }
     }
+}
+
+#[test]
+fn a_notebook_in_the_temporary_directory_is_not_remembered() {
+    let home = Home::new();
+    let lab = vault();
+    let state = home.dir.path().join("state/yajna/repos.toml");
+    // as a user runs yajna: no opt-in, the notebook under the temporary directory
+    let mut cmd_env = Command::new(env!("CARGO_BIN_EXE_yajna"));
+    let out = cmd_env
+        .current_dir(&lab.root)
+        .arg("validate")
+        .env("YAJNA_CACHE", home.dir.path().join("cache"))
+        .env("XDG_STATE_HOME", home.dir.path().join("state"))
+        .env("XDG_CONFIG_HOME", home.dir.path().join("config"))
+        .env_remove("YAJNA_REMEMBER_TEMP")
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let recorded = fs::read_to_string(&state).unwrap_or_default();
+    assert!(!recorded.contains("[repos."), "{recorded}");
+    // with the opt-in, as the other tests run, it is
+    let out = home.run(&lab.root, &["validate"], &[]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(fs::read_to_string(&state).unwrap().contains("[repos."));
 }
 
 #[test]
@@ -4847,6 +4877,7 @@ fn serve_review_writes_only_with_the_token_and_never_over_a_change() {
         .args(["serve", "--review", "--port", "0"])
         .env("YAJNA_CACHE", root.join(".cache"))
         .env("XDG_STATE_HOME", root.join(".cache/state"))
+        .env("YAJNA_REMEMBER_TEMP", "1")
         .env("XDG_CONFIG_HOME", root.join(".cache/config"))
         // started from an agent's shell: the viewer still writes as the notebook's author
         .env("YAJNA_AUTHOR", "agent:claude")
@@ -5619,6 +5650,7 @@ fn runs_record_commit_host_env_and_outputs_and_their_commit_resolves() {
         .args(["--root", clone.to_str().unwrap(), "validate"])
         .env("YAJNA_CACHE", shallow.root.join(".cache"))
         .env("XDG_STATE_HOME", shallow.root.join(".cache/state"))
+        .env("YAJNA_REMEMBER_TEMP", "1")
         .env("XDG_CONFIG_HOME", shallow.root.join(".cache/config"))
         .output()
         .unwrap();
@@ -6428,6 +6460,7 @@ fn ids_complete_from_the_notebook_with_their_titles() {
             .env("_CLAP_IFS", "\n")
             .env("_CLAP_COMPLETE_INDEX", index)
             .env("XDG_STATE_HOME", v.root.join(".cache/state"))
+            .env("YAJNA_REMEMBER_TEMP", "1")
             .arg("--")
             .args(words)
             .output()
@@ -6678,6 +6711,7 @@ fn each_command_completes_what_it_can_act_on_and_the_picker_searches_all() {
             .env("_CLAP_IFS", "\n")
             .env("_CLAP_COMPLETE_INDEX", index)
             .env("XDG_STATE_HOME", v.root.join(".cache/state"))
+            .env("YAJNA_REMEMBER_TEMP", "1")
             .arg("--")
             .args(words)
             .output()

@@ -103,7 +103,7 @@ checked, because they differ per machine.
 | `~/.cache/yajna/` | The index, the site and ELN bundles. Safe to delete. |
 | `~/.config/yajna/gdoc.json` | The Google refresh token from `yajna sync login`. A secret. |
 | `~/.config/yajna/config.toml` | The user config, below. Never written by yajna. |
-| `~/.local/state/yajna/repos.toml` | Every notebook yajna has run in, by namespace and main checkout. `yajna repos forget <name>` drops one. |
+| `~/.local/state/yajna/repos.toml` | Every notebook yajna has run in, by namespace and main checkout, except those under the temporary directory. `yajna repos forget <name>` drops one. |
 | `~/.local/state/yajna/tasks.json` | The last `yajna tasks` listing, for `yajna todo done <n>`. |
 
 ## The user config

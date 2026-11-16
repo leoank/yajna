@@ -209,12 +209,34 @@ fn is_notebook(p: &Path) -> bool {
     p.join(CONFIG_NAME).is_file()
 }
 
+/// Under the system's temporary directory: a scratch notebook (a test's, an agent's), which
+/// is not remembered; its entry would outlive it, and `yajna serve --socket` would offer it
+/// as a notebook meanwhile. `YAJNA_REMEMBER_TEMP` set lets yajna's own tests, whose
+/// notebooks are all temporary, check the registry.
+fn temporary(root: &Path) -> bool {
+    if std::env::var_os("YAJNA_REMEMBER_TEMP").is_some() {
+        return false;
+    }
+    let real = |p: &Path| p.canonicalize().unwrap_or_else(|_| p.to_path_buf());
+    let root = real(root);
+    [
+        std::env::temp_dir(),
+        PathBuf::from("/tmp"),
+        PathBuf::from("/var/folders"),
+    ]
+    .iter()
+    .any(|t| root.starts_with(real(t)))
+}
+
 /// Record the notebook yajna runs in under its namespace, by its main checkout. Nothing is
 /// written when it is known already; failures (a read-only home, a sandbox) are ignored.
 pub fn remember(vault: &Vault) {
     let Some(ns) = vault.cfg.namespace.clone() else {
         return;
     };
+    if temporary(&vault.root) {
+        return;
+    }
     let mut state = load_state();
     let known = |s: &Seen, p: &Path| {
         std::iter::once(&s.path)

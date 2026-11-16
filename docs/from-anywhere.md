@@ -60,7 +60,9 @@ seen = 2026-10-27T09:12:00Z
   Everything yajna learns goes in the state file.
 - **A repo is recorded** under its `namespace` from `yajna.toml` whenever yajna runs in it
   (written only for a new or moved path), and by `init` and `graduate` (both repos). A
-  worktree records the lab's main checkout, not itself.
+  worktree records the lab's main checkout, not itself. A notebook under the system's
+  temporary directory (a test's, an agent's scratch) is never recorded: its entry would
+  outlive it, and `yajna serve --socket` would offer it (ADR-0036).
 - **A recorded path that no longer has a `yajna.toml`** is dropped at lookup, with a note.
   Two paths with one namespace (two clones): the config's wins, else the one recorded
   first, and the other is named in a note until one is pinned. (v0.1 said the one seen
