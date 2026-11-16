@@ -401,6 +401,10 @@ pub enum Cmd {
         /// let the files viewer write to reviews: prints a URL carrying a one-time token
         #[arg(long)]
         review: bool,
+        /// serve every notebook in the registry on this unix socket instead, each under
+        /// /n/<namespace>/, for this user only (ADR-0036); runs outside any notebook
+        #[arg(long, value_name = "PATH", conflicts_with_all = ["out", "port", "open", "hosts", "review"])]
+        socket: Option<PathBuf>,
     },
     /// move a code-bearing project into its own repo, notebook included (ADR-0018)
     Graduate {

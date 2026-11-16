@@ -6,7 +6,7 @@ import './viewers/markdown';
 import './viewers/image';
 import './viewers/binary';
 import './viewers/review';
-import { api, setToken } from './api';
+import { api, setLocal, setToken } from './api';
 import { ReviewList } from './reviews';
 import { Tree } from './tree';
 import { Workbench, parseHash, type Status } from './workbench';
@@ -22,6 +22,7 @@ async function main() {
     history.replaceState(null, '', location.pathname + location.hash);
   }
   const [info, roots] = await Promise.all([api.info(), api.roots()]);
+  setLocal(info.local === true);
   document.title = `${info.notebook} · files`;
   document.querySelector('#notebook')!.textContent = info.notebook;
   document.querySelector('#version')!.textContent = `yajna ${info.version}`;

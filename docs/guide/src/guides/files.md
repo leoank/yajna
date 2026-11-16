@@ -71,3 +71,18 @@ run.
 
 Pages on the site link the paths in their frontmatter (a run's `script`, a project's
 `code`, an artifact's `path`) into the viewer when the site is served.
+
+## Every notebook on one socket
+
+`yajna serve --socket <path>` serves every notebook in your registry (the ones pinned in
+`~/.config/yajna/config.toml` and the ones yajna has run in, as `yajna repos` lists them)
+from one server on a unix socket that only you can open, for another program to reach
+them: saarthi's node relays your phone to it (ADR-0036). `GET /api/notebooks` lists them,
+and each is served under `/n/<namespace>/` as `yajna serve` serves one at `/`: its site,
+`files/` and the API. It runs from any directory, needs no `--review` token for writing to
+reviews, since the socket is yours alone, and renders every site in the background from the
+start. A notebook that cannot be opened is left out with a note.
+
+```console
+$ yajna serve --socket ~/.local/state/yajna/serve.sock
+```

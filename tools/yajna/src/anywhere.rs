@@ -334,6 +334,17 @@ fn known(cfg: &UserConfig) -> Vec<Known> {
     out
 }
 
+/// Every notebook the registry knows that is still there, by namespace: the config's, then
+/// the recorded ones the config does not name (ADR-0032), for `yajna serve --socket`.
+pub fn registered() -> Res<Vec<(String, PathBuf)>> {
+    let cfg = user_config()?;
+    Ok(known(&cfg)
+        .into_iter()
+        .filter(|k| is_notebook(&k.path))
+        .map(|k| (k.name, k.path))
+        .collect())
+}
+
 /// Where the notebook called `name` is: the config's entry, else the recorded one. A
 /// recorded path without a notebook is forgotten.
 fn lookup(name: &str, cfg: &UserConfig) -> Option<PathBuf> {

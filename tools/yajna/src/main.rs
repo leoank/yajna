@@ -65,6 +65,17 @@ fn run() -> Result<i32, String> {
         }
         return anywhere::run(root.as_deref(), cmd, prompter.as_mut());
     }
+    // serving every registered notebook needs none around it (ADR-0036)
+    if let Some(cli::Cmd::Serve {
+        socket: Some(socket),
+        ..
+    }) = &args.cmd
+    {
+        if let Some(vault) = root.clone().and_then(|r| Vault::open(r).ok()) {
+            anywhere::remember(&vault);
+        }
+        return serve::cmd_serve_socket(socket);
+    }
     let root = match root {
         Some(r) => r,
         None => find_root()?,

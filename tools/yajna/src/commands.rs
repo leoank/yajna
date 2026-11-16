@@ -191,11 +191,16 @@ pub fn run(vault: &Vault, cmd: &Cmd, prompter: &mut dyn Prompter) -> Res<i32> {
             out, port, open, ..
         } => crate::serve::cmd_serve(vault, out.as_deref(), *port, *open, &[], false),
         Cmd::Serve {
+            socket: Some(socket),
+            ..
+        } => crate::serve::cmd_serve_socket(socket),
+        Cmd::Serve {
             out,
             port,
             open,
             hosts,
             review,
+            socket: None,
         } => crate::serve::cmd_serve(vault, out.as_deref(), *port, *open, hosts, *review),
         Cmd::Skill { print } => cmd_skill(vault, *print),
         Cmd::Graduate {

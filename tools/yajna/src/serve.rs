@@ -105,17 +105,10 @@ fn token() -> Res<String> {
     Ok(bytes.iter().map(|b| format!("{b:02x}")).collect())
 }
 
-pub fn cmd_serve(
-    vault: &Vault,
-    out: Option<&Path>,
-    port: u16,
-    open: bool,
-    hosts: &[String],
-    review: bool,
-) -> Res<i32> {
-    let out = out
-        .map(Path::to_path_buf)
-        .unwrap_or_else(|| site_dir(vault));
+/// What the server needs for one notebook: its site rendered into `out` (at once with
+/// `eager`, else on the first page request), the files viewer's roots, the preview's
+/// renderer and its reviews.
+fn notebook_config(vault: &Vault, out: PathBuf, eager: bool) -> Res<yajna_serve::Config> {
     let roots = roots(vault)?;
     let links = Arc::new(FileLinks {
         repo: vault.root.clone(),
@@ -124,19 +117,20 @@ pub fn cmd_serve(
             .map(|r| (r.name.clone(), r.path.clone()))
             .collect(),
     });
-    let n = render(vault, &out, &links)?;
-    println!("{}: {n} page(s)", out.display());
-    for r in &roots {
-        let missing = if r.path.is_dir() { "" } else { " (missing)" };
-        println!("files: {} -> {}{missing}", r.name, r.path.display());
-    }
     // the callback outlives this borrow of the vault, so it opens its own
     let owned = Vault::open(vault.root.clone())?;
-    let rendered = Mutex::new(vault_mtime(&owned));
+    let rendered = if eager {
+        let n = render(vault, &out, &links)?;
+        println!("{}: {n} page(s)", out.display());
+        vault_mtime(&owned)
+    } else {
+        std::time::SystemTime::UNIX_EPOCH
+    };
+    let rendered = Mutex::new(rendered);
     let site = out.clone();
     let refresh = move || -> Result<(), String> {
         let mut at = rendered.lock().map_err(|e| e.to_string())?;
-        if vault_mtime(&owned) > *at {
+        if vault_mtime(&owned) > *at || !site.join("index.html").is_file() {
             render(&owned, &site, &links)?;
             *at = vault_mtime(&owned);
         }
@@ -154,18 +148,39 @@ pub fn cmd_serve(
             title: page.field("title").map(str::to_string),
         })
     };
-    let cfg = yajna_serve::Config {
+    Ok(yajna_serve::Config {
         site: out,
         refresh: Arc::new(refresh),
-        port,
-        hosts: hosts.to_vec(),
+        port: 0,
+        hosts: Vec::new(),
         roots,
         render: Arc::new(render),
         notebook: vault.namespace().unwrap_or("notebook").to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
         reviews: Some(Arc::new(crate::review::Served::new(vault.root.clone()))),
-        token: review.then(token).transpose()?,
-    };
+        token: None,
+    })
+}
+
+pub fn cmd_serve(
+    vault: &Vault,
+    out: Option<&Path>,
+    port: u16,
+    open: bool,
+    hosts: &[String],
+    review: bool,
+) -> Res<i32> {
+    let out = out
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| site_dir(vault));
+    let mut cfg = notebook_config(vault, out, true)?;
+    for r in &cfg.roots {
+        let missing = if r.path.is_dir() { "" } else { " (missing)" };
+        println!("files: {} -> {}{missing}", r.name, r.path.display());
+    }
+    cfg.port = port;
+    cfg.hosts = hosts.to_vec();
+    cfg.token = review.then(token).transpose()?;
     let written = cfg.token.clone();
     yajna_serve::run(cfg, |addr| {
         let url = format!("http://{addr}/");
@@ -181,6 +196,50 @@ pub fn cmd_serve(
                 None => open_url(&url),
             }
         }
+    })?;
+    Ok(0)
+}
+
+/// `yajna serve --socket` (ADR-0036): every notebook in the registry on one unix socket,
+/// each under `/n/<namespace>/`. A notebook that cannot be opened is left out with a note,
+/// so one broken checkout does not keep the others from being served.
+pub fn cmd_serve_socket(socket: &Path) -> Res<i32> {
+    let socket = PathBuf::from(expand(&socket.to_string_lossy()));
+    let mut notebooks = Vec::new();
+    for (namespace, path) in crate::anywhere::registered()? {
+        let opened = Vault::open(path.clone()).and_then(|v| {
+            let cfg = notebook_config(&v, site_dir(&v), false)?;
+            Ok((v.shape().to_string(), cfg))
+        });
+        match opened {
+            Ok((shape, config)) => {
+                println!("notebook: {namespace} -> {}", path.display());
+                notebooks.push(yajna_serve::Notebook {
+                    namespace,
+                    path,
+                    shape,
+                    config,
+                });
+            }
+            Err(e) => eprintln!("note: {namespace} left out ({}): {e}", path.display()),
+        }
+    }
+    // Each site is rendered on its first page request at the latest; rendering them all in
+    // the background from the start keeps a large notebook's first page from waiting on it.
+    let warm: Vec<(String, yajna_serve::Refresh)> = notebooks
+        .iter()
+        .map(|n| (n.namespace.clone(), n.config.refresh.clone()))
+        .collect();
+    let at = socket.clone();
+    yajna_serve::run_socket(&socket, notebooks, move || {
+        println!("serving on {} (Ctrl-C stops)", at.display());
+        std::thread::spawn(move || {
+            for (namespace, refresh) in warm {
+                if let Err(e) = refresh() {
+                    eprintln!("note: {namespace}: rendering its site failed: {e}");
+                }
+            }
+        });
     })?;
     Ok(0)
 }

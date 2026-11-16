@@ -47,8 +47,10 @@ export interface Rendered {
 export interface Info {
   notebook: string;
   version: string;
-  /** reviews can be written: the server runs with --review */
+  /** reviews can be written: the server runs with --review, or on the owner's socket */
   review: boolean;
+  /** served on the owner's socket, where writes need no token (ADR-0036) */
+  local?: boolean;
 }
 
 // --- reviews (docs/review.md 7.2) ---
@@ -157,8 +159,12 @@ export class ApiError extends Error {
   }
 }
 
+/** Where this notebook's API is: '' on a server of one notebook, `/n/<namespace>` on yajna's
+ * socket server, which serves several (ADR-0036); the viewer itself is at `<base>/files/`. */
+export const base = location.pathname.replace(/\/files(\/.*)?$/, '');
+
 async function json<T>(url: string): Promise<T> {
-  const res = await fetch(url);
+  const res = await fetch(base + url);
   const body = await res.json().catch(() => ({ error: res.statusText }));
   if (!res.ok) throw new ApiError(res.status, body.error ?? res.statusText);
   return body as T;
@@ -177,7 +183,10 @@ export const api = {
 /** The token from the URL `yajna serve --review` printed, kept in memory only. */
 let token = '';
 export const setToken = (t: string) => (token = t);
-export const canWrite = () => token !== '';
+/** Served on the owner's socket, where writing needs no token (ADR-0036). */
+let local = false;
+export const setLocal = (l: boolean) => (local = l);
+export const canWrite = () => token !== '' || local;
 
 export const reviews = {
   list: () => json<ReviewSummary[]>('/api/reviews'),
@@ -192,7 +201,7 @@ export const reviews = {
     ),
   /** A write; a page that changed since `version` is refused with status 409. */
   async write(id: string, action: string, version: string, w: Write): Promise<Review> {
-    const res = await fetch(`/api/reviews/${q(id)}/${action}`, {
+    const res = await fetch(`${base}/api/reviews/${q(id)}/${action}`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-yajna-token': token },
       body: JSON.stringify({ version, ...w }),
@@ -203,7 +212,7 @@ export const reviews = {
   },
 };
 
-export const rawUrl = (path: string) => `/api/files/raw?path=${q(path)}`;
+export const rawUrl = (path: string) => `${base}/api/files/raw?path=${q(path)}`;
 
 /** The file's bytes, or the first `limit` of them. */
 export async function raw(path: string, limit?: number): Promise<ArrayBuffer> {

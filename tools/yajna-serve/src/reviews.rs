@@ -143,8 +143,11 @@ pub(crate) async fn write_handler(
     headers: HeaderMap,
     Json(body): Json<Value>,
 ) -> Response {
-    if let Err((status, msg)) = may_write(app.token.as_deref(), &headers) {
-        return error(status, msg);
+    // on the owner's socket the socket's permissions decide (ADR-0036)
+    if !app.local {
+        if let Err((status, msg)) = may_write(app.token.as_deref(), &headers) {
+            return error(status, msg);
+        }
     }
     let Some(r) = app.reviews.clone() else {
         return no_reviews();
@@ -203,6 +206,7 @@ mod tests {
             version: Arc::default(),
             reviews: Some(Arc::new(Fake)),
             token: Arc::new(token.map(str::to_string)),
+            local: false,
         }
     }
 
@@ -281,5 +285,14 @@ mod tests {
         // reading needs nothing
         let res = get_handler(State(app(None)), Path("REV-1".to_string())).await;
         assert_eq!(res.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn on_the_owners_socket_writes_need_no_token() {
+        let mut local = app(None);
+        local.local = true;
+        assert_eq!(post(local.clone(), headers(None, None), "v1").await, StatusCode::OK);
+        // the version check still holds
+        assert_eq!(post(local, headers(None, None), "v0").await, StatusCode::CONFLICT);
     }
 }

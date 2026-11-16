@@ -1,6 +1,8 @@
 // Live updates (docs/files-viewer.md 5.5): one event stream naming the open files and the
 // expanded directories, opened again, after a short pause, whenever that set changes.
 
+import { base } from './api';
+
 export interface Change {
   path: string;
   kind: 'file' | 'dir';
@@ -38,7 +40,7 @@ export class Live {
       return;
     }
     const query = [...this.paths].map((p) => `watch=${encodeURIComponent(p)}`).join('&');
-    const es = new EventSource(`/api/events?${query}`);
+    const es = new EventSource(`${base}/api/events?${query}`);
     this.onState('connecting');
     es.addEventListener('open', () => this.onState('live'));
     // EventSource reconnects by itself; the server then sends every path's state again
