@@ -114,3 +114,8 @@ lists what I left as is: `drop` frees a xorb only when nothing uses it (the open
 fragmentation rule), `status` does not hash, `get --only` fetches whole xorbs.
 
 ## Threads
+
+### T1 (addressed) general
+- 2026-11-12 15:12 ank: There is no progress bar when I do `yajna data add`. This will be a very bad UX when someone will add large data file.
+- 2026-11-12 15:15 ank: The same thing for `yajna data get`
+- 2026-11-17 13:21 agent:claude addressed in c45e9f0: data add, get, push and pull now draw a progress bar on a terminal once a transfer runs past half a second: storing, copying between stores, receiving over ssh, writing out; cleared before the summary lines, YAJNA_PROGRESS=0 turns it off (0.32.0)
