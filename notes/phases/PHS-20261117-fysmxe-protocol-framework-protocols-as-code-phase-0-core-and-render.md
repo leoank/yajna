@@ -35,7 +35,7 @@ done ones. The project page's *Progress* lists this phase on one line.
 - [ ] Three corpus protocols converted (in the lab repo, where the corpus lives), scorecard rows written
 - [ ] `yajna protocol` in the Rust CLI delegating to the package, and `checks.protocols` for code-native protocols
 - [x] `yajna validate` treats a protocol's `source` as a path and fails a codified protocol whose source is missing (0.33.0)
-- [ ] ank accepts or changes ADR-0037 (Python, own IR, internal units, `xg`/`g`)
+- [x] ank accepts or changes ADR-0037 (Python, own IR, internal units, `xg`/`g`)
 - [ ] Read Autoprotocol before the IR schema leaves version 1
 - [ ] `guided` and `novice` verbosity (design doc 5.4): liquid-class hints, instrument wrappers, loops expanded
 - [ ] The rest of the command vocabulary of section 3.2 (open, close, seal, filter, sonicate, wash, inoculate, pick_colony, ...), added as the corpus asks for them

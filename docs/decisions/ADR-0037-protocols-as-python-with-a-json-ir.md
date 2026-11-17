@@ -1,6 +1,6 @@
 # ADR-0037: Protocols as Python programs, a JSON command stream as the artifact
 
-Status: proposed
+Status: accepted
 Date: 2026-11-17
 Phase: protocol framework, Phase 0 ([[PHS-20261117-fysmxe]])
 Source: `docs/protocol-framework.md` sections 2, 5.3 and 9

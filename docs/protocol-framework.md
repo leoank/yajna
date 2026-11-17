@@ -492,11 +492,11 @@ come from the published-protocol corpus described in `docs/protocol-corpus.md`
 
 ## 9. Open decisions
 
-- **IR schema: own, or adopt Autoprotocol's.** Decided in ADR-0037 (proposed): our own,
+- **IR schema: own, or adopt Autoprotocol's.** Decided in ADR-0037: our own,
   versioned by `ir_version`, schema in `tools/yajna-protocol/schema/ir.json`; a lossy
   export to Autoprotocol can come with the robot backends. Read Autoprotocol before the
   schema leaves version 1.
-- **Units library.** Decided in ADR-0037 (proposed): a small internal unit type (volume,
+- **Units library.** Decided in ADR-0037: a small internal unit type (volume,
   mass, time, temperature, g-force, speed, molar and mass concentration, percent, fold).
   `xg` is g-force and `g` is grams, unlike the example in section 4.
 - **How far labware definitions go for human-world containers.** Minimum is name, max
