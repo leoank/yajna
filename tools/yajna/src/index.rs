@@ -15,7 +15,7 @@ use serde_json::Value;
 
 use crate::refs;
 use crate::validate::{self, ids_in, parse_steps};
-use crate::vault::{rel, Res, Vault, LINK_RE, NS_ID_RE, PATH_FIELDS};
+use crate::vault::{is_path_field, rel, Res, Vault, LINK_RE, NS_ID_RE};
 
 /// Bumped whenever the tables change; an index built by another version is rebuilt.
 const SCHEMA: i64 = 2;
@@ -213,8 +213,9 @@ impl Index {
             .map_err(|e| e.to_string())?;
 
             // Links: frontmatter fields, body [[links]], protocol step attributes.
+            let page_type = meta.get("type").and_then(|v| v.as_str());
             for (k, v) in meta {
-                if k == "id" || PATH_FIELDS.contains(&k.as_str()) {
+                if k == "id" || is_path_field(page_type, k) {
                     continue;
                 }
                 let mut local = BTreeSet::new();

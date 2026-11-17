@@ -271,6 +271,50 @@ fn validate_catches_problems() {
     assert!(out.stdout.contains("duration"), "{}", out.stdout);
 }
 
+/// A code-native protocol (docs/protocol-framework.md): `source` is a path, not a link, even
+/// when its directory is named by the protocol's ID; it must exist; the generated steps,
+/// with their keys, groups and decisions, validate. A material's `source` stays a link.
+#[test]
+fn codified_protocol_source_is_a_path() {
+    let v = vault();
+    let out = v.run(&["new", "material", "Cells", "--kind", "strain"]);
+    let mat = v.path(&out);
+    let out = v.run(&["new", "protocol", "Transformation"]);
+    let pro = v.path(&out);
+    let steps = "## Steps\n### Prepare\n\
+        1. Add 50 uL of cells [[MAT-0001]] to T1, T2, on ice. {materials: [MAT-0001], volume: 50uL, keys: [\"prepare.add_cells[T1]\", \"prepare.add_cells[T2]\"]}\n\
+        2. Measure OD600 of T1 and record it. {measure: od600, record: true, key: \"prepare.od[T1]\"}\n\n\
+        ### Plate\n\
+        3. Decision: if OD600 of T1 is below 0.5, use 100 uL; otherwise 20 uL. {key: \"plate.volume[T1]\"}\n\
+        4. Plate 100 uL or 20 uL (step 3) of T1 onto agar plates, spread. {volume: \"100uL or 20uL\", key: \"plate.spread[T1]\"}\n";
+    let source = "source: notes/protocols/PRO-0001/protocol.py";
+    let page = v
+        .read(&pro)
+        .replace("stage: text ", &format!("stage: codified\n{source}\n#"))
+        .replace("## Steps\n1. First step. {duration: 5m}\n2. \n", steps);
+    fs::write(&pro, page).unwrap();
+
+    let out = v.run(&["validate"]);
+    assert_eq!(out.code, 1);
+    let missing = "source notes/protocols/PRO-0001/protocol.py does not exist";
+    assert!(out.stdout.contains(missing), "{}", out.stdout);
+    assert!(!out.stdout.contains("namespace"), "{}", out.stdout);
+
+    let code = v.root.join("notes/protocols/PRO-0001");
+    fs::create_dir_all(&code).unwrap();
+    fs::write(code.join("protocol.py"), "").unwrap();
+    let out = v.run(&["validate"]);
+    assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
+
+    // a material's source is not a path: an ID there is still a link to check
+    let made = v
+        .read(&mat)
+        .replace("tags: []", "tags: []\nsource: PRO-0099");
+    fs::write(&mat, made).unwrap();
+    let out = v.run(&["validate"]);
+    assert!(out.stdout.contains("PRO-0099"), "{}", out.stdout);
+}
+
 #[test]
 fn missing_title_is_an_error_without_a_terminal() {
     let v = vault();
