@@ -150,6 +150,10 @@ remote store gets the xorbs `local` made.
 
 Pages and `RUN` IDs complete and pick as other IDs do. Every command works on the
 notebook's stores across worktrees: data added in one worktree is in `local` for all.
+On a terminal, `add`, `get`, `push` and `pull` draw a progress bar on stderr for a
+transfer that runs past half a second (the bytes read, copied between stores, received
+over ssh or written out), and clear it before the lines saying what was done;
+`YAJNA_PROGRESS=0` turns it off (0.32.0, asked for in thread T1 of REV-20261106-3rsd58).
 
 ## 6. `ART` pages and bundles
 

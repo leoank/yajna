@@ -6942,6 +6942,57 @@ fn a_new_artifact_page_validates_with_run_and_hash_still_null() {
 }
 
 #[test]
+fn data_add_and_get_draw_a_progress_bar_on_a_terminal_and_none_in_a_pipe() {
+    let lab = vault();
+    assert_eq!(lab.run(&["new", "project", "Toy model"]).code, 0);
+    let outside = tempfile::tempdir().unwrap();
+    let mut x = 11u64;
+    let a: Vec<u8> = (0..3_000_000)
+        .map(|_| {
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            (x >> 24) as u8
+        })
+        .collect();
+    let a_path = outside.path().join("a.bin");
+    fs::write(&a_path, &a).unwrap();
+    let bar = [("YAJNA_PROGRESS", "1")];
+
+    // in a pipe, as here, no bar: the lines saying what was done are all there is
+    let out = lab.run(&["data", "add", a_path.to_str().unwrap(), "--project", "PRJ-0001"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(!out.stderr.contains('\r'), "{:?}", out.stderr);
+    let id = &lab.path(&out).file_name().unwrap().to_string_lossy()[..19].to_string();
+
+    // drawn (YAJNA_PROGRESS=1 stands in for a terminal), ending full, then cleared
+    let out = lab.run_with(&["data", "add", a_path.to_str().unwrap(), "--project", "PRJ-0001", "--title", "Again"], None, &bar);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(out.stderr.contains("\rstoring ["), "{:?}", out.stderr);
+    assert!(out.stderr.contains("100% 3.0 MB of 3.0 MB"), "{:?}", out.stderr);
+    assert!(out.stderr.contains("\r\x1b[K"), "{:?}", out.stderr);
+
+    // another machine pulls from the lab store, then writes the file out
+    let store = lab.root.join(".cache/data/yajna/store");
+    fs::create_dir_all(lab.root.join(".cache/config/yajna")).unwrap();
+    fs::write(lab.root.join(".cache/config/yajna/config.toml"), format!("[stores]\nlab = {:?}\n", store.to_str().unwrap())).unwrap();
+    let other = lab.root.join(".cache/other").to_str().unwrap().to_string();
+    let out = lab.run_with(&["data", "get", id], None, &[("XDG_DATA_HOME", other.as_str()), bar[0]]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert_eq!(fs::read(lab.root.join(format!("data/{id}/a.bin"))).unwrap(), a);
+    assert!(out.stderr.contains("\rlab → local ["), "{:?}", out.stderr);
+    assert!(out.stderr.contains("\rwriting [") && out.stderr.contains(" of 3.0 MB"), "{:?}", out.stderr);
+    // the bar is off the line before the line saying what was written
+    assert!(out.stderr.contains(&format!("\r\x1b[K{id}: data/{id}/a.bin from local")), "{:?}", out.stderr);
+
+    // YAJNA_PROGRESS=0 turns it off
+    fs::remove_file(lab.root.join(format!("data/{id}/a.bin"))).unwrap();
+    let out = lab.run_with(&["data", "get", id], None, &[("YAJNA_PROGRESS", "0")]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(!out.stderr.contains('\r'), "{:?}", out.stderr);
+}
+
+#[test]
 fn data_add_stores_deduplicated_get_rebuilds_and_status_reports_where() {
     let lab = vault();
     assert_eq!(lab.run(&["new", "project", "Toy model"]).code, 0);

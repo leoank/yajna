@@ -5,11 +5,13 @@
 //! its Xet hash. `add` writes to this machine's `local` store, `push` and `pull` copy
 //! between stores, `get` writes files out, `status` says who holds what.
 
+use std::cell::Cell;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fs;
 use std::io::{BufReader, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::time::{Duration, Instant};
 
 use sha2::{Digest, Sha256};
 use yajna_xet::compress::Scheme;
@@ -192,14 +194,21 @@ impl Store {
                 let mut stdin = child.stdin.take().unwrap();
                 let list = rels.join("\n") + "\n";
                 let writer = std::thread::spawn(move || stdin.write_all(list.as_bytes()));
-                let status = Command::new("tar")
+                let mut tar = Command::new("tar")
                     .arg("-xf")
                     .arg("-")
                     .arg("-C")
                     .arg(dir)
-                    .stdin(child.stdout.take().unwrap())
-                    .status()
+                    .stdin(Stdio::piped())
+                    .spawn()
                     .map_err(|e| format!("tar: {e}"))?;
+                {
+                    // through here rather than a pipe between the two, to count it
+                    let bar = Progress::new(format!("{} → here", self.name), None);
+                    let mut into = tar.stdin.take().unwrap();
+                    let _ = std::io::copy(&mut Counted { inner: child.stdout.take().unwrap(), bar: &bar }, &mut into);
+                }
+                let status = tar.wait().map_err(|e| format!("tar: {e}"))?;
                 let _ = writer.join();
                 let out = child.wait_with_output().map_err(err)?;
                 if !status.success() || !out.status.success() {
@@ -228,6 +237,11 @@ impl Store {
     /// Write `ops` in order: objects before the shard that names them, the shard before
     /// the index entries that point at it.
     fn apply(&self, ops: Vec<Op>, staging: &Path) -> Res<()> {
+        self.apply_counted(ops, staging, None)
+    }
+
+    /// As `apply`, counting the bytes of the objects it copies on `bar`.
+    fn apply_counted(&self, ops: Vec<Op>, staging: &Path, bar: Option<&Progress>) -> Res<()> {
         match &self.backend {
             Backend::Dir(root) => {
                 for op in ops {
@@ -239,7 +253,12 @@ impl Store {
                             }
                             match src {
                                 Src::Bytes(b) => write_atomic(&to, &b)?,
-                                Src::File(f) => copy_atomic(&f, &to)?,
+                                Src::File(f) => {
+                                    copy_atomic(&f, &to)?;
+                                    if let Some(bar) = bar {
+                                        bar.add(fs::metadata(&to).map(|m| m.len()).unwrap_or(0));
+                                    }
+                                }
                             }
                         }
                         Op::AddLine { rel, line } => {
@@ -286,16 +305,25 @@ impl Store {
                     &format!("mkdir -p {incoming} && tar -xf - -C {incoming} && sh {incoming}/apply.sh {incoming} && rm -rf {incoming}"),
                     Some(Stdio::piped()),
                 )?;
-                let stdin = child.stdin.take().unwrap();
-                let status = Command::new("tar")
+                let mut stdin = child.stdin.take().unwrap();
+                let mut tar = Command::new("tar")
                     .arg("-cf")
                     .arg("-")
                     .arg("-C")
                     .arg(&dir)
                     .arg(".")
-                    .stdout(stdin)
-                    .status()
+                    .stdout(Stdio::piped())
+                    .spawn()
                     .map_err(|e| format!("tar: {e}"))?;
+                {
+                    let mut out = tar.stdout.take().unwrap();
+                    let _ = match bar {
+                        Some(bar) => std::io::copy(&mut Counted { inner: out, bar }, &mut stdin),
+                        None => std::io::copy(&mut out, &mut stdin),
+                    };
+                    drop(stdin);
+                }
+                let status = tar.wait().map_err(|e| format!("tar: {e}"))?;
                 let out = child.wait_with_output().map_err(err)?;
                 let _ = fs::remove_dir_all(&dir);
                 if !status.success() || !out.status.success() {
@@ -678,8 +706,117 @@ fn copy(from: &Store, to: &Store, recipes: &[FileInfo], staging: &Path) -> Res<(
         ops.push(Op::Put { rel: r.clone(), src: Src::File(path) });
     }
     ops.extend(shard_ops(&shard_of(recipes, infos)));
-    to.apply(ops, staging)?;
+    let bar = Progress::new(format!("{} → {}", from.name, to.name), Some(bytes));
+    to.apply_counted(ops, staging, Some(&bar))?;
     Ok((missing.len(), bytes))
+}
+
+// --- progress --------------------------------------------------------------------------
+
+/// A one-line bar on stderr for a transfer that may take a while: drawn when stderr is a
+/// terminal and the transfer has run for half a second, at most ten times a second, and
+/// cleared when it ends so the lines saying what was done stay the record.
+/// `YAJNA_PROGRESS=0` turns it off, `1` draws it always and at once (the tests).
+struct Progress {
+    label: String,
+    total: Option<u64>,
+    done: Cell<u64>,
+    start: Instant,
+    drawn: Cell<Option<Instant>>,
+    on: bool,
+    eager: bool,
+}
+
+impl Progress {
+    fn new(label: impl Into<String>, total: Option<u64>) -> Self {
+        use std::io::IsTerminal;
+        let (on, eager) = match std::env::var("YAJNA_PROGRESS").as_deref() {
+            Ok("1") => (true, true),
+            Ok("0") => (false, false),
+            _ => (std::io::stderr().is_terminal(), false),
+        };
+        Progress { label: label.into(), total, done: Cell::new(0), start: Instant::now(), drawn: Cell::new(None), on, eager }
+    }
+
+    fn add(&self, n: u64) {
+        self.done.set(self.done.get() + n);
+        if !self.on {
+            return;
+        }
+        let now = Instant::now();
+        let due = match self.drawn.get() {
+            Some(t) => now - t >= Duration::from_millis(100),
+            None => self.eager || now - self.start >= Duration::from_millis(500),
+        };
+        if due {
+            self.drawn.set(Some(now));
+            self.draw(now);
+        }
+    }
+
+    /// Take the bar off the line, for a message; the next `add` draws it again.
+    fn clear(&self) {
+        if self.drawn.take().is_some() {
+            let mut e = std::io::stderr().lock();
+            let _ = write!(e, "\r\x1b[K");
+            let _ = e.flush();
+        }
+    }
+
+    fn draw(&self, now: Instant) {
+        let done = self.done.get();
+        let secs = (now - self.start).as_secs_f64();
+        let rate = if secs >= 0.1 { format!(", {}/s", human((done as f64 / secs) as u64)) } else { String::new() };
+        let line = match self.total {
+            Some(total) if total > 0 => {
+                let frac = (done as f64 / total as f64).min(1.0);
+                let fill = (frac * 24.0) as usize;
+                let pct = (frac * 100.0) as u32;
+                format!("{} [{}{}] {pct:>3}% {} of {}{rate}", self.label, "#".repeat(fill), "-".repeat(24 - fill), human(done.min(total)), human(total))
+            }
+            _ => format!("{} {}{rate}", self.label, human(done)),
+        };
+        let mut e = std::io::stderr().lock();
+        let _ = write!(e, "\r{line}\x1b[K");
+        let _ = e.flush();
+    }
+}
+
+impl Drop for Progress {
+    fn drop(&mut self) {
+        if self.drawn.get().is_some() {
+            self.draw(Instant::now());
+            let mut e = std::io::stderr().lock();
+            let _ = write!(e, "\r\x1b[K");
+            let _ = e.flush();
+        }
+    }
+}
+
+/// A reader or writer that counts what passes through it on a `Progress`.
+struct Counted<'b, T> {
+    inner: T,
+    bar: &'b Progress,
+}
+
+impl<T: Read> Read for Counted<'_, T> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let n = self.inner.read(buf)?;
+        self.bar.add(n as u64);
+        Ok(n)
+    }
+}
+
+impl<T: Write> Write for Counted<'_, T> {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        let n = self.inner.write(buf)?;
+        self.bar.add(n as u64);
+        Ok(n)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.inner.flush()
+    }
 }
 
 // --- add -------------------------------------------------------------------------------
@@ -776,6 +913,14 @@ fn pack_local(local: &Store, compression: Compression, sources: &[Source]) -> Re
     // the last 64 MB of a session
     let new_xorbs: std::cell::RefCell<Vec<XorbInfo>> = Default::default();
     let mut packed = Vec::new();
+    let mut total = 0u64;
+    for src in sources {
+        match &src.members {
+            None => total += fs::metadata(&src.path).map(|m| m.len()).unwrap_or(0),
+            Some(members) => total += members.iter().map(|r| fs::metadata(src.path.join(r)).map(|m| m.len()).unwrap_or(0)).sum::<u64>(),
+        }
+    }
+    let bar = Progress::new("storing", Some(total));
     let files = {
         let sink = |x: Xorb| {
             let rel = fanned("xorbs", &x.footer.hash);
@@ -799,7 +944,7 @@ fn pack_local(local: &Store, compression: Compression, sources: &[Source]) -> Re
             Ok((a, format!("{:x}", r.sha.finalize())))
         };
         for src in sources {
-            let open = |p: &Path| fs::File::open(p).map_err(|e| format!("{}: {e}", p.display()));
+            let open = |p: &Path| fs::File::open(p).map(|f| Counted { inner: f, bar: &bar }).map_err(|e| format!("{}: {e}", p.display()));
             match &src.members {
                 None => {
                     let (a, sha256) = pack(&mut packer, &src.path, &mut open(&src.path)?)?;
@@ -1435,8 +1580,17 @@ fn get(vault: &Vault, targets_: &[String], from: Option<&str>, only: Option<&str
     let held = reader.holdings(&hashes, &staging.0)?;
     let root = reader.dir().unwrap();
     let mut written: BTreeMap<&str, usize> = BTreeMap::new();
+    let total = todo
+        .iter()
+        .filter_map(|(_, m)| match &held[&m.xet] {
+            Holding::Whole(f) => Some(f.terms.iter().map(|t| t.unpacked_bytes as u64).sum::<u64>()),
+            _ => None,
+        })
+        .sum();
+    let bar = Progress::new("writing", Some(total));
     for (p, m) in &todo {
         let Holding::Whole(file) = &held[&m.xet] else {
+            bar.clear();
             eprintln!("{}: no store reached holds {} whole", p.id, m.name);
             failed += 1;
             continue;
@@ -1446,7 +1600,8 @@ fn get(vault: &Vault, targets_: &[String], from: Option<&str>, only: Option<&str
             fs::create_dir_all(parent).map_err(err)?;
         }
         let tmp = dest.with_file_name(format!(".{}.yajna-get", dest.file_name().unwrap().to_string_lossy()));
-        let mut out = std::io::BufWriter::new(fs::File::create(&tmp).map_err(|e| format!("{}: {e}", tmp.display()))?);
+        let file_out = fs::File::create(&tmp).map_err(|e| format!("{}: {e}", tmp.display()))?;
+        let mut out = std::io::BufWriter::new(Counted { inner: file_out, bar: &bar });
         let result = reconstruct(file, |h| fs::read(root.join(fanned("xorbs", h))).map_err(xet_err), &mut out);
         out.flush().map_err(err)?;
         drop(out);
@@ -1460,11 +1615,13 @@ fn get(vault: &Vault, targets_: &[String], from: Option<&str>, only: Option<&str
         }
         fs::rename(&tmp, &dest).map_err(err)?;
         if p.kind == Kind::File {
+            bar.clear();
             eprintln!("{}: {} from {}", p.id, p.path, reader.name);
         } else {
             *written.entry(p.id.as_str()).or_default() += 1;
         }
     }
+    drop(bar);
     for p in pages.iter().filter(|p| written.contains_key(p.id.as_str())) {
         eprintln!("{}: {} from {}", p.id, p.count(written[p.id.as_str()]), reader.name);
     }
