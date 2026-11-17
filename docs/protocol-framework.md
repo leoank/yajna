@@ -462,6 +462,9 @@ case, and that is where agents start: composing known pieces, not inventing step
 - Python package `yajna-protocol` under `tools/`, with `core` (resources, commands, IR
   schema, units), `render`, `simulate`, `execute` (human backend first), and optional
   `backends/opentrons`. Exposed via `yajna protocol render|simulate|compile|run`.
+  Phase 0's core is `tools/yajna-protocol/` (import `yajna_protocol`, command
+  `yajna-protocol ir|render|page`, `packages.yajna-protocol` and `checks.yajna-protocol`);
+  progress is tracked on the phase page in `notes/phases/`.
 - Nix: `packages.yajna-protocol`, a devShell with Python 3.12 so the Opentrons extra can be
   installed, and `checks.protocols` that renders and simulates every code-native protocol
   in `lab/protocols/` with default parameters.
@@ -489,11 +492,13 @@ come from the published-protocol corpus described in `docs/protocol-corpus.md`
 
 ## 9. Open decisions
 
-- **IR schema: own, or adopt Autoprotocol's.** Read Autoprotocol first. Adopting buys
-  interoperability; owning buys fit for human steps and observations. A likely outcome is
-  our own schema with a lossy export to Autoprotocol.
-- **Units library.** `pint` is the obvious candidate; it is heavy. A small internal unit
-  type covering volume, mass, temperature, time, concentration, and g-force may be enough.
+- **IR schema: own, or adopt Autoprotocol's.** Decided in ADR-0037 (proposed): our own,
+  versioned by `ir_version`, schema in `tools/yajna-protocol/schema/ir.json`; a lossy
+  export to Autoprotocol can come with the robot backends. Read Autoprotocol before the
+  schema leaves version 1.
+- **Units library.** Decided in ADR-0037 (proposed): a small internal unit type (volume,
+  mass, time, temperature, g-force, speed, molar and mass concentration, percent, fold).
+  `xg` is g-force and `g` is grams, unlike the example in section 4.
 - **How far labware definitions go for human-world containers.** Minimum is name, max
   volume, and rack compatibility. Geometry only matters for robots.
 - **Naming.** Module and command names above are placeholders.

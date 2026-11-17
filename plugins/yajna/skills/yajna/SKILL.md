@@ -103,6 +103,11 @@ one-line instructions under headings such as *Runs*.
   review that covers it), never you. Rewrite *Current belief*;
   append everywhere else. The *Conclusion* of an experiment is written
   once, by a human: propose it in the log or the `AGS` page instead.
+- **A codified protocol's steps are generated.** A `PRO` page with `stage: codified` gets
+  its `## Steps` from the Python file in `source:` (`notes/protocols/PRO-0012/protocol.py`).
+  Change the code, bump `version` in its `metadata` and on the page together, then
+  `yajna-protocol page <page>`; never edit those steps by hand. `yajna-protocol render
+  <file> -p name=value` shows the steps for a run's parameters.
 - **Your changes go under a review.** Keep one `REV` page for the piece of work you are
   doing and add to it rather than opening one per change. Look first: `yajna review list
   --open` and `yajna review todo`; continue the unfinished review of your work when there

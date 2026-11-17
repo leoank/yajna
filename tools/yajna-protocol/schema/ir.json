@@ -1,0 +1,134 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://yajna.local/schema/protocol-ir/v1.json",
+  "title": "protocol command stream (IR), version 1",
+  "description": "What running a protocol records (docs/protocol-framework.md, section 2; ADR-0037). Every backend reads this, not the Python program.",
+  "type": "object",
+  "required": ["ir_version", "protocol", "parameters", "resources", "commands"],
+  "properties": {
+    "ir_version": {"const": 1},
+    "protocol": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^PRO-\\d{4,}$"},
+        "name": {"type": "string"},
+        "version": {"type": "integer", "minimum": 1},
+        "author": {"type": "string"}
+      }
+    },
+    "parameters": {"type": "object"},
+    "parameter_declarations": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["type", "display"],
+        "properties": {
+          "type": {"enum": ["int", "float", "bool", "str", "choice", "material"]}
+        }
+      }
+    },
+    "resources": {
+      "type": "object",
+      "required": ["containers", "materials", "equipment"],
+      "properties": {
+        "containers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "kind", "label"],
+            "properties": {
+              "id": {"type": "string", "pattern": "^c\\d+$"},
+              "kind": {"type": "string"},
+              "label": {"type": "string"},
+              "max_volume": {"$ref": "#/$defs/quantity"},
+              "parent": {"type": "string", "pattern": "^c\\d+$"},
+              "well": {"type": "string"},
+              "location": {"type": "string"}
+            },
+            "additionalProperties": false
+          }
+        },
+        "materials": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "name", "liquid_class"],
+            "properties": {
+              "id": {"type": "string", "pattern": "^m\\d+$"},
+              "name": {"type": "string"},
+              "mat": {"type": "string", "pattern": "^([a-z][a-z0-9_-]*/)?MAT-\\d{4,}$"},
+              "liquid_class": {"enum": ["aqueous", "viscous", "volatile", "cells", "hazardous"]},
+              "parameter": {"type": "string"}
+            },
+            "additionalProperties": false
+          }
+        },
+        "equipment": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "name"],
+            "properties": {
+              "id": {"type": "string", "pattern": "^e\\d+$"},
+              "name": {"type": "string"},
+              "kind": {"type": "string"},
+              "eqp": {"type": "string", "pattern": "^([a-z][a-z0-9_-]*/)?EQP-\\d{4,}$"}
+            },
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    "commands": {"type": "array", "items": {"$ref": "#/$defs/command"}}
+  },
+  "$defs": {
+    "quantity": {
+      "type": "object",
+      "required": ["value", "unit"],
+      "properties": {
+        "value": {"type": "number"},
+        "unit": {"enum": ["uL", "mg", "s", "C", "xg", "rpm", "nM", "ug/mL", "%", "x"]},
+        "label": {"type": "string"}
+      },
+      "additionalProperties": false
+    },
+    "ref": {
+      "type": "object",
+      "required": ["ref"],
+      "properties": {"ref": {"type": "string", "pattern": "^[cme]\\d+$"}},
+      "additionalProperties": false
+    },
+    "command": {
+      "type": "object",
+      "required": ["key", "op", "group", "actor", "args"],
+      "properties": {
+        "key": {"type": "string", "pattern": "^[a-z0-9_.]+(\\[[^\\]]+\\])?$"},
+        "op": {
+          "enum": ["step", "note", "wait", "pause", "checkpoint", "add", "transfer", "mix", "resuspend",
+                   "discard_supernatant", "serial_dilute", "plate_cells", "label", "move", "invert", "vortex",
+                   "set", "incubate", "centrifuge", "heat_shock", "thaw", "freeze", "thermocycle", "image",
+                   "measure", "check", "record", "decide"]
+        },
+        "group": {"type": "array", "items": {"type": "string"}},
+        "actor": {"type": "string", "pattern": "^(human|robot|instrument|agent)(:.+)?$"},
+        "targets": {"type": "array", "items": {"$ref": "#/$defs/ref"}},
+        "args": {"type": "object"},
+        "duration": {"$ref": "#/$defs/quantity"},
+        "wait": {"const": true},
+        "parallel": {"const": true},
+        "hazard": {"type": "string"},
+        "check": {"type": "string"},
+        "checkpoint": {"type": "string"},
+        "note": {"type": "string"},
+        "branch": {
+          "type": "object",
+          "required": ["decision", "arm"],
+          "properties": {"decision": {"type": "string"}, "arm": {"enum": ["then", "otherwise"]}},
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -27,6 +27,22 @@
           meta.mainProgram = "yajna";
         };
         default = yajna;
+        # Protocols as code (docs/protocol-framework.md, ADR-0037): a standard-library Python
+        # package; `yajna-protocol ir|render|page`. Its tests run in the check phase.
+        yajna-protocol = pkgs.python3Packages.buildPythonApplication {
+          pname = "yajna-protocol";
+          version = "0.1.0";
+          pyproject = true;
+          src = ./tools/yajna-protocol;
+          build-system = [ pkgs.python3Packages.setuptools ];
+          nativeCheckInputs = [ pkgs.python3Packages.jsonschema ];
+          checkPhase = ''
+            runHook preCheck
+            PYTHONPATH=src''${PYTHONPATH:+:$PYTHONPATH} python -m unittest discover -s tests -v
+            runHook postCheck
+          '';
+          meta.mainProgram = "yajna-protocol";
+        };
         # The files viewer's frontend (ADR-0029): type-checked and bundled with tsc and
         # esbuild from nixpkgs over the locked npm dependencies. `nix run .#ui` copies it
         # into tools/yajna-serve/ui/dist, which is committed and embedded in the binary.
@@ -77,13 +93,20 @@
           yajnaDev = pkgs.writeShellScriptBin "yajna" ''
             exec cargo run --quiet --manifest-path "''${YAJNA_SRC:?run inside nix develop}/Cargo.toml" -- "$@"
           '';
+          # Likewise the protocol framework, from tools/yajna-protocol/src.
+          python = pkgs.python3.withPackages (ps: [ ps.jsonschema ]);
+          protocolDev = pkgs.writeShellScriptBin "yajna-protocol" ''
+            PYTHONPATH="''${YAJNA_PROTOCOL_SRC:?run inside nix develop}''${PYTHONPATH:+:$PYTHONPATH}" \
+              exec ${python}/bin/python3 -m yajna_protocol "$@"
+          '';
         in {
           default = pkgs.mkShell {
-            packages = [ yajnaDev pkgs.git pkgs.cargo pkgs.rustc pkgs.clippy pkgs.rustfmt pkgs.rust-analyzer pkgs.python3 pkgs.mdbook pkgs.pandoc
+            packages = [ yajnaDev protocolDev pkgs.git pkgs.cargo pkgs.rustc pkgs.clippy pkgs.rustfmt pkgs.rust-analyzer python pkgs.mdbook pkgs.pandoc
               # the files viewer's frontend (tools/yajna-serve/ui, ADR-0029)
               pkgs.nodejs pkgs.esbuild pkgs.typescript ];
             shellHook = ''
               export YAJNA_SRC="$PWD/tools/yajna"
+              export YAJNA_PROTOCOL_SRC="$PWD/tools/yajna-protocol/src"
             '';
           };
         });
@@ -97,6 +120,8 @@
         } ''
           cd ${self}
           yajna --root . validate
+          # and so must the protocol framework's example lab (the guide's worked example)
+          yajna --root tools/yajna-protocol/examples/lab validate
           touch $out
         '';
         # the committed bundle of the files viewer is what its source builds to
@@ -107,6 +132,8 @@
         '';
         # the guide builds and every relative link in it resolves
         docs = self.packages.${pkgs.system}.docs;
+        # the protocol framework's tests, including the IR against its JSON schema
+        yajna-protocol = self.packages.${pkgs.system}.yajna-protocol;
         # the review tests drive the CLI and git against a scratch repo
         yajna-nvim = pkgs.runCommand "yajna-nvim-tests" {
           nativeBuildInputs = [ pkgs.neovim pkgs.git self.packages.${pkgs.system}.yajna ];

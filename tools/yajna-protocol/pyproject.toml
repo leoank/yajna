@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "yajna-protocol"
+version = "0.1.0"
+description = "Protocols as code for humans, robots and everything in between (docs/protocol-framework.md)"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+yajna-protocol = "yajna_protocol.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
