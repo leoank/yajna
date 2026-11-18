@@ -45,6 +45,7 @@ items with the rest.
 - [ ] [[PHS-20261106-2m7r6j]] Phase 3: the server and agents over HTTP and MCP
 - [ ] [[PHS-20261106-2m7rq5]] Phase 4: apps and monitoring
 - [ ] [[PHS-20261117-fysmxe]] Protocol framework: protocols as code (Phase 0, core and render)
+- [ ] [[PHS-20261118-evfb8n]] Git changes and every worktree in yajna serve
 
 ## Open questions
 - New `build` and `artifact` pages fail their own schema: the templates write `null`
