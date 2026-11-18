@@ -4019,9 +4019,9 @@ fn serve_files_viewer_render_and_site_links() {
     assert_eq!(out.code, 0, "{}", out.stdout);
 
     let (mut child, addr) = spawn_server(&v, &["serve"]);
-    // the web app's files screen and its assets (ADR-0041), and the classic viewer
-    // (ADR-0029) under /classic/, both from the bundles in the binary
-    for (page, asset) in [("/files/", "/assets/app.js"), ("/files/code/run.py", "/assets/app.css"), ("/classic/", "/classic/app.js")] {
+    // the web app's files screen and its assets (ADR-0041), from the bundle in the binary;
+    // the classic viewer is gone
+    for (page, asset) in [("/files/", "/assets/app.js"), ("/files/code/run.py", "/assets/app.css")] {
         let (status, headers, body) = http_req(&addr, page, &[]);
         assert!(status.ends_with("200 OK") && headers.contains("text/html"), "{page}: {status}");
         assert!(String::from_utf8_lossy(&body).contains("app.js"), "{page}");
@@ -4031,7 +4031,7 @@ fn serve_files_viewer_render_and_site_links() {
     let (_, headers, _) = http_req(&addr, "/assets/app.js", &[]);
     assert!(headers.contains("text/javascript"), "{headers}");
     assert!(http_req(&addr, "/assets/nope.js", &[]).0.contains("404"));
-    assert!(http_req(&addr, "/classic/nope.js", &[]).0.contains("404"));
+    assert!(http_req(&addr, "/classic/", &[]).0.contains("404"));
     let (_, info) = api_json(&addr, "/api/info");
     assert_eq!(info["version"], env!("CARGO_PKG_VERSION"));
 

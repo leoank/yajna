@@ -3,7 +3,8 @@
 // loaded only when one is opened. The workbench of tabs and splits is the classic viewer's.
 
 import { lazy, Suspense, useEffect } from 'react';
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useLive } from './live';
 import { ChevronRight, Download, File, FileCode2, Folder, ImageIcon } from 'lucide-react';
 import { getJson } from './api';
 import { base } from './base';
@@ -114,6 +115,8 @@ function Entry({ path }: { path: string }) {
 }
 
 function Dir({ path }: { path: string }) {
+  const qc = useQueryClient();
+  useLive([path], (c) => c.kind === 'dir' && void qc.invalidateQueries({ queryKey: ['list', path] }));
   const list = useInfiniteQuery({
     queryKey: ['list', path],
     queryFn: ({ pageParam }) => getJson<Listing>(`/api/files/list?path=${q(path)}&cursor=${pageParam}`),
@@ -146,10 +149,20 @@ function Dir({ path }: { path: string }) {
   );
 }
 
-/** Text larger than this opens as a download, not in the code view. */
+/** Text larger than this opens at its end: the last TAIL bytes, followed as it grows. */
 const TEXT_CAP = 4 << 20;
+const TAIL = 1 << 20;
+
+const LOGS = /\.(log|out|err|jsonl)$/i;
 
 function FileView({ st }: { st: Stat }) {
+  const qc = useQueryClient();
+  // the file as it changes on disk: its stat read again, a rendered page rendered again
+  const live = useLive([st.path], (c) => {
+    if (c.kind !== 'file') return;
+    void qc.invalidateQueries({ queryKey: ['stat', st.path] });
+    void qc.invalidateQueries({ queryKey: ['render', st.path] });
+  });
   const raw = `${base}/api/files/raw?path=${q(st.path)}`;
   const md = /\.(md|markdown)$/i.test(st.path);
   const img = st.mime.startsWith('image/');
@@ -157,6 +170,8 @@ function FileView({ st }: { st: Stat }) {
     <div className="head-row" style={{ marginBottom: 14 }}>
       <span className="chip">{st.mime}</span>
       <span className="muted" style={{ fontSize: 12.5 }}>{size(st.size)}</span>
+      {live === 'live' && <span className="chip ok" title="Changes on disk show here as they happen"><span className="dot" /> live</span>}
+      {live === 'connecting' && <span className="chip warn">reconnecting…</span>}
       <a className="btn small" href={raw} download>
         <Download size={13} /> Raw
       </a>
@@ -175,18 +190,20 @@ function FileView({ st }: { st: Stat }) {
       <>
         {meta}
         <div className="card pad" style={{ display: 'grid', placeItems: 'center' }}>
-          <img src={raw} alt={st.path} style={{ maxWidth: '100%', height: 'auto' }} />
+          <img src={`${raw}&v=${st.mtime ?? 0}`} alt={st.path} style={{ maxWidth: '100%', height: 'auto' }} />
         </div>
       </>
     );
   }
-  if (st.text && (st.size ?? 0) <= TEXT_CAP) {
+  if (st.text) {
+    const big = (st.size ?? 0) > TEXT_CAP;
     return (
       <>
         {meta}
+        {big && <div className="muted" style={{ fontSize: 12.5, margin: '-6px 0 10px' }}>The last {size(TAIL)} of {size(st.size)}, followed as it grows; Raw has the whole file.</div>}
         <div className="card" style={{ overflow: 'hidden' }}>
           <Suspense fallback={<div className="pad" style={{ padding: 16 }}><Sk h={12} /></div>}>
-            <Code url={raw} path={st.path} />
+            <Code url={raw} path={st.path} size={st.size ?? 0} mtime={st.mtime ?? 0} follow={big || LOGS.test(st.path)} start={big ? (st.size ?? 0) - TAIL : 0} />
           </Suspense>
         </div>
       </>

@@ -125,8 +125,7 @@ its threads under their lines, the same on a phone; *Whole file* shows every lin
 line, then another, to comment on them; on work not in the review yet the comment is
 anchored `@ work`, and `yajna review update` moves it to the commit that takes the lines.
 Reply, resolve and reopen from the thread; ⌘/Ctrl-Enter sends. The review is read again
-every few seconds, so an agent's reply appears while you read. The previous viewer, with
-side-by-side diffs and split tabs, is at `/classic/` for now.
+every few seconds, so an agent's reply appears while you read.
 
 Writing needs the printed URL, or the socket (ADR-0036): the URL carries a token the page
 keeps in memory, so a reload, or `yajna serve` without `--review`, is read-only. A write made after someone else changed

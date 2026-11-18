@@ -1,12 +1,12 @@
-# The files viewer
+# Files
 
-`yajna serve` shows more than the notebook's pages: under *files* it shows the directories
-on the disk of the machine it runs on, live, in a viewer laid out like a code editor. It
-is meant for watching work happen where it runs: the code, the notes, and what runs and
-agents write, without opening a shell on that machine.
+`yajna serve` shows more than the notebook's pages: *Files* in the app's sidebar shows the
+directories on the disk of the machine it runs on, live. It is meant for watching work
+happen where it runs: the code, the notes, and what runs and agents write, without opening
+a shell on that machine, from a laptop or a phone.
 
 ```sh
-yajna serve --open        # then follow "files" in the site's navigation, or open /files/
+yajna serve --open        # then Files in the sidebar, or open /files
 ```
 
 From another machine, tunnel to it as for [the site](site.md#from-another-machine).
@@ -32,45 +32,31 @@ read, because ignored files are usually what a run produced. Symlinks are follow
 
 ## Using it
 
-- **The tree** lists each root; directories open as you expand them, 500 entries at a
-  time. The box above it filters what is loaded by name.
-- **A click** opens a file in a *preview* tab, shown in italics, which the next click
-  replaces. **A double click**, or clicking into the file, keeps the tab.
-- **Split** by dragging a tab to an edge of the editor area, with the button at the right
-  of a group's tabs, or with <kbd>Ctrl</kbd>/<kbd>⌘</kbd> <kbd>\</kbd>.
-- **Links to lines**: clicking a line number selects the line, shift-clicking another
-  selects the range, and the address bar then holds a link such as
-  `/files/#code/g2a/train.py:L12-30` to paste into a log line or a message.
-- The tabs and splits are remembered per notebook in the browser.
+- **Roots** are listed first; a directory lists its entries, 500 at a time with *More*,
+  directories first, and the breadcrumb above goes back up.
+- **A file** opens by what it is: markdown rendered as the site renders pages,
+  `[[links]]` and citations included; images fitted to the width; text and code
+  highlighted with line numbers; anything else as its size and type with a download link.
+  *Raw* downloads any file. Raw HTML in a markdown file, and HTML or SVG files, are shown,
+  never run.
+- **Addresses** name the file, `/files/code/g2a/train.py`, so a link can be pasted into a
+  log line or a message. Links made for the previous viewer (`files/#…`) still open.
+- Pages link the paths in their fields (a run's `script`, a project's `code`, an
+  artifact's `path`) here.
 
 ## Live
 
-What is open stays current while runs write. A log opened in the viewer starts at its end
-and follows as lines arrive, as long as you have not scrolled up; a plot that is
-rewritten is redrawn at the same zoom; rendered markdown is rendered again in place. A
-new file appears in an expanded directory and a deleted one disappears, without closing
-what is expanded below it. A tab not in view that changed gets a dot, and a file deleted
-on disk is struck through in its tab.
+What is open stays current while runs write, with *live* beside the file's size. A log
+(`.log`, `.out`, `.err`, `.jsonl`) opens at its end and follows as lines arrive, fetching
+only the new bytes, as long as you stay at the end; any file follows while you are at its
+end. A text file over 4 MB opens at its last megabyte, followed the same way; *Raw* has the
+whole file. A plot that is rewritten is drawn again; rendered markdown is rendered again;
+a directory shows new and deleted entries as they come and go.
 
 Changes arrive in about a quarter of a second where the filesystem reports them, and
 within a second or two where it does not: network storage (NFS, Lustre, SMB, GPFS and the
-like) is polled, and so is any root with `watch = "poll"`. The status line says which:
-*live*, *live, polled every 2 s*, or *not live* for a root with `watch = "off"`.
-
-## Viewers
-
-| Files | Shown as |
-|---|---|
-| Text and code | Highlighted, with line numbers, search (<kbd>Ctrl</kbd>/<kbd>⌘</kbd> <kbd>F</kbd>) and folding. Files over 20 MB show their first 256 KB for now |
-| Markdown | Rendered as the site renders pages, `[[links]]` and citations included; **Source** shows the text. A page with an ID links to its page on the site |
-| Images (PNG, JPEG, GIF, WebP, AVIF, BMP, SVG) | Fitted to the tab; the wheel zooms, dragging pans, **1:1** shows actual pixels |
-| Anything else | Size, date and type, a download link, and a look inside as text or hex |
-
-Raw HTML in a markdown file, and HTML or SVG files opened on their own, are shown, never
-run.
-
-Pages on the site link the paths in their frontmatter (a run's `script`, a project's
-`code`, an artifact's `path`) into the viewer when the site is served.
+like) is polled, and so is any root with `watch = "poll"`; a root with `watch = "off"` is
+read when opened.
 
 ## The web app
 
@@ -81,8 +67,7 @@ same on a phone, where the sidebar becomes a menu, and keeps what it last showed
 asks the server again, so a slow connection shows a page at once and a quiet
 *Reconnecting…* when the server cannot be reached. The worktree picker at the top of the
 sidebar shows the same screen in another worktree. The static pages `yajna site` writes
-are still served at `/<ID>.html`, and the previous viewer, with the review diffs, at
-`/classic/`.
+are still served at `/<ID>.html`.
 
 ## Git changes
 

@@ -1,6 +1,6 @@
 # ADR-0029: The files viewer's frontend: dockview, CodeMirror, a committed bundle
 
-Status: accepted
+Status: superseded by ADR-0041 (0.40.0, the workbench removed)
 Date: 2026-10-23
 Phase: 1c
 Source: `docs/files-viewer.md` section 6

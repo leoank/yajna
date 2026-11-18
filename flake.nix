@@ -12,7 +12,7 @@
         # The yajna CLI (ADR-0017): one static binary with schema/ and templates/ embedded.
         yajna = pkgs.rustPlatform.buildRustPackage {
           pname = "yajna";
-          version = "0.40.0";
+          version = "0.41.0";
           src = self;
           # the workspace: the CLI and the yajna-serve library it links (ADR-0027)
           sourceRoot = "source/tools";
@@ -43,19 +43,6 @@
           '';
           meta.mainProgram = "yajna-protocol";
         };
-        # The files viewer's frontend (ADR-0029): type-checked and bundled with tsc and
-        # esbuild from nixpkgs over the locked npm dependencies. `nix run .#ui` copies it
-        # into tools/yajna-serve/ui/dist, which is committed and embedded in the binary.
-        yajna-ui = pkgs.stdenv.mkDerivation {
-          pname = "yajna-files-ui";
-          version = "0.1.0";
-          src = ./tools/yajna-serve/ui;
-          npmDeps = pkgs.importNpmLock { npmRoot = ./tools/yajna-serve/ui; };
-          npmFlags = [ "--ignore-scripts" ];
-          nativeBuildInputs = [ pkgs.nodejs pkgs.importNpmLock.npmConfigHook pkgs.esbuild pkgs.typescript ];
-          buildPhase = "sh build.sh";
-          installPhase = "cp -r dist $out";
-        };
         # The web app (ADR-0041): React, type-checked and bundled with tsc and esbuild from
         # nixpkgs over the locked npm dependencies. `nix run .#web` copies it into
         # tools/yajna-serve/web/dist, which is committed and embedded in the binary.
@@ -84,20 +71,8 @@
         '';
       });
 
-      # `nix run .#ui` from the repo root: rebuild the files viewer's committed bundle.
+      # `nix run .#web` from the repo root: rebuild the web app's committed bundle.
       apps = forAll (pkgs: {
-        ui = {
-          type = "app";
-          program = toString (pkgs.writeShellScript "yajna-ui" ''
-            set -eu
-            dest=tools/yajna-serve/ui/dist
-            [ -f tools/yajna-serve/ui/package.json ] || { echo "run from the yajna repo root" >&2; exit 1; }
-            rm -rf "$dest"
-            cp -r ${self.packages.${pkgs.system}.yajna-ui} "$dest"
-            chmod -R u+w "$dest"
-            echo "$dest: rebuilt"
-          '');
-        };
         # `nix run .#web`: rebuild the web app's committed bundle.
         web = {
           type = "app";
@@ -128,7 +103,7 @@
         in {
           default = pkgs.mkShell {
             packages = [ yajnaDev protocolDev pkgs.git pkgs.cargo pkgs.rustc pkgs.clippy pkgs.rustfmt pkgs.rust-analyzer python pkgs.mdbook pkgs.pandoc
-              # the files viewer's frontend (tools/yajna-serve/ui, ADR-0029)
+              # the web app (tools/yajna-serve/web, ADR-0041)
               pkgs.nodejs pkgs.esbuild pkgs.typescript ];
             shellHook = ''
               export YAJNA_SRC="$PWD/tools/yajna"
@@ -150,13 +125,7 @@
           yajna --root tools/yajna-protocol/examples/lab validate
           touch $out
         '';
-        # the committed bundle of the files viewer is what its source builds to
-        ui-bundle = pkgs.runCommand "yajna-ui-bundle" { } ''
-          diff -r ${self.packages.${pkgs.system}.yajna-ui} ${./tools/yajna-serve/ui/dist} \
-            || { echo "tools/yajna-serve/ui/dist is stale: run nix run .#ui" >&2; exit 1; }
-          touch $out
-        '';
-        # and the web app's
+        # the committed bundle of the web app is what its source builds to
         web-bundle = pkgs.runCommand "yajna-web-bundle" { } ''
           diff -r ${self.packages.${pkgs.system}.yajna-web} ${./tools/yajna-serve/web/dist} \
             || { echo "tools/yajna-serve/web/dist is stale: run nix run .#web" >&2; exit 1; }

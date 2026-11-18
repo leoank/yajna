@@ -38,11 +38,11 @@ a narrower meaning (ADR-0020).
 | Symlinks | Followed, including out of a root; loops detected | 0028 |
 | Listing | Lazy, one directory per request, paginated | 0028 |
 | Live | Filesystem watch (notify) on open directories and files, pushed over SSE; polling where watching does not work | 0028 |
-| Layout | dockview-core | 0029 |
-| Text and code | CodeMirror 6, read-only; a paged byte-range view above a size cap; follow mode for growing files | 0029 |
-| Markdown | Rendered by yajna's own renderer with links and citations resolved, with a toggle to source | 0029 |
-| Images | `<img>` with its own pan and zoom (panzoom until 0.17.0) | 0029 |
-| Frontend build | TypeScript bundled by esbuild through Nix (`nix run .#ui`); the bundle is committed and embedded with rust-embed; a flake check fails when it is stale | 0029 |
+| Layout | One web app for the notebook: a sidebar with the notebook, its worktrees and sections; a page per directory, file, diff or review; a drawer on a phone | 0041 |
+| Text and code | CodeMirror 6, read-only, loaded when a file opens; above 4 MB the last 1 MB; growing files followed by appending `Range` reads | 0029, 0041 |
+| Markdown | Rendered by yajna's own renderer with links and citations resolved | 0029 |
+| Images | `<img>` fitted to the width, drawn again when rewritten | 0041 |
+| Frontend build | React in TypeScript, bundled by esbuild through Nix (`nix run .#web`); the bundle is committed and embedded with rust-embed; a flake check fails when it is stale | 0041 |
 
 ## 3. Shape
 
@@ -229,88 +229,55 @@ fast.
   The cluster's shared storage is still to measure (`EXP-20261023-kjtrwp`).
 - SSE carries a heartbeat every 15 s so that tunnels and proxies keep the connection.
 
-## 6. The frontend: `tools/yajna-serve/ui`
+## 6. The frontend: `tools/yajna-serve/web`
 
-### 6.1 Layout
+Until 0.40.0 this was a workbench of its own (ADR-0029): a tree, dockview tabs and splits,
+viewers in a registry, a side-by-side review diff. ADR-0041 replaced it with one React app
+for the whole notebook, the same on a phone and a desktop; the files are one of its
+sections. What follows describes the app's files, changes and review screens.
 
-```text
-┌ notebook · files ─────────────────────────────────────────────┐
-│ ▾ notes      │ run.sh  train.log ● ×   │ loss.png ×            │
-│   ▸ projects │ ─────────────────────── │ ───────────────────── │
-│ ▾ code       │  1 #!/usr/bin/env bash  │                       │
-│   ▾ g2a      │  2 set -euo pipefail    │      [ image ]        │
-│     run.sh   │  …                      │                       │
-│ ▸ scratch    │                         │                       │
-├──────────────┴─────────────────────────┴───────────────────────┤
-│ code/g2a/train.log · 1.2 GB · following · utf-8 · ln 18 220    │
-└────────────────────────────────────────────────────────────────┘
-```
+### 6.1 Layout and state
 
-- **Tree** on the left: roots at the top level, lazily expanded, live. A filter box
-  narrows the loaded entries by name; finding a file anywhere in the roots (quick open)
-  needs a server-side index and is later.
-- **Editor area**: dockview groups with tabs. A single click opens a *preview* tab (in
-  italics) that the next single click replaces; a double click, or clicking into it,
-  keeps it. Splitting is by dragging a tab to an edge, the split button at the right of a
-  group's tabs, or `Ctrl-\` / `⌘-\`, which opens the active file again in a new group to
-  the right. Tabs show a dot when their
-  file changed on disk since it was opened.
-- **Status line**: the focused file's path, size, mtime, encoding, cursor line, and
-  whether it is following.
-- Light and dark follow `prefers-color-scheme`; dockview and CodeMirror are themed from
-  the same CSS variables as the site's pages.
-- The site's nav gets a *files* link when it is rendered for `yajna serve`, and not in a
-  static export, where it would lead nowhere. Entity pages link the files they name (a
-  run's `script`, an artifact's path, a project's `code`) to `files/#…` the same way.
+- **Sidebar**: the notebook, the worktree picker (ADR-0039), the sections (overview, log,
+  tasks, changes, files, reviews), the projects and the page types; on a phone it is a
+  drawer behind the top bar's menu button.
+- **Files**: the roots, then a directory a page of 500 at a time, then a file; a
+  breadcrumb goes back up. The address names the file (`files/<root>/<path>`), so links
+  can be pasted; `files/#<root>/<path>`, the previous viewer's form, is turned into it.
+- **Loading**: every read goes through a cache that shows what it last had while it reads
+  again; skeletons stand where nothing is known yet; a thin bar shows only after 300 ms; a
+  server that cannot be reached is asked again with backoff and one *Reconnecting…* line.
 
-### 6.2 State in the URL and the browser
+### 6.2 Viewers
 
-- The URL hash names the focused file and an optional line range,
-  `files/#code/g2a/run.sh:L12-30`, so a link to a line can be pasted into a log line or a
-  chat message.
-- The layout (groups, their tabs, sizes) is saved with dockview's `toJSON` in
-  `localStorage` under the notebook's namespace, and restored on load; tabs whose file has
-  gone are dropped.
+| Files | Shown as |
+|---|---|
+| Markdown | Rendered through `/api/files/render`, so `[[ID]]` links and citations work and open in the app |
+| Images | `<img>` from `raw`, fitted to the width, drawn again when the file is rewritten |
+| Text up to 4 MB | CodeMirror 6, read-only, line numbers, highlighting by extension (the language packages are chunks loaded when needed); logs (`.log`, `.out`, `.err`, `.jsonl`) open at their end |
+| Text over 4 MB | Its last 1 MB from the first whole line, without line numbers (they would count from the tail), followed as it grows |
+| Anything else | Size, type and a download link |
 
-### 6.3 Viewers
+Live (5.5): the open file and directory are named in one `/api/events` stream. A file that
+grew is appended with a `Range` read from the old size, and kept at the end when it was
+there before the new lines came; a file that shrank or was rewritten in place is read
+again. Not carried over from the workbench, for now: splits and tabs, the hex view, image
+zoom, markdown's source toggle, search within a file.
 
-A viewer is a module with `matches(stat) -> score` and `open(container, file)`; the
-registry picks the highest score, and the tab's menu offers the others (*open as text*,
-*open as hex*). The first set:
+### 6.3 The changes view
 
-| Viewer | Matches | Notes |
-|---|---|---|
-| Text | `text: true`, size up to the cap | CodeMirror 6, read-only, line numbers, highlighting by extension, in-file search, folding, line links. Follow mode on by default for `.log`, `.out`, `.err`, `.jsonl` and files that grew while open: appends with a `Range` request from the old size, keeps the view at the bottom unless scrolled up, reloads when the file shrank |
-| Large text | `text: true`, above the cap | A paged view over `Range` requests in 256 KB windows, with a byte-offset scrollbar, *jump to end* and follow; no highlighting, search within the loaded window. The cap starts at 20 MB; `EXP-20261023-kjv5wy` sets it |
-| Markdown | `.md` | Rendered through `/api/files/render`, so `[[ID]]` links to entity pages and citations work; a toggle flips to the text viewer. A page with a yajna `id` gets a link to its entity page |
-| Image | png, jpg, gif, webp, avif, bmp, ico, svg | `<img>` from `raw`, wheel and pinch zoom about the pointer in proportion to the gesture, drag to pan, double-click for 1:1 or Fit, fit and 1:1 buttons; the image is kept in view (centred while smaller than it, no empty edge while larger); SVG as an image, never inline. Reloads on change, so a plot that a run rewrites updates |
-| Binary | everything else | Size, mtime, type, a download link, *open as text* and *open as hex* (the first 64 KB) |
-
-Later, as needed: PDF in the browser's own viewer (an `<iframe>`), CSV and TSV as a table
-with a row cap (and `results.tsv` with the run columns linked), JSON with folding (it is
-text already), notebooks (`.ipynb`), TIFF and other microscopy formats converted
-server-side or tiled for OpenSeadragon, and HDF5 or Parquet summaries. Each is a new
-module in the registry and, where the browser cannot read the format, a server route.
-
-### 6.4 The changes view
-
-What is uncommitted, staged and recently committed (ADR-0038), in `ui/src/changes.ts`, over
-`/api/worktrees` and `/api/git/`. It opens on the notebook's worktrees with how much is
+What is uncommitted, staged and recently committed (ADR-0038), in `web/src/changes.tsx`,
+over `/api/worktrees` and `/api/git/`. It opens on the notebook's worktrees with how much is
 uncommitted in each (straight to the one when there is only one), then a worktree's
 conflicted, staged, changed and untracked files and its commits, 20 a page, a commit
 opening its files; a file opens its unified diff in one column (staged: `HEAD` to
 `INDEX`, changed: `INDEX` to `WORK`, untracked: added, a commit's: its parent to it), with
-the file's old and new line numbers, long lines wrapped, and an *Open* that shows the file
-in the viewer. A file no root shows is listed but not opened. It reads again every 4 s
-while it is visible, redrawing only what changed and keeping the scroll.
+the old and new line numbers, long lines wrapped, and *Open file*. A file no root shows is
+listed but not opened. It reads again every 4 s while it is shown. Where the viewer writes
+(ADR-0040) it stages, unstages and commits, and a tapped range of lines takes a comment
+that becomes a review thread.
 
-It is two things: a page of its own at `files/changes` (and `w/<branch>/files/changes`),
-laid out for a phone, its place in the address (`?wt=&file=&from=&to=`) so the browser's
-back button works; and a tab of the workbench, `changes:`, opened by *Changes* at the top
-of the sidebar, which shows how many files are uncommitted in the worktree shown. When the
-notebook has more than one worktree the top bar has a picker that opens another's viewer.
-
-### 6.4a Reviews in the app
+### 6.4 Reviews
 
 `web/src/review.tsx` (ADR-0041) reads `/api/reviews/<ID>` and its `file` route, which give
 a file at two commits rather than a diff, and diffs them itself (`linediff.ts`, Myers'
@@ -321,23 +288,19 @@ commit shown (the head, a fix, or `work`). Writes are the same routes the CLI's
 
 ### 6.5 Building it
 
-- Source is TypeScript under `tools/yajna-serve/ui/src`, with `package.json` and
-  `package-lock.json` pinning dockview-core, CodeMirror (`@codemirror/view`, `state`,
-  `language`, `search`, and the language packages): libraries only,
-  no build tools, installed with `--ignore-scripts`.
+- Source is TypeScript and React under `tools/yajna-serve/web/src`, with `package.json`
+  and `package-lock.json` pinning React, TanStack Query, lucide icons and CodeMirror:
+  libraries only, no build tools, installed with `--ignore-scripts`.
 - `build.sh` type-checks with `tsc` and bundles with `esbuild`, both from nixpkgs, so no
-  native npm binaries enter the lock file. `nix run .#ui` runs it in the sandbox over the
+  native npm binaries enter the lock file. `nix run .#web` runs it in the sandbox over the
   locked dependencies (`importNpmLock`) and copies the result into
-  `tools/yajna-serve/ui/dist/`: `index.html`, `app.js`, `app.css` and `chunks/`. `dist/` is
-  committed, so `cargo build` needs no Node and the release workflow does not change.
-- `rust-embed` includes `dist/` in the binary. The flake check `ui-bundle` rebuilds the
+  `tools/yajna-serve/web/dist/` (`index.html` and `assets/`). `dist/` is committed, so
+  `cargo build` needs no Node and the release workflow does not change.
+- `rust-embed` includes `dist/` in the binary. The flake check `web-bundle` rebuilds the
   bundle and fails if it differs from what is committed.
-- dockview is imported through its UMD build, the only one that carries its stylesheet
-  (the ESM build ships none, and the CSS file is published only in the React package);
-  it costs about 190 KB more, minified, than a tree-shaken ESM import would.
-- Each language is a chunk loaded when a file first needs it. The first load is
-  `app.js` and two shared chunks, 230 KB gzipped, inside the 350 KB budget; everything
-  together is 457 KB gzipped.
+- `index.html` works out the app's base from its own address before anything loads and
+  sets `<base>`, so the same files serve `/`, `/w/<branch>/`, `/n/<namespace>/` and a
+  relay's path. The code view and each language are chunks loaded when first needed.
 
 ## 7. What it does not do
 
