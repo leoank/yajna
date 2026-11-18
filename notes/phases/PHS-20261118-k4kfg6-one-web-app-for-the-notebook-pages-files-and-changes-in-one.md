@@ -28,10 +28,11 @@ done ones. The project page's *Progress* lists this phase on one line.
 - [x] Screens: overview, any page (a project's phases, experiments and tree, an experiment's runs), a type's list with a filter, log, tasks, reviews, changes with its actions, files (directories, markdown, images, a code view loaded on demand)
 - [x] Served at `/` and its routes, the static pages at `/<ID>.html`, the classic viewer at `/classic/`; `nix run .#web` and the bundle check
 - [x] The review diffs in the app: overview, threads, changed files, since the last round, each fix, work not in the review yet; a one-column diff with threads at their lines; reply, resolve, reopen, comment on lines (`@ work` on uncommitted ones), approve, request changes (0.40.0)
-- [ ] Live following of an open file in the app (`/api/events`, the files viewer's follow mode of phase 1c), then the classic viewer and ADR-0029's bundle removed
+- [x] Live following of an open file in the app (`/api/events`, appending `Range` reads, logs at their end, text over 4 MB as its last 1 MB), then the classic viewer and ADR-0029's bundle removed (0.41.0)
 - [ ] `yajna site` takes the app's colours and type, so a published notebook looks like the app
 - [ ] A dark and light setting in the app beside the system's, and a denser layout for desktops
 - [ ] Search across the notebook from the sidebar
+- [ ] Search within a file, image zoom and splits, if they are missed from the workbench
 - [ ] Vite's dev server for working on the app (the bundle stays esbuild's)
 - [ ] Verified: ank uses the app from the phone through saarthi and from the laptop for a week of work
 
@@ -45,5 +46,10 @@ done ones. The project page's *Progress* lists this phase on one line.
   in 0.2 s; the line counts of the app's diff match `git diff --numstat` on the files
   checked. In a scratch notebook, from the phone layout: an `@ work` thread drawn under
   its lines in the uncommitted diff, and a reply written to the page.
+- Live following tried on a phone: ten lines appended to a log every half second arrived
+  and the view stayed at the end; a 7 MB log opened at its last megabyte and followed.
+  Its line numbers counted from the tail, so the tail view has none.
+- Not carried over from the workbench: splits and tabs, the hex view, image zoom,
+  markdown's source toggle, search within a file. Kept as later items if missed.
 - `dir_router` (saarthi's node) gets the app's files and changes routes and nothing at
   `/`, as its test asks; the app hides the notebook's sections when there is no notebook.
