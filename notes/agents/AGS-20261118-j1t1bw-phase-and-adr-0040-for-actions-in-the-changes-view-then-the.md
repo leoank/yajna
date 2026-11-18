@@ -58,3 +58,8 @@ writes on the socket and with `--review`, comments as review threads.
   plugin, `Reviews::open_branch` and `POST /api/reviews`, and the app's line picking and
   comment box. Found while trying it: a fresh branch could not be reviewed (now it can, the
   base cannot) and validate took `work` for a missing commit. 0.39.0.
+- Committed and pushed it (a480949, ff99eaa). Then the reviews in the app
+  (`web/src/review.tsx`, `linediff.ts`): overview, threads, files with rounds, fixes and
+  work not in the review yet, a one-column diff with threads at their lines, and the
+  writes. Tried against REV-20261106-3rsd58 and the scratch review; the classic viewer
+  stays until live following of a file is in the app. 0.40.0.

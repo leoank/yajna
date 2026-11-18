@@ -27,7 +27,8 @@ done ones. The project page's *Progress* lists this phase on one line.
 - [x] The app: base from its own address, its own router, TanStack Query with retries and kept data, skeletons, a loading bar and *Reconnecting…*; the shell with the worktree picker, sections, projects and page types; a drawer on a phone
 - [x] Screens: overview, any page (a project's phases, experiments and tree, an experiment's runs), a type's list with a filter, log, tasks, reviews, changes with its actions, files (directories, markdown, images, a code view loaded on demand)
 - [x] Served at `/` and its routes, the static pages at `/<ID>.html`, the classic viewer at `/classic/`; `nix run .#web` and the bundle check
-- [ ] The review diffs in the app (threads at lines, the overview, writes), then the classic viewer and ADR-0029's bundle removed
+- [x] The review diffs in the app: overview, threads, changed files, since the last round, each fix, work not in the review yet; a one-column diff with threads at their lines; reply, resolve, reopen, comment on lines (`@ work` on uncommitted ones), approve, request changes (0.40.0)
+- [ ] Live following of an open file in the app (`/api/events`, the files viewer's follow mode of phase 1c), then the classic viewer and ADR-0029's bundle removed
 - [ ] `yajna site` takes the app's colours and type, so a published notebook looks like the app
 - [ ] A dark and light setting in the app beside the system's, and a denser layout for desktops
 - [ ] Search across the notebook from the sidebar
@@ -40,5 +41,9 @@ done ones. The project page's *Progress* lists this phase on one line.
   with `--review`, a hunk staged from a diff and committed from the phone layout.
 - The overview, a page and the worktree list answer in 0.03 to 0.15 s against manthan
   with a debug build; the first page after start waits on the index.
+- The review screen against REV-20261106-3rsd58 (86 files): a 1,835-line new file drawn
+  in 0.2 s; the line counts of the app's diff match `git diff --numstat` on the files
+  checked. In a scratch notebook, from the phone layout: an `@ work` thread drawn under
+  its lines in the uncommitted diff, and a reply written to the page.
 - `dir_router` (saarthi's node) gets the app's files and changes routes and nothing at
   `/`, as its test asks; the app hides the notebook's sections when there is no notebook.
