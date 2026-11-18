@@ -12,7 +12,7 @@
         # The yajna CLI (ADR-0017): one static binary with schema/ and templates/ embedded.
         yajna = pkgs.rustPlatform.buildRustPackage {
           pname = "yajna";
-          version = "0.37.0";
+          version = "0.38.0";
           src = self;
           # the workspace: the CLI and the yajna-serve library it links (ADR-0027)
           sourceRoot = "source/tools";
@@ -56,6 +56,19 @@
           buildPhase = "sh build.sh";
           installPhase = "cp -r dist $out";
         };
+        # The web app (ADR-0041): React, type-checked and bundled with tsc and esbuild from
+        # nixpkgs over the locked npm dependencies. `nix run .#web` copies it into
+        # tools/yajna-serve/web/dist, which is committed and embedded in the binary.
+        yajna-web = pkgs.stdenv.mkDerivation {
+          pname = "yajna-web";
+          version = "0.1.0";
+          src = ./tools/yajna-serve/web;
+          npmDeps = pkgs.importNpmLock { npmRoot = ./tools/yajna-serve/web; };
+          npmFlags = [ "--ignore-scripts" ];
+          nativeBuildInputs = [ pkgs.nodejs pkgs.importNpmLock.npmConfigHook pkgs.esbuild pkgs.typescript ];
+          buildPhase = "sh build.sh";
+          installPhase = "cp -r dist $out";
+        };
         # Neovim plugin (phase 0c): follow [[ID]] links and @citekeys, find entities, backlinks.
         yajna-nvim = pkgs.vimUtils.buildVimPlugin {
           pname = "yajna.nvim";
@@ -81,6 +94,19 @@
             [ -f tools/yajna-serve/ui/package.json ] || { echo "run from the yajna repo root" >&2; exit 1; }
             rm -rf "$dest"
             cp -r ${self.packages.${pkgs.system}.yajna-ui} "$dest"
+            chmod -R u+w "$dest"
+            echo "$dest: rebuilt"
+          '');
+        };
+        # `nix run .#web`: rebuild the web app's committed bundle.
+        web = {
+          type = "app";
+          program = toString (pkgs.writeShellScript "yajna-web" ''
+            set -eu
+            dest=tools/yajna-serve/web/dist
+            [ -f tools/yajna-serve/web/package.json ] || { echo "run from the yajna repo root" >&2; exit 1; }
+            rm -rf "$dest"
+            cp -r ${self.packages.${pkgs.system}.yajna-web} "$dest"
             chmod -R u+w "$dest"
             echo "$dest: rebuilt"
           '');
@@ -128,6 +154,12 @@
         ui-bundle = pkgs.runCommand "yajna-ui-bundle" { } ''
           diff -r ${self.packages.${pkgs.system}.yajna-ui} ${./tools/yajna-serve/ui/dist} \
             || { echo "tools/yajna-serve/ui/dist is stale: run nix run .#ui" >&2; exit 1; }
+          touch $out
+        '';
+        # and the web app's
+        web-bundle = pkgs.runCommand "yajna-web-bundle" { } ''
+          diff -r ${self.packages.${pkgs.system}.yajna-web} ${./tools/yajna-serve/web/dist} \
+            || { echo "tools/yajna-serve/web/dist is stale: run nix run .#web" >&2; exit 1; }
           touch $out
         '';
         # the guide builds and every relative link in it resolves

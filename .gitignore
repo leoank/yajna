@@ -5,3 +5,4 @@ tools/yajna/target/
 result
 tools/yajna-serve/ui/node_modules/
 .nvim.session
+tools/yajna-serve/web/node_modules/

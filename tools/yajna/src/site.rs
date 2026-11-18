@@ -169,7 +169,7 @@ pub(crate) struct FileLinks {
 impl FileLinks {
     /// `files/#<root>/<rest>` for a path in a page's frontmatter (relative to the repo, or
     /// absolute) that lies under a root.
-    fn href(&self, value: &str) -> Option<String> {
+    pub(crate) fn href(&self, value: &str) -> Option<String> {
         let path = Path::new(value.trim_end_matches('/'));
         let abs = if path.is_absolute() {
             path.to_path_buf()
@@ -624,4 +624,294 @@ pub(crate) fn vault_mtime(vault: &Vault) -> SystemTime {
         }
     }
     t
+}
+
+// --- the JSON API of pages for the web app (ADR-0041) ---------------------------------
+
+/// What the web app is told about a page wherever it is listed.
+fn summary(e: &Entity) -> Value {
+    serde_json::json!({
+        "id": e.id,
+        "type": e.etype,
+        "title": e.title,
+        "status": e.status,
+        "outcome": e.outcome,
+        "kind": e.kind,
+        "project": e.project,
+        "experiment": e.experiment,
+        "created": e.created,
+        "author": e.author,
+        "tags": e.tags,
+    })
+}
+
+/// A line of markdown rendered for the app, the outer paragraph dropped.
+fn inline(ix: &Index, text: &str) -> String {
+    markdown_for_viewer(Some(ix), text).trim().trim_start_matches("<p>").trim_end_matches("</p>").to_string()
+}
+
+fn log_json(ix: &Index, entries: &[LogEntry]) -> Value {
+    entries
+        .iter()
+        .map(|m| serde_json::json!({ "date": m.date, "time": m.time, "author": m.author, "html": inline(ix, &m.text), "path": m.path, "line": m.line }))
+        .collect()
+}
+
+/// Ticked and all checkboxes of a page's body: a phase's progress.
+fn checkboxes(body: &str) -> (usize, usize) {
+    let mut done = 0;
+    let mut all = 0;
+    for l in body.lines() {
+        let t = l.trim_start();
+        if t.starts_with("- [x]") || t.starts_with("- [X]") {
+            done += 1;
+            all += 1;
+        } else if t.starts_with("- [ ]") {
+            all += 1;
+        }
+    }
+    (done, all)
+}
+
+/// The notebook's pages as `yajna serve` gives them to the web app.
+pub(crate) struct ServedPages {
+    root: PathBuf,
+    links: std::sync::Arc<FileLinks>,
+}
+
+impl ServedPages {
+    pub(crate) fn new(root: PathBuf, links: std::sync::Arc<FileLinks>) -> Self {
+        ServedPages { root, links }
+    }
+
+    fn index(&self) -> Result<(Vault, Index), String> {
+        let vault = Vault::open(self.root.clone())?;
+        let ix = Index::open(&vault, false)?;
+        Ok((vault, ix))
+    }
+}
+
+/// The page types the overview counts, in the order the app lists them.
+const COLLECTIONS: [(&str, &str); 12] = [
+    ("project", "Projects"),
+    ("experiment", "Experiments"),
+    ("run", "Runs"),
+    ("protocol", "Protocols"),
+    ("material", "Materials"),
+    ("equipment", "Equipment"),
+    ("build", "Builds"),
+    ("analysis", "Analyses"),
+    ("artifact", "Artifacts"),
+    ("doc", "Docs"),
+    ("review", "Reviews"),
+    ("agent_session", "Agent sessions"),
+];
+
+impl yajna_serve::pages::Pages for ServedPages {
+    fn overview(&self) -> Result<Value, String> {
+        let (vault, ix) = self.index()?;
+        let projects: Vec<Value> = ix
+            .entities("WHERE type = 'project'", &[])
+            .iter()
+            .map(|p| {
+                let count = |t: &str| ix.entities("WHERE type = ?1 AND project = ?2", &[&t.to_string(), &p.id]).len();
+                let phases = ix.entities("WHERE type = 'phase' AND project = ?1", &[&p.id]);
+                let done = phases.iter().filter(|ph| ph.status.as_deref() == Some("done")).count();
+                let active = phases.iter().find(|ph| ph.status.as_deref() == Some("active")).map(summary);
+                let mut v = summary(p);
+                v["experiments"] = count("experiment").into();
+                v["runs"] = count("run").into();
+                v["phases"] = serde_json::json!({ "done": done, "total": phases.len(), "active": active });
+                v
+            })
+            .collect();
+        let collections: Vec<Value> = COLLECTIONS
+            .iter()
+            .map(|(t, label)| serde_json::json!({ "type": t, "label": label, "count": ix.entities("WHERE type = ?1", &[&t.to_string()]).len() }))
+            .filter(|c| c["count"].as_u64().unwrap_or(0) > 0)
+            .collect();
+        let mut log = ix.log();
+        log.reverse();
+        log.truncate(12);
+        Ok(serde_json::json!({
+            "namespace": vault.namespace().ok(),
+            "shape": vault.shape(),
+            "projects": projects,
+            "collections": collections,
+            "recent": log_json(&ix, &log),
+            "tasks_open": ix.tasks(false).len(),
+        }))
+    }
+
+    fn list(&self, kind: Option<&str>, project: Option<&str>) -> Result<Value, String> {
+        let (_, ix) = self.index()?;
+        let mut sql = String::from("WHERE 1=1");
+        let mut args: Vec<String> = Vec::new();
+        if let Some(k) = kind {
+            args.push(k.to_string());
+            sql.push_str(&format!(" AND type = ?{}", args.len()));
+        }
+        if let Some(p) = project {
+            args.push(p.to_string());
+            sql.push_str(&format!(" AND project = ?{}", args.len()));
+        }
+        let params: Vec<&dyn rusqlite::ToSql> = args.iter().map(|a| a as &dyn rusqlite::ToSql).collect();
+        // newest first; `entities` orders by creation itself
+        let mut found = ix.entities(&sql, &params);
+        found.reverse();
+        Ok(found
+            .iter()
+            .map(|e| {
+                let mut v = summary(e);
+                // the one line the parent gives it: a project for an experiment, an
+                // experiment for a run
+                let parent = e.experiment.as_ref().or(e.project.as_ref());
+                if let Some(note) = parent.and_then(|p| ix.note(p, &e.id)) {
+                    v["note"] = note.into();
+                }
+                v
+            })
+            .collect())
+    }
+
+    fn page(&self, id: &str) -> Result<Option<Value>, String> {
+        let (_, ix) = self.index()?;
+        let Some(e) = ix.entity(id) else { return Ok(None) };
+        let mut v = summary(&e);
+        v["path"] = e.path.clone().into();
+        v["html"] = markdown_for_viewer(Some(&ix), &e.body).into();
+        // the frontmatter beyond the summary, each value with the IDs in it that are pages
+        // and, for a path, where the files view shows it
+        let mut fields = Vec::new();
+        if let Some(obj) = e.meta.as_object() {
+            for (k, val) in obj {
+                if ["id", "type", "title", "schema_version"].contains(&k.as_str()) {
+                    continue;
+                }
+                let shown = match val {
+                    Value::Null => continue,
+                    Value::Array(a) if a.is_empty() => continue,
+                    Value::String(s) => s.clone(),
+                    Value::Array(a) => a.iter().map(|x| x.as_str().map(str::to_string).unwrap_or_else(|| x.to_string())).collect::<Vec<_>>().join(", "),
+                    other => other.to_string(),
+                };
+                let ids: Vec<String> = NS_ID_RE
+                    .captures_iter(&shown)
+                    .filter(|c| c.get(1).is_none() && ix.entity(&c[2]).is_some())
+                    .map(|c| c[2].to_string())
+                    .collect();
+                let file = match val {
+                    Value::String(s) if ["script", "code", "path", "source"].contains(&k.as_str()) => {
+                        self.links.href(s).map(|h| h.trim_start_matches("files/#").to_string())
+                    }
+                    _ => None,
+                };
+                fields.push(serde_json::json!({ "key": k, "value": shown, "ids": ids, "file": file }));
+            }
+        }
+        v["fields"] = fields.into();
+        let note = |parent: &str, e: &Entity| {
+            let mut s = summary(e);
+            if let Some(n) = ix.note(parent, &e.id) {
+                s["note"] = n.into();
+            }
+            s
+        };
+        match e.etype.as_str() {
+            "project" => {
+                let phases: Vec<Value> = ix
+                    .entities("WHERE type = 'phase' AND project = ?1", &[&e.id])
+                    .iter()
+                    .map(|ph| {
+                        let (done, all) = checkboxes(&ph.body);
+                        let mut s = summary(ph);
+                        s["items"] = serde_json::json!({ "done": done, "total": all });
+                        s
+                    })
+                    .collect();
+                let exps: Vec<Value> = ix
+                    .entities("WHERE type = 'experiment' AND project = ?1", &[&e.id])
+                    .iter()
+                    .map(|x| note(&e.id, x))
+                    .collect();
+                v["phases"] = phases.into();
+                v["experiments"] = exps.into();
+                let svg = tree_svg(&ix, &e.id);
+                if !svg.is_empty() {
+                    v["tree"] = svg.into();
+                }
+            }
+            "phase" => {
+                let (done, all) = checkboxes(&e.body);
+                v["items"] = serde_json::json!({ "done": done, "total": all });
+            }
+            "experiment" => {
+                let results = ix.results(&e.id);
+                let mut columns: Vec<String> = Vec::new();
+                for r in &results {
+                    for (k, _, _) in &r.metrics {
+                        if !columns.contains(k) {
+                            columns.push(k.clone());
+                        }
+                    }
+                }
+                let runs: Vec<Value> = ix
+                    .entities("WHERE type = 'run' AND experiment = ?1", &[&e.id])
+                    .iter()
+                    .map(|r| {
+                        let mut s = note(&e.id, r);
+                        s["finished"] = r.meta.get("finished").cloned().unwrap_or(Value::Null);
+                        let metrics: serde_json::Map<String, Value> = results
+                            .iter()
+                            .find(|x| x.run == r.id)
+                            .map(|x| x.metrics.iter().map(|(k, v, _)| (k.clone(), Value::String(v.clone()))).collect())
+                            .unwrap_or_default();
+                        s["metrics"] = metrics.into();
+                        s
+                    })
+                    .collect();
+                v["runs"] = serde_json::json!({ "columns": columns, "rows": runs });
+            }
+            _ => {}
+        }
+        let mut seen = Vec::new();
+        let back: Vec<Value> = ix
+            .backlinks(&e.id)
+            .into_iter()
+            .filter(|(src, _)| {
+                let fresh = !seen.contains(src);
+                seen.push(src.clone());
+                fresh
+            })
+            .filter_map(|(src, ctx)| ix.entity(&src).map(|s| {
+                let mut v = summary(&s);
+                v["context"] = ctx.into();
+                v
+            }))
+            .collect();
+        v["backlinks"] = back.into();
+        v["log"] = log_json(&ix, &ix.mentions(&e.id));
+        Ok(Some(v))
+    }
+
+    fn log(&self, skip: usize, limit: usize) -> Result<Value, String> {
+        let (_, ix) = self.index()?;
+        let mut all = ix.log();
+        all.reverse();
+        let total = all.len();
+        let page: Vec<LogEntry> = all.into_iter().skip(skip).take(limit).collect();
+        Ok(serde_json::json!({ "total": total, "entries": log_json(&ix, &page) }))
+    }
+
+    fn tasks(&self, done: bool) -> Result<Value, String> {
+        let (_, ix) = self.index()?;
+        Ok(ix
+            .tasks(done)
+            .iter()
+            .map(|t| {
+                let page = t.id.as_ref().and_then(|id| ix.entity(id)).map(|e| summary(&e));
+                serde_json::json!({ "done": t.done, "page": page, "path": t.path, "line": t.line, "section": t.section, "html": inline(&ix, &t.text) })
+            })
+            .collect())
+    }
 }

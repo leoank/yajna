@@ -205,6 +205,7 @@ mod tests {
             notebook: Arc::default(),
             version: Arc::default(),
             reviews: Some(Arc::new(Fake)),
+            pages: None,
             token: Arc::new(token.map(str::to_string)),
             local: false,
             worktrees: None,

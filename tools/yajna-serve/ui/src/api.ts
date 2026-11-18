@@ -161,7 +161,7 @@ export class ApiError extends Error {
 
 /** Where this notebook's API is: '' on a server of one notebook, `/n/<namespace>` on yajna's
  * socket server, which serves several (ADR-0036); the viewer itself is at `<base>/files/`. */
-export const base = location.pathname.replace(/\/files(\/.*)?$/, '');
+export const base = location.pathname.replace(/\/(files|classic)(\/.*)?$/, '');
 
 async function json<T>(url: string): Promise<T> {
   const res = await fetch(base + url);

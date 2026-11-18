@@ -131,6 +131,7 @@ fn notebook_config(vault: &Vault, out: PathBuf, eager: bool) -> Res<yajna_serve:
             .map(|r| (r.name.clone(), r.path.clone()))
             .collect(),
     });
+    let pages_links = links.clone();
     // the callback outlives this borrow of the vault, so it opens its own
     let owned = Vault::open(vault.root.clone())?;
     let rendered = if eager {
@@ -172,6 +173,7 @@ fn notebook_config(vault: &Vault, out: PathBuf, eager: bool) -> Res<yajna_serve:
         notebook: vault.namespace().unwrap_or("notebook").to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
         reviews: Some(Arc::new(crate::review::Served::new(vault.root.clone()))),
+        pages: Some(Arc::new(crate::site::ServedPages::new(vault.root.clone(), pages_links))),
         token: None,
         // every worktree, each opened on its first request, its site rendered then
         worktrees: all_worktrees(vault)?.then(|| yajna_serve::worktrees::WorktreesConfig {
@@ -209,12 +211,12 @@ pub fn cmd_serve(
         println!("serving {url} (Ctrl-C stops)");
         if let Some(t) = &written {
             // anyone with this URL can comment as the notebook's author until the server stops
-            println!("reviews, writable: {url}files/?token={t}");
+            println!("reviews, writable: {url}?token={t}");
         }
         if open {
             // with --review, the page that can write
             match &written {
-                Some(t) => open_url(&format!("{url}files/?token={t}")),
+                Some(t) => open_url(&format!("{url}?token={t}")),
                 None => open_url(&url),
             }
         }

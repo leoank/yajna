@@ -1,0 +1,86 @@
+//! The JSON API of the notebook's pages that the web app reads (ADR-0041): the overview,
+//! pages by type or project, one page with its fields, rendered body, children and
+//! backlinks, the log and the tasks.
+//!
+//! The crate does not know what a page is: the CLI hands it a [`Pages`] that answers from
+//! the notebook's index, and this module does HTTP. Everything here is read-only.
+
+use axum::extract::{Path, Query, State};
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
+use axum::Json;
+use serde::Deserialize;
+use serde_json::Value;
+
+use crate::App;
+
+/// The notebook side of the pages, implemented by the CLI. Every method runs on a blocking
+/// thread and answers JSON in the shapes `docs/files-viewer.md` 5.2 gives.
+pub trait Pages: Send + Sync {
+    /// the notebook: its name and shape, its projects with their progress, how many pages
+    /// of each type it has, the latest log lines
+    fn overview(&self) -> Result<Value, String>;
+    /// pages of a type, or of a project, or both; newest first
+    fn list(&self, kind: Option<&str>, project: Option<&str>) -> Result<Value, String>;
+    /// one page, `None` when no page has that ID
+    fn page(&self, id: &str) -> Result<Option<Value>, String>;
+    /// log lines newest first, `limit` of them after skipping `skip`
+    fn log(&self, skip: usize, limit: usize) -> Result<Value, String>;
+    /// the checkboxes of the notebook, open ones, or all with `done`
+    fn tasks(&self, done: bool) -> Result<Value, String>;
+}
+
+fn error(status: StatusCode, msg: impl Into<String>) -> Response {
+    (status, Json(serde_json::json!({ "error": msg.into() }))).into_response()
+}
+
+async fn answer(app: App, f: impl FnOnce(&dyn Pages) -> Result<Option<Value>, String> + Send + 'static) -> Response {
+    let Some(p) = app.pages.clone() else {
+        return error(StatusCode::NOT_FOUND, "this server has no notebook pages");
+    };
+    match tokio::task::spawn_blocking(move || f(p.as_ref())).await {
+        Ok(Ok(Some(v))) => Json(v).into_response(),
+        Ok(Ok(None)) => error(StatusCode::NOT_FOUND, "no such page"),
+        Ok(Err(e)) => error(StatusCode::INTERNAL_SERVER_ERROR, e),
+        Err(e) => error(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+    }
+}
+
+pub(crate) async fn overview_handler(State(app): State<App>) -> Response {
+    answer(app, |p| p.overview().map(Some)).await
+}
+
+#[derive(Deserialize)]
+pub(crate) struct ListQuery {
+    #[serde(rename = "type")]
+    kind: Option<String>,
+    project: Option<String>,
+}
+
+pub(crate) async fn list_handler(State(app): State<App>, Query(q): Query<ListQuery>) -> Response {
+    answer(app, move |p| p.list(q.kind.as_deref(), q.project.as_deref()).map(Some)).await
+}
+
+pub(crate) async fn page_handler(State(app): State<App>, Path(id): Path<String>) -> Response {
+    answer(app, move |p| p.page(&id)).await
+}
+
+#[derive(Deserialize)]
+pub(crate) struct LogQuery {
+    skip: Option<usize>,
+    limit: Option<usize>,
+}
+
+pub(crate) async fn log_handler(State(app): State<App>, Query(q): Query<LogQuery>) -> Response {
+    let (skip, limit) = (q.skip.unwrap_or(0), q.limit.unwrap_or(100).clamp(1, 500));
+    answer(app, move |p| p.log(skip, limit).map(Some)).await
+}
+
+#[derive(Deserialize)]
+pub(crate) struct TasksQuery {
+    done: Option<bool>,
+}
+
+pub(crate) async fn tasks_handler(State(app): State<App>, Query(q): Query<TasksQuery>) -> Response {
+    answer(app, move |p| p.tasks(q.done.unwrap_or(false)).map(Some)).await
+}

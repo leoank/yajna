@@ -72,6 +72,18 @@ run.
 Pages on the site link the paths in their frontmatter (a run's `script`, a project's
 `code`, an artifact's `path`) into the viewer when the site is served.
 
+## The web app
+
+`yajna serve` serves one app for the whole notebook (ADR-0041): the overview of projects
+with their phases, every page with its fields, body, children and what links to it, the
+log, the tasks, the reviews, what is changed in each worktree, and the files. It is the
+same on a phone, where the sidebar becomes a menu, and keeps what it last showed while it
+asks the server again, so a slow connection shows a page at once and a quiet
+*Reconnecting…* when the server cannot be reached. The worktree picker at the top of the
+sidebar shows the same screen in another worktree. The static pages `yajna site` writes
+are still served at `/<ID>.html`, and the previous viewer, with the review diffs, at
+`/classic/`.
+
 ## Git changes
 
 `yajna serve` also says what is uncommitted, staged and recently committed in the git
@@ -82,12 +94,14 @@ between them for what is staged, a commit with `^` for its parent), and `/api/gi
 a file as it was. Each change carries the path a root shows it at, so it opens in the
 viewer.
 
-The same is a view in the browser. *Changes* at the top of the sidebar opens it in a tab,
-and `/files/changes` is a page of its own made for a phone: the worktrees with what is
+The same is a view in the app, *Changes* in the sidebar: the worktrees with what is
 uncommitted in each, then one worktree's staged, changed and untracked files and its
 recent commits, then a file's diff in one column, from which *Open* shows the whole file.
-It keeps itself current every few seconds, so an agent's work shows up as it lands. When
-the notebook has several worktrees, a picker in the top bar opens another one's viewer.
+It keeps itself current every few seconds, so an agent's work shows up as it lands. On
+the socket, or with `yajna serve --review` and the link it prints, it also stages and
+unstages a file or a single hunk and commits what is staged (ADR-0040): only what you were
+shown, so a hunk the agent changed meanwhile is refused rather than staged unseen, and a
+pre-commit hook that refuses says why.
 
 ## Every worktree
 

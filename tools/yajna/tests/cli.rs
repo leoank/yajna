@@ -3449,7 +3449,10 @@ fn serve_answers_http_rerenders_and_checks_the_host() {
     let v = indexed_lab();
     let (mut child, addr) = spawn_server(&v, &["serve", "--host", "box.tail1234.ts.net"]);
     let get = |path: &str| http_get(&addr, "localhost:8765", path);
-    let home = get("/");
+    // the web app at the root (ADR-0041), the static site's pages beside it
+    let app = get("/");
+    assert!(app.starts_with("HTTP/1.1 200 OK") && app.contains("assets/app.js"), "{app}");
+    let home = get("/index.html");
     assert!(home.starts_with("HTTP/1.1 200 OK"), "{home}");
     assert!(
         home.contains("text/html") && home.contains("Archaeal division"),
@@ -3658,7 +3661,7 @@ fn serve_review_stages_and_commits_from_the_changes_view() {
         .map(|l| l.unwrap())
         .find_map(|l| l.strip_prefix("reviews, writable: ").map(str::to_string))
         .unwrap();
-    let (addr, token) = url.strip_prefix("http://").unwrap().split_once("/files/?token=").map(|(a, t)| (a.to_string(), t.to_string())).unwrap();
+    let (addr, token) = url.strip_prefix("http://").unwrap().split_once("/?token=").map(|(a, t)| (a.to_string(), t.to_string())).unwrap();
     let origin = format!("http://{addr}");
     let headers = [("Content-Type", "application/json"), ("Origin", origin.as_str()), ("X-Yajna-Token", token.as_str())];
 
@@ -3671,6 +3674,42 @@ fn serve_review_stages_and_commits_from_the_changes_view() {
     assert_eq!(status, 200, "{body}");
     assert_eq!(git(&v.root, &["log", "-1", "--format=%s"]).trim(), "an agent's note, kept");
     assert!(git(&v.root, &["status", "--porcelain", "--", "notes"]).trim().is_empty());
+    child.kill().unwrap();
+    let _ = child.wait();
+}
+
+#[test]
+fn serve_pages_api_gives_the_web_app_the_notebook() {
+    let v = indexed_lab();
+    let (mut child, addr) = spawn_server(&v, &["serve"]);
+    let (status, o) = api_json(&addr, "/api/notebook");
+    assert!(status.contains("200"), "{status} {o}");
+    let p = &o["projects"][0];
+    assert_eq!((p["id"].as_str(), p["experiments"].as_u64()), (Some("PRJ-0001"), Some(3)), "{o}");
+    assert!(o["collections"].as_array().unwrap().iter().any(|c| c["type"] == "experiment" && c["count"] == 3), "{o}");
+
+    // a project: its experiments with the line the project gives each, its body rendered
+    let (_, pr) = api_json(&addr, "/api/pages/PRJ-0001");
+    assert_eq!(pr["type"], "project");
+    assert!(pr["experiments"].as_array().unwrap().iter().any(|x| x["id"] == "EXP-20261021-000001"), "{pr}");
+    assert!(pr["html"].as_str().unwrap().contains("href=\"EXP-20261021-000001.html\""), "{pr}");
+    // an experiment: its fields, links to it and the project it belongs to
+    let (_, e) = api_json(&addr, "/api/pages/EXP-20261021-000001");
+    assert_eq!(e["project"], "PRJ-0001");
+    assert!(e["backlinks"].as_array().unwrap().iter().any(|b| b["id"] == "PRJ-0001"), "{e}");
+    assert!(e["runs"]["rows"].is_array());
+    let (_, list) = api_json(&addr, "/api/pages?type=experiment&project=PRJ-0001");
+    assert_eq!(list.as_array().unwrap().len(), 3);
+    let (_, log) = api_json(&addr, "/api/log?limit=5");
+    assert!(log["entries"].is_array() && log["total"].is_u64(), "{log}");
+    let (_, tasks) = api_json(&addr, "/api/tasks?done=true");
+    assert!(tasks.is_array());
+    assert!(http_req(&addr, "/api/pages/EXP-19990101-000000", &[]).0.contains("404"));
+    // the app's routes are the app's page
+    for route in ["/p/PRJ-0001", "/c/experiment", "/log", "/tasks", "/changes", "/reviews"] {
+        let (status, _, body) = http_req(&addr, route, &[]);
+        assert!(status.contains("200") && String::from_utf8_lossy(&body).contains("assets/app.js"), "{route}: {status}");
+    }
     child.kill().unwrap();
     let _ = child.wait();
 }
@@ -3930,19 +3969,19 @@ fn serve_files_viewer_render_and_site_links() {
     assert_eq!(out.code, 0, "{}", out.stdout);
 
     let (mut child, addr) = spawn_server(&v, &["serve"]);
-    // the viewer itself, from the bundle in the binary
-    let (status, headers, body) = http_req(&addr, "/files/", &[]);
-    assert!(
-        status.ends_with("200 OK") && headers.contains("text/html"),
-        "{status}"
-    );
-    assert!(String::from_utf8_lossy(&body).contains("app.js"));
-    let (status, headers, _) = http_req(&addr, "/files/app.js", &[]);
-    assert!(
-        status.ends_with("200 OK") && headers.contains("text/javascript"),
-        "{status}"
-    );
-    assert!(http_req(&addr, "/files/nope.js", &[]).0.contains("404"));
+    // the web app's files screen and its assets (ADR-0041), and the classic viewer
+    // (ADR-0029) under /classic/, both from the bundles in the binary
+    for (page, asset) in [("/files/", "/assets/app.js"), ("/files/code/run.py", "/assets/app.css"), ("/classic/", "/classic/app.js")] {
+        let (status, headers, body) = http_req(&addr, page, &[]);
+        assert!(status.ends_with("200 OK") && headers.contains("text/html"), "{page}: {status}");
+        assert!(String::from_utf8_lossy(&body).contains("app.js"), "{page}");
+        let (status, _, _) = http_req(&addr, asset, &[]);
+        assert!(status.ends_with("200 OK"), "{asset}: {status}");
+    }
+    let (_, headers, _) = http_req(&addr, "/assets/app.js", &[]);
+    assert!(headers.contains("text/javascript"), "{headers}");
+    assert!(http_req(&addr, "/assets/nope.js", &[]).0.contains("404"));
+    assert!(http_req(&addr, "/classic/nope.js", &[]).0.contains("404"));
     let (_, info) = api_json(&addr, "/api/info");
     assert_eq!(info["version"], env!("CARGO_PKG_VERSION"));
 
@@ -3971,8 +4010,9 @@ fn serve_files_viewer_render_and_site_links() {
     );
     assert!(r.get("id").is_none());
 
-    // the served site links the viewer, and the project's code into it
-    let home = http_get(&addr, "localhost", "/");
+    // the served site links the viewer, and the project's code into it (the app opens
+    // `files/#…` links as its own files screen)
+    let home = http_get(&addr, "localhost", "/index.html");
     assert!(home.contains("<a href=\"files/\">files</a>"), "{home}");
     let page = http_get(&addr, "localhost", "/PRJ-0001.html");
     assert!(
@@ -5096,7 +5136,7 @@ fn serve_review_writes_only_with_the_token_and_never_over_a_change() {
         .unwrap();
     let (addr, token) = {
         let rest = url.strip_prefix("http://").unwrap();
-        let (addr, q) = rest.split_once("/files/?token=").unwrap();
+        let (addr, q) = rest.split_once("/?token=").unwrap();
         (addr.to_string(), q.to_string())
     };
     let origin = format!("http://{addr}");

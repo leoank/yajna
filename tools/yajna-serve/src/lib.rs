@@ -18,6 +18,7 @@
 pub mod files;
 pub mod git;
 pub mod live;
+pub mod pages;
 pub mod reviews;
 pub mod worktrees;
 
@@ -54,6 +55,11 @@ pub struct Rendered {
 #[folder = "ui/dist"]
 struct Ui;
 
+/// The web app (ADR-0041), built into `web/dist` by `nix run .#web`.
+#[derive(rust_embed::RustEmbed)]
+#[folder = "web/dist"]
+struct Web;
+
 pub struct Config {
     /// the rendered static site
     pub site: PathBuf,
@@ -72,6 +78,8 @@ pub struct Config {
     pub version: String,
     /// the notebook's reviews (ADR-0030)
     pub reviews: Option<Arc<dyn reviews::Reviews>>,
+    /// the notebook's pages, for the web app (ADR-0041)
+    pub pages: Option<Arc<dyn pages::Pages>>,
     /// what a write to a review must carry; `None` keeps the server read-only
     pub token: Option<String>,
     /// serve every worktree of the checkout under `/w/<branch>/` (ADR-0039); `None` serves
@@ -101,6 +109,7 @@ pub(crate) struct App {
     notebook: Arc<String>,
     version: Arc<String>,
     reviews: Option<Arc<dyn reviews::Reviews>>,
+    pages: Option<Arc<dyn pages::Pages>>,
     token: Arc<Option<String>>,
     /// served on the owner's unix socket: writes need no token (ADR-0036)
     local: bool,
@@ -138,6 +147,7 @@ impl App {
             notebook: Arc::new(cfg.notebook),
             version: Arc::new(cfg.version),
             reviews: cfg.reviews,
+            pages: cfg.pages,
             token: Arc::new(cfg.token),
             local,
         }
@@ -222,6 +232,7 @@ pub fn dir_router(roots: Vec<files::Root>, render: Render, version: &str) -> Rou
             notebook,
             version: version.to_string(),
             reviews: None,
+            pages: None,
             token: None,
             worktrees: None,
         },
@@ -311,10 +322,19 @@ async fn dispatch(by_name: &std::collections::HashMap<String, Router>, mut req: 
 
 fn router(app: App) -> Router {
     Router::new()
-        .route(
-            "/",
-            get(|state: State<App>| page(state, Path("index.html".to_string()))),
-        )
+        // the web app at its root and its own routes; it works out its base itself
+        .route("/", get(web_root))
+        .route("/p/{*rest}", get(web_index))
+        .route("/c/{*rest}", get(web_index))
+        .route("/log", get(web_index))
+        .route("/tasks", get(web_index))
+        .route("/reviews", get(web_index))
+        .route("/changes", get(web_index))
+        .route("/files", get(web_index))
+        .route("/files/", get(web_index))
+        .route("/files/{*rest}", get(web_index))
+        .route("/assets/{*asset}", get(web_asset))
+        // the static site's pages, for links made before the app (`yajna site` writes them)
         .route("/{name}", get(page))
         .route("/api/files/roots", get(files::roots_handler))
         .route("/api/files/list", get(files::list_handler))
@@ -324,19 +344,20 @@ fn router(app: App) -> Router {
         .route("/api/events", get(live::events_handler))
         .route("/api/info", get(info))
         .route("/api/worktrees", get(worktrees::list_handler))
+        .route("/api/notebook", get(pages::overview_handler))
+        .route("/api/pages", get(pages::list_handler))
+        .route("/api/pages/{id}", get(pages::page_handler))
+        .route("/api/log", get(pages::log_handler))
+        .route("/api/tasks", get(pages::tasks_handler))
         .route("/w/{*rest}", any(worktrees::dispatch))
         .route("/api/reviews", get(reviews::list_handler))
         .route("/api/reviews/{id}", get(reviews::get_handler))
         .route("/api/reviews/{id}/file", get(reviews::file_handler))
         .route("/api/reviews/{id}/{action}", post(reviews::write_handler))
-        .route(
-            "/files",
-            get(|| async { axum::response::Redirect::permanent("/files/") }),
-        )
-        .route("/files/", get(|| ui_file(Path("index.html".to_string()))))
-        // the changes view as a page of its own (ADR-0038); the same app, laid out for it
-        .route("/files/changes", get(|| ui_file(Path("index.html".to_string()))))
-        .route("/files/{*asset}", get(ui_file))
+        // the classic viewer (ADR-0029) until its review diffs are in the app
+        .route("/classic", get(|| async { axum::response::Redirect::permanent("classic/") }))
+        .route("/classic/", get(|| ui_file(Path("index.html".to_string()))))
+        .route("/classic/{*asset}", get(ui_file))
         .merge(git::routes())
         .with_state(app)
 }
@@ -349,6 +370,36 @@ async fn info(State(app): State<App>) -> Response {
         "local": app.local,
     }))
     .into_response()
+}
+
+/// The app's overview: only where there is a notebook. A directory served alone
+/// (`dir_router`) has its files and changes routes and nothing at its root.
+async fn web_root(State(app): State<App>) -> Response {
+    if app.pages.is_none() {
+        return not_found("");
+    }
+    web_index().await
+}
+
+/// The web app's page, for every route of it: the app reads the route from the address.
+async fn web_index() -> Response {
+    embedded(Web::get("index.html"), "index.html")
+}
+
+async fn web_asset(Path(name): Path<String>) -> Response {
+    embedded(Web::get(&format!("assets/{name}")), &name)
+}
+
+fn embedded(f: Option<rust_embed::EmbeddedFile>, name: &str) -> Response {
+    match f {
+        Some(f) => {
+            let mut res = Response::new(Body::from(f.data.into_owned()));
+            res.headers_mut().insert(header::CONTENT_TYPE, HeaderValue::from_static(content_type(name)));
+            res.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
+            res
+        }
+        None => not_found(name),
+    }
 }
 
 /// The viewer's own files, from the bundle embedded at build time.
@@ -454,6 +505,7 @@ mod tests {
             notebook: name.to_string(),
             version: "test".to_string(),
             reviews: None,
+            pages: None,
             token: None,
             worktrees: None,
         }
