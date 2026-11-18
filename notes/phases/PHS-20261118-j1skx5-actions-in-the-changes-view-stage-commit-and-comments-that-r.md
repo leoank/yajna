@@ -26,7 +26,7 @@ done ones. The project page's *Progress* lists this phase on one line.
 - [x] ADR-0040: stage, unstage and commit, no discard; writes on the socket and with `--review`; comments as review threads (ank's choices, 2026-11-18)
 - [x] The git write API in `yajna-serve`: stage and unstage a file or a hunk (named by its header and a hash of its lines, refused with 409 when it changed), commit what is staged with the staged tree as the guard, the reviews' write check (0.37.0)
 - [x] Stage, unstage and commit in the changes view: per file and per hunk, a commit form when something is staged, errors from hooks and races shown (in the new app, [[PHS-20261118-k4kfg6]]; 0.38.0)
-- [ ] Comments on a diff's lines in the changes view, written as a thread on the worktree's open review, one opened for its branch when there is none
+- [x] Comments on a diff's lines in the changes view, written as a thread on the worktree's open review, one opened for its branch when there is none; lines not committed yet anchored `@ work` (ank's choice, 2026-11-18; 0.39.0)
 - [ ] An event for each new thread that clients follow (`/api/events` or a feed), its shape agreed with saarthi
 - [ ] The guide, `docs/files-viewer.md` and `docs/review.md` on the actions
 - [ ] Verified: ank reviews an agent's work in a manthan worktree from the phone, comments, sees the fix, commits it
@@ -43,3 +43,15 @@ done ones. The project page's *Progress* lists this phase on one line.
 - A commit is `git commit -F -` as the machine's git identity, with the hooks; a hook that
   refuses comes back as 422 with what it said, which is where `yajna data check` would
   speak.
+- A comment on uncommitted lines is anchored `<path>:<from>-<to> @ work` with the lines
+  quoted from disk; `review update` moves it to the head where those lines are committed,
+  keeps it `@ work` while they are only on disk, and outdates it when they are in neither
+  (ank chose this over committed-only comments and anchoring at HEAD). `validate` skips
+  `work` when it checks that anchors' commits exist; Neovim opens such a thread's file on
+  disk.
+- A branch with no commits of its own can now be reviewed (it was refused): that is when an
+  agent's work is all on disk, and when these comments matter. `review open main` (the
+  base itself) is refused instead. On main the app does not open a review; it asks for one.
+- Tried in a scratch notebook: a comment from the phone layout on two uncommitted lines of
+  an agent's fresh branch opened a review of the branch as ank and wrote `T1 … @ work`,
+  which validated on the branch once `validate` skipped `work`.

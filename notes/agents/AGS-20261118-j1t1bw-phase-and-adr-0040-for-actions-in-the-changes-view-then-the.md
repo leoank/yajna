@@ -51,3 +51,10 @@ writes on the socket and with `--review`, comments as review threads.
   tests updated. Tried in a browser against manthan and a scratch notebook, which found
   the closed drawer's shadow showing on a phone and the hunk buttons looking disabled.
   0.38.0.
+- Committed and pushed it (2be9387, e8a35c5). Then comments on a diff: asked how to
+  anchor lines not committed yet and what to do with no review; ank chose an `@ work`
+  anchor and a branch review opened when there is none (on main, ask). Built it in
+  `review.rs` (parse, `comment --commit work`, `review update`, validate), the Neovim
+  plugin, `Reviews::open_branch` and `POST /api/reviews`, and the app's line picking and
+  comment box. Found while trying it: a fresh branch could not be reviewed (now it can, the
+  base cannot) and validate took `work` for a missing commit. 0.39.0.
