@@ -82,6 +82,17 @@ between them for what is staged, a commit with `^` for its parent), and `/api/gi
 a file as it was. Each change carries the path a root shows it at, so it opens in the
 viewer. A view of these in the browser is coming (`/files/changes`).
 
+## Every worktree
+
+A notebook in several git worktrees, as a lab is when agents work on branches of their
+own, is served whole: `yajna serve` started in one checkout serves every worktree of it
+under `/w/<branch>/`, its site, files, reviews and git changes, the branch's `/` written
+`%2F` (`http://localhost:8765/w/lab%2Ftopic/files/`). The checkout it was started in stays
+at `/` too. `GET /api/worktrees` lists them with how many files are changed, staged and
+untracked in each; a worktree added or removed shows within a few seconds, and is opened
+only when asked for. `[serve] worktrees = "this"` in `yajna.toml` serves the one checkout
+only.
+
 ## Every notebook on one socket
 
 `yajna serve --socket <path>` serves every notebook in your registry (the ones pinned in
@@ -91,7 +102,8 @@ them: saarthi's node relays your phone to it (ADR-0036). `GET /api/notebooks` li
 and each is served under `/n/<namespace>/` as `yajna serve` serves one at `/`: its site,
 `files/` and the API. It runs from any directory, needs no `--review` token for writing to
 reviews, since the socket is yours alone, and renders every site in the background from the
-start. A notebook that cannot be opened is left out with a note.
+start. A notebook that cannot be opened is left out with a note. Each notebook's entry in
+`/api/notebooks` lists its worktrees too, served under `/n/<namespace>/w/<branch>/`.
 
 ```console
 $ yajna serve --socket ~/.local/state/yajna/serve.sock

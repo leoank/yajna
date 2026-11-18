@@ -75,9 +75,23 @@ pub(crate) fn roots(vault: &Vault) -> Res<Vec<Root>> {
 /// What `yajna validate` reports about `[files]`; paths are not checked, they differ per
 /// machine.
 pub fn files_problems(vault: &Vault) -> Vec<String> {
-    match roots(vault) {
+    let mut out: Vec<String> = match roots(vault) {
         Ok(_) => Vec::new(),
         Err(e) => e.lines().map(|l| format!("{CONFIG_NAME}: {l}")).collect(),
+    };
+    if let Err(e) = all_worktrees(vault) {
+        out.push(format!("{CONFIG_NAME}: {e}"));
+    }
+    out
+}
+
+/// Whether `yajna serve` serves every worktree (ADR-0039): `[serve] worktrees`, `all` by
+/// default.
+fn all_worktrees(vault: &Vault) -> Res<bool> {
+    match vault.cfg.serve.worktrees.as_deref() {
+        None | Some("all") => Ok(true),
+        Some("this") => Ok(false),
+        Some(other) => Err(format!("[serve] worktrees = {other:?}: \"all\" or \"this\"")),
     }
 }
 
@@ -159,6 +173,14 @@ fn notebook_config(vault: &Vault, out: PathBuf, eager: bool) -> Res<yajna_serve:
         version: env!("CARGO_PKG_VERSION").to_string(),
         reviews: Some(Arc::new(crate::review::Served::new(vault.root.clone()))),
         token: None,
+        // every worktree, each opened on its first request, its site rendered then
+        worktrees: all_worktrees(vault)?.then(|| yajna_serve::worktrees::WorktreesConfig {
+            root: vault.root.clone(),
+            open: Arc::new(|root: &Path| {
+                let v = Vault::open(root.to_path_buf())?;
+                notebook_config(&v, site_dir(&v), false)
+            }),
+        }),
     })
 }
 

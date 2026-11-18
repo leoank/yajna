@@ -19,6 +19,7 @@ pub mod files;
 pub mod git;
 pub mod live;
 pub mod reviews;
+pub mod worktrees;
 
 use std::net::{Ipv4Addr, SocketAddr};
 use std::path::PathBuf;
@@ -29,7 +30,7 @@ use axum::extract::{Path, Request, State};
 use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
+use axum::routing::{any, get, post};
 use axum::Router;
 
 /// Re-renders the site if a page changed since the last render; called before every page
@@ -73,6 +74,9 @@ pub struct Config {
     pub reviews: Option<Arc<dyn reviews::Reviews>>,
     /// what a write to a review must carry; `None` keeps the server read-only
     pub token: Option<String>,
+    /// serve every worktree of the checkout under `/w/<branch>/` (ADR-0039); `None` serves
+    /// this checkout only
+    pub worktrees: Option<worktrees::WorktreesConfig>,
 }
 
 /// One notebook of a server on a unix socket (ADR-0036).
@@ -100,6 +104,8 @@ pub(crate) struct App {
     token: Arc<Option<String>>,
     /// served on the owner's unix socket: writes need no token (ADR-0036)
     local: bool,
+    /// the other worktrees of the notebook (ADR-0039)
+    worktrees: Option<Arc<worktrees::Worktrees>>,
 }
 
 impl axum::extract::FromRef<App> for git::Roots {
@@ -110,7 +116,11 @@ impl axum::extract::FromRef<App> for git::Roots {
 
 impl App {
     fn new(cfg: Config, local: bool) -> Self {
+        let worktrees = cfg
+            .worktrees
+            .map(|w| Arc::new(worktrees::Worktrees::new(w, cfg.token.clone(), local)));
         App {
+            worktrees,
             site: Arc::new(cfg.site),
             refresh: cfg.refresh,
             hosts: Arc::new(cfg.hosts),
@@ -188,30 +198,45 @@ pub fn run_socket(
 
 /// The router of a server of several notebooks: the list, and each one under its prefix.
 fn many(notebooks: Vec<Notebook>) -> Router {
-    let list: Vec<serde_json::Value> = notebooks
-        .iter()
-        .map(|n| {
+    let mut list = Vec::new();
+    let mut by_name = std::collections::HashMap::new();
+    for n in notebooks {
+        let app = App::new(n.config, true);
+        list.push((
             serde_json::json!({
                 "namespace": n.namespace,
                 "path": n.path,
                 "shape": n.shape,
                 "url": format!("/n/{}/", n.namespace),
-            })
-        })
-        .collect();
-    let by_name: Arc<std::collections::HashMap<String, Router>> = Arc::new(
-        notebooks
-            .into_iter()
-            .map(|n| (n.namespace, router(App::new(n.config, true))))
-            .collect(),
-    );
+            }),
+            app.worktrees.clone(),
+        ));
+        by_name.insert(n.namespace, router(app));
+    }
+    let by_name = Arc::new(by_name);
     let list = Arc::new(list);
     Router::new()
         .route(
             "/api/notebooks",
             get(move || {
                 let list = list.clone();
-                async move { axum::Json(serde_json::json!({ "notebooks": *list })).into_response() }
+                async move {
+                    // each notebook's worktrees, with what is uncommitted in each (ADR-0039)
+                    let all = tokio::task::spawn_blocking(move || {
+                        list.iter()
+                            .map(|(n, wt)| {
+                                let mut n = n.clone();
+                                if let Some(Ok(w)) = wt.as_ref().map(|w| w.with_counts()) {
+                                    n["worktrees"] = w.into();
+                                }
+                                n
+                            })
+                            .collect::<Vec<_>>()
+                    })
+                    .await
+                    .unwrap_or_default();
+                    axum::Json(serde_json::json!({ "notebooks": all })).into_response()
+                }
             }),
         )
         .fallback(move |req: Request| {
@@ -265,6 +290,8 @@ fn router(app: App) -> Router {
         .route("/api/files/render", get(files::render_handler))
         .route("/api/events", get(live::events_handler))
         .route("/api/info", get(info))
+        .route("/api/worktrees", get(worktrees::list_handler))
+        .route("/w/{*rest}", any(worktrees::dispatch))
         .route("/api/reviews", get(reviews::list_handler))
         .route("/api/reviews/{id}", get(reviews::get_handler))
         .route("/api/reviews/{id}/file", get(reviews::file_handler))
@@ -393,6 +420,7 @@ mod tests {
             version: "test".to_string(),
             reviews: None,
             token: None,
+            worktrees: None,
         }
     }
 
@@ -447,16 +475,79 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn worktrees_listed_per_notebook_and_served_under_the_namespace() {
+        let dir = std::env::temp_dir().join(format!("yajna-serve-many-wt-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let git = |at: &std::path::Path, args: &[&str]| {
+            let out = std::process::Command::new("git")
+                .arg("-C")
+                .arg(at)
+                .args(["-c", "commit.gpgsign=false"])
+                .args(args)
+                .env("GIT_CONFIG_GLOBAL", "/dev/null")
+                .env("GIT_AUTHOR_NAME", "a")
+                .env("GIT_AUTHOR_EMAIL", "a@x")
+                .env("GIT_COMMITTER_NAME", "a")
+                .env("GIT_COMMITTER_EMAIL", "a@x")
+                .output()
+                .unwrap();
+            assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        };
+        let main = dir.join("main");
+        std::fs::create_dir_all(&main).unwrap();
+        git(&main, &["init", "-q", "-b", "main"]);
+        std::fs::write(main.join("yajna.toml"), "").unwrap();
+        git(&main, &["add", "."]);
+        git(&main, &["commit", "-q", "-m", "x"]);
+        git(&main, &["worktree", "add", "-q", "-b", "g2a/main", dir.join("g2a").to_str().unwrap()]);
+        std::fs::write(dir.join("g2a/new.md"), "x").unwrap();
+
+        let mut nbs = notebooks();
+        // the opened worktree is named after its directory, to tell it apart
+        nbs[0].config.worktrees = Some(worktrees::WorktreesConfig {
+            root: main.clone(),
+            open: Arc::new(|root: &std::path::Path| {
+                Ok(config(&root.file_name().unwrap().to_string_lossy()))
+            }),
+        });
+        let r = many(nbs);
+        let (_, _, body) = get_path(r.clone(), "/api/notebooks").await;
+        let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+        let wts = v["notebooks"][0]["worktrees"].as_array().unwrap();
+        let names: Vec<_> = wts.iter().map(|w| (w["name"].as_str().unwrap(), w["untracked"].as_u64().unwrap())).collect();
+        assert_eq!(names, [("main", 0), ("g2a/main", 1)]);
+        assert!(v["notebooks"][1].get("worktrees").is_none(), "proj serves its checkout only");
+
+        let (s, _, body) = get_path(r.clone(), "/n/lab/w/g2a%2Fmain/api/info").await;
+        assert_eq!(s, StatusCode::OK, "{body}");
+        let info: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!((info["notebook"].as_str(), info["local"].as_bool()), (Some("g2a"), Some(true)));
+        let (s, h, _) = get_path(r.clone(), "/n/lab/w/main").await;
+        assert_eq!((s, h.get(header::LOCATION).unwrap().to_str().unwrap()), (StatusCode::PERMANENT_REDIRECT, "main/"));
+        assert_eq!(get_path(r.clone(), "/n/proj/w/main/api/info").await.0, StatusCode::NOT_FOUND);
+    }
+
+    /// A socket server on its own thread: `Ok` once it accepts connections, or why it stopped.
+    fn serve_in_thread(socket: PathBuf) -> std::sync::mpsc::Receiver<Result<(), String>> {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let ready = tx.clone();
+        std::thread::spawn(move || {
+            if let Err(e) = run_socket(&socket, notebooks(), move || ready.send(Ok(())).unwrap()) {
+                let _ = tx.send(Err(format!("{}: {e}", socket.display())));
+            }
+        });
+        rx
+    }
+
     #[test]
     fn the_socket_is_the_owners_and_not_taken_twice() {
         use std::os::unix::fs::PermissionsExt;
         let dir = std::env::temp_dir().join(format!("yajna-serve-sock-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let socket = dir.join("run/serve.sock");
-        let (tx, rx) = std::sync::mpsc::channel();
-        let s = socket.clone();
-        std::thread::spawn(move || run_socket(&s, notebooks(), move || tx.send(()).unwrap()));
-        rx.recv_timeout(std::time::Duration::from_secs(10)).unwrap();
+        let rx = serve_in_thread(socket.clone());
+        rx.recv_timeout(std::time::Duration::from_secs(10)).unwrap().unwrap();
         let mode = |p: &std::path::Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode(&socket), 0o600);
         assert_eq!(mode(socket.parent().unwrap()), 0o700);
@@ -466,10 +557,8 @@ mod tests {
         // a socket file nothing answers on is replaced
         let stale = dir.join("stale.sock");
         drop(std::os::unix::net::UnixListener::bind(&stale).unwrap());
-        let (tx, rx) = std::sync::mpsc::channel();
-        let s = stale.clone();
-        std::thread::spawn(move || run_socket(&s, notebooks(), move || tx.send(()).unwrap()));
-        rx.recv_timeout(std::time::Duration::from_secs(10)).unwrap();
+        let rx = serve_in_thread(stale.clone());
+        rx.recv_timeout(std::time::Duration::from_secs(10)).unwrap().unwrap();
     }
 
     fn with_host(h: &str) -> HeaderMap {

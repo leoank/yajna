@@ -144,6 +144,8 @@ binary.
 | `GET /api/events?watch=<path>&watch=…` | SSE: `changed {path, size, mtime}`, `created`, `removed`, `listing {path}` |
 | `GET /api/reviews`, `GET /api/reviews/<ID>`, `GET /api/reviews/<ID>/file?path=&old=` | reviews, one review with its threads, changed files and `version`, a changed file at base and head (`docs/review.md` 7.2) |
 | `POST /api/reviews/<ID>/<action>` | with `yajna serve --review` only: a token, a matching `Origin` and the page's `version` |
+| `GET /api/worktrees` | every worktree of the notebook (ADR-0039): `{worktrees: [{name, branch, path, head, current, url, changed, staged, untracked, conflicted}]}`, `name` the branch or `@<short sha>`, `url` relative to the notebook's address |
+| `/w/<branch>/…` | everything above, for that worktree, the branch percent-encoded (`/w/lab%2Ftopic/files/`); opened on its first request, dropped when the worktree goes; `/w/<branch>` redirects to the slash form |
 | `GET /api/git/status?path=<root>/<dir>` | the worktree the path is in (ADR-0038): `{worktree, branch, head, upstream, ahead, behind, unstaged, staged, untracked, conflicted}`, each change `{rel, path, status, old?}`, `rel` below the worktree's top and `path` where a root shows it (`null` when none does) |
 | `GET /api/git/log?path=&before=&limit=` | commits newest first, 30 a page: `{commits: [{sha, short, author, time, parents, subject, files}], next?}`; a directory's log has the commits that touched it |
 | `GET /api/git/diff?path=<file>&from=&to=&old=` | `{diff, binary, truncated}`, a unified diff of one file from `from` (default `HEAD`) to `to` (default `WORK`), each `HEAD`, `INDEX`, `WORK` or a commit with an optional `^`; an untracked file shows as added, `old` gives a rename's other side |

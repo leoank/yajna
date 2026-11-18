@@ -198,7 +198,7 @@ pub struct Status {
 }
 
 /// `git status --porcelain=v2 --branch -z` into a `Status`; paths below the top.
-fn parse_status(raw: &[u8]) -> Status {
+pub(crate) fn parse_status(raw: &[u8]) -> Status {
     let text = String::from_utf8_lossy(raw);
     let mut fields = text.split('\0');
     let mut s = Status::default();

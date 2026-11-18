@@ -207,6 +207,7 @@ mod tests {
             reviews: Some(Arc::new(Fake)),
             token: Arc::new(token.map(str::to_string)),
             local: false,
+            worktrees: None,
         }
     }
 

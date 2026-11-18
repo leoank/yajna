@@ -3550,6 +3550,78 @@ fn serve_git_api_says_what_is_changed_staged_and_committed() {
 }
 
 #[test]
+fn serve_serves_every_worktree_under_its_branch() {
+    let v = indexed_lab();
+    git(&v.root, &["init", "-q", "-b", "main"]);
+    fs::write(v.root.join(".gitignore"), "/.cache/\n/site/\n").unwrap();
+    git(&v.root, &["add", "."]);
+    git(&v.root, &["commit", "-q", "-m", "the lab"]);
+    // an agent's branch in a worktree of its own, with a page main does not have
+    let elsewhere = tempfile::tempdir().unwrap();
+    let topic = elsewhere.path().join("topic");
+    git(&v.root, &["worktree", "add", "-q", "-b", "lab/topic", topic.to_str().unwrap()]);
+    let out = Command::new(env!("CARGO_BIN_EXE_yajna"))
+        .args(["--root", topic.to_str().unwrap(), "new", "equipment", "Confocal on the branch"])
+        .env("YAJNA_CACHE", v.root.join(".cache"))
+        .env("XDG_STATE_HOME", v.root.join(".cache/state"))
+        .env("XDG_CONFIG_HOME", v.root.join(".cache/config"))
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let (mut child, addr) = spawn_server(&v, &["serve"]);
+
+    // the list: both, which one is served here, and what is uncommitted in each
+    let (status, l) = api_json(&addr, "/api/worktrees");
+    assert!(status.contains("200"), "{status} {l}");
+    let wts = l["worktrees"].as_array().unwrap();
+    assert_eq!(wts.len(), 2, "{l}");
+    let main = wts.iter().find(|w| w["name"] == "main").unwrap();
+    let branch = wts.iter().find(|w| w["name"] == "lab/topic").unwrap();
+    assert_eq!((main["current"].as_bool(), branch["current"].as_bool()), (Some(true), Some(false)));
+    assert_eq!(branch["url"], "w/lab%2Ftopic/");
+    assert_eq!(branch["untracked"], 1, "{branch}");
+    assert_eq!(main["untracked"], 0, "{main}");
+
+    // everything a server of one checkout serves, for the branch under its prefix
+    let page = http_get(&addr, "localhost", "/w/lab%2Ftopic/EQP-0001.html");
+    assert!(page.starts_with("HTTP/1.1 200") && page.contains("Confocal on the branch"), "{page}");
+    assert!(http_get(&addr, "localhost", "/EQP-0001.html").starts_with("HTTP/1.1 404"), "not on main");
+    let (_, info) = api_json(&addr, "/w/lab%2Ftopic/api/info");
+    assert_eq!(info["version"], env!("CARGO_PKG_VERSION"));
+    let (_, s) = api_json(&addr, "/w/lab%2Ftopic/api/git/status?path=notes");
+    assert_eq!(s["branch"], "lab/topic");
+    assert!(s["untracked"][0]["rel"].as_str().unwrap().starts_with("notes/equipment/EQP-0001"), "{s}");
+    let (status, _, _) = http_req(&addr, "/w/lab%2Ftopic/files/", &[]);
+    assert!(status.contains("200"), "{status}");
+    // the bare prefix goes to its slash form; an unknown worktree is not found
+    let (status, headers, _) = http_req(&addr, "/w/lab%2Ftopic", &[]);
+    assert!(status.contains("308") && headers.contains("location: lab%2ftopic/"), "{status} {headers}");
+    assert!(http_get(&addr, "localhost", "/w/nope/").starts_with("HTTP/1.1 404"));
+    // the Host check covers the worktrees too
+    assert!(http_get(&addr, "evil.example", "/w/lab%2Ftopic/EQP-0001.html").starts_with("HTTP/1.1 403"));
+
+    // a worktree removed goes from the list once it is read again
+    git(&v.root, &["worktree", "remove", "--force", topic.to_str().unwrap()]);
+    std::thread::sleep(std::time::Duration::from_millis(3100));
+    let (_, l) = api_json(&addr, "/api/worktrees");
+    assert_eq!(l["worktrees"].as_array().unwrap().len(), 1, "{l}");
+    assert!(http_get(&addr, "localhost", "/w/lab%2Ftopic/").starts_with("HTTP/1.1 404"));
+    child.kill().unwrap();
+    let _ = child.wait();
+
+    // [serve] worktrees = "this": the checkout it runs in only
+    let toml = fs::read_to_string(v.root.join("yajna.toml")).unwrap();
+    fs::write(v.root.join("yajna.toml"), format!("{toml}\n[serve]\nworktrees = \"this\"\n")).unwrap();
+    let (mut child, addr) = spawn_server(&v, &["serve"]);
+    assert!(api_json(&addr, "/api/worktrees").0.contains("404"));
+    child.kill().unwrap();
+    let _ = child.wait();
+    fs::write(v.root.join("yajna.toml"), format!("{toml}\n[serve]\nworktrees = \"some\"\n")).unwrap();
+    let out = v.run(&["validate"]);
+    assert!(out.stdout.contains("[serve] worktrees") || out.stderr.contains("[serve] worktrees"), "{}{}", out.stdout, out.stderr);
+}
+
+#[test]
 fn serve_files_api_lists_reads_and_refuses() {
     let v = indexed_lab();
     let scratch = tempfile::tempdir().unwrap();

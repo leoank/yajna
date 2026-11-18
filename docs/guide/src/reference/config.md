@@ -92,6 +92,12 @@ Symlinks are followed, out of a root too; a link back to a directory above it is
 a loop and not entered. `yajna validate` checks names, patterns and `watch`; paths are not
 checked, because they differ per machine.
 
+## `[serve]`
+
+| Key | Meaning |
+|-----|---------|
+| `worktrees` | `"all"` (the default): `yajna serve` serves every git worktree of the notebook, each under `/w/<branch>/` (ADR-0039); `"this"`: only the checkout it runs in. |
+
 ## Other files yajna reads and writes
 
 | Path | What |

@@ -357,6 +357,17 @@ pub struct Config {
     pub files: FilesConfig,
     #[serde(default)]
     pub data: DataConfig,
+    #[serde(default)]
+    pub serve: ServeConfig,
+}
+
+/// `[serve]` in yajna.toml: what `yajna serve` serves besides the checkout it runs in.
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ServeConfig {
+    /// `all` (the default): every worktree of the notebook, under `/w/<branch>/`
+    /// (ADR-0039); `this`: the checkout the server runs in only
+    pub worktrees: Option<String>,
 }
 
 /// `[data]` in yajna.toml: how this notebook stores large files (docs/data.md).
