@@ -196,6 +196,31 @@ pub fn run_socket(
     })
 }
 
+/// The files viewer, its changes view and the git API over `roots` alone (ADR-0038): no
+/// site, reviews or worktree list, read-only. For a program with no notebook that serves a
+/// directory of its own, such as saarthi's node serving a session's directory; it mounts
+/// the router wherever it likes, under any prefix, and checks who reaches it itself, since
+/// no `Host` check is applied. `render` renders a markdown file for the viewer's preview.
+pub fn dir_router(roots: Vec<files::Root>, render: Render, version: &str) -> Router {
+    let notebook = roots.first().map(|r| r.name.clone()).unwrap_or_default();
+    router(App::new(
+        Config {
+            site: PathBuf::new(),
+            refresh: Arc::new(|| Ok(())),
+            port: 0,
+            hosts: Vec::new(),
+            roots,
+            render,
+            notebook,
+            version: version.to_string(),
+            reviews: None,
+            token: None,
+            worktrees: None,
+        },
+        false,
+    ))
+}
+
 /// The router of a server of several notebooks: the list, and each one under its prefix.
 fn many(notebooks: Vec<Notebook>) -> Router {
     let mut list = Vec::new();
@@ -591,5 +616,63 @@ mod tests {
             assert!(!host_allowed(&with_host(bad), &extra), "{bad}");
         }
         assert!(!host_allowed(&HeaderMap::new(), &extra), "no Host");
+    }
+
+    #[tokio::test]
+    async fn a_directory_served_alone_with_its_changes() {
+        let dir = std::env::temp_dir().join(format!("yajna-serve-dir-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let git = |args: &[&str]| {
+            let out = std::process::Command::new("git")
+                .arg("-C")
+                .arg(&dir)
+                .args(["-c", "commit.gpgsign=false"])
+                .args(args)
+                .env("GIT_CONFIG_GLOBAL", "/dev/null")
+                .env("GIT_AUTHOR_NAME", "a")
+                .env("GIT_AUTHOR_EMAIL", "a@x")
+                .env("GIT_COMMITTER_NAME", "a")
+                .env("GIT_COMMITTER_EMAIL", "a@x")
+                .output()
+                .unwrap();
+            assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        };
+        git(&["init", "-q", "-b", "main"]);
+        std::fs::write(dir.join("a.md"), "one\n").unwrap();
+        git(&["add", "."]);
+        git(&["commit", "-q", "-m", "first"]);
+        std::fs::write(dir.join("a.md"), "two\n").unwrap();
+
+        let root = files::Root::new("work", dir.clone(), &[], files::Watch::Off).unwrap();
+        let render: Render = Arc::new(|p: &std::path::Path| {
+            Ok(Rendered { html: format!("<p>{}</p>", p.file_name().unwrap().to_string_lossy()), id: None, title: None })
+        });
+        let r = dir_router(vec![root], render, "9.9.9");
+
+        // the changes page and the viewer, with the root and its git state
+        let (s, _, body) = get_path(r.clone(), "/files/changes").await;
+        assert_eq!(s, StatusCode::OK);
+        assert!(body.to_lowercase().contains("<!doctype"), "{body}");
+        let (s, _, body) = get_path(r.clone(), "/api/files/roots").await;
+        assert_eq!(s, StatusCode::OK);
+        assert!(body.contains("\"work\""), "{body}");
+        let (s, _, body) = get_path(r.clone(), "/api/git/status?path=work").await;
+        assert_eq!(s, StatusCode::OK);
+        assert!(body.contains("a.md"), "{body}");
+        let (s, _, body) = get_path(r.clone(), "/api/git/diff?path=work/a.md&from=HEAD&to=WORK").await;
+        assert_eq!(s, StatusCode::OK);
+        assert!(body.contains("+two"), "{body}");
+        let (s, _, body) = get_path(r.clone(), "/api/files/render?path=work/a.md").await;
+        assert_eq!((s, body.contains("<p>a.md</p>")), (StatusCode::OK, true), "{body}");
+
+        // read-only, and nothing of a notebook: no reviews, no worktree list, no site
+        let (_, _, body) = get_path(r.clone(), "/api/info").await;
+        let info: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!((info["notebook"].as_str(), info["version"].as_str(), info["review"].as_bool()), (Some("work"), Some("9.9.9"), Some(false)));
+        for missing in ["/api/worktrees", "/", "/index.html", "/api/reviews/x/approve"] {
+            assert!(get_path(r.clone(), missing).await.0.is_client_error(), "{missing}");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

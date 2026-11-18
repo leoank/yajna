@@ -154,7 +154,10 @@ binary.
 Everything is `GET` except the review writes, which exist only behind `--review`. The git
 routes run the `git` CLI with optional locks off, take paths by the rules of 5.3 (a deleted
 file's path is resolved through its directory, never past an exclusion), and need only the
-roots: `yajna_serve::git::router(roots)` serves them alone, as saarthi's node does. The client opens a new event stream
+roots: `yajna_serve::git::router(roots)` serves them alone, and
+`yajna_serve::dir_router(roots, render, version)` serves them with the viewer and its changes
+view over a directory of its own, without a site, reviews or worktree list, as saarthi's
+node does for a session's directory. The client opens a new event stream
 when the set of open files and expanded directories changes, which is rare and cheap, so
 there is no subscription protocol.
 
