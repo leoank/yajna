@@ -17,9 +17,9 @@ static THREAD_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^### T(\d+) \((open|addressed|resolved|outdated)\) (.+?)\s*$").unwrap()
 });
 static LINES_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^(.+?):(\d+)(?:-(\d+))? @ ([0-9a-f]{7,40})$").unwrap());
+    LazyLock::new(|| Regex::new(r"^(.+?):(\d+)(?:-(\d+))? @ ([0-9a-f]{7,40}|work)$").unwrap());
 static HEADING_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^(.+?)#(.+?) @ ([0-9a-f]{7,40})$").unwrap());
+    LazyLock::new(|| Regex::new(r"^(.+?)#(.+?) @ ([0-9a-f]{7,40}|work)$").unwrap());
 static REPLY_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
         r"^- (\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}) (\S+?)(?: (addressed in ([0-9a-f]{7,40})|resolved|reopened))?(?:: (.*))?$",
@@ -446,7 +446,8 @@ pub fn problems(vault: &Vault, page: &Page) -> Vec<String> {
         commits.push((format!("round {}", i + 1), c));
     }
     for t in &threads {
-        if let Some(c) = t.anchor.as_ref().and_then(Anchor::commit) {
+        // `work` is the working tree, lines not committed yet (ADR-0040), not a commit
+        if let Some(c) = t.anchor.as_ref().and_then(Anchor::commit).filter(|c| *c != "work") {
             commits.push((format!("T{} anchor", t.n), c.to_string()));
         }
         for r in &t.replies {
@@ -695,12 +696,12 @@ fn resolve(vault: &Vault, target: &str, phase: Option<&str>, base_branch: &str) 
     {
         let head = rev(root, target)?;
         let base_tip = rev(root, base_branch)?;
-        let base = git(root, &["merge-base", &base_tip, &head])?;
-        if base == head {
-            return Err(format!(
-                "{target} has no commits that {base_branch} does not have"
-            ));
+        if target == base_branch {
+            return Err(format!("{target} is the base a branch is reviewed against; review a range or a phase of it"));
         }
+        // a branch with no commits of its own yet is reviewed too: its work is on disk, and
+        // comments on it are anchored `@ work` until it is committed (ADR-0040)
+        let base = git(root, &["merge-base", &base_tip, &head])?;
         let home = branch_worktree(vault, target).ok_or_else(|| {
             format!(
                 "{target} is not checked out anywhere; a branch review is written on its branch, so check it out (git worktree add) first"
@@ -1530,9 +1531,62 @@ fn relocate(file: &[&str], quoted: &[&str], near: usize) -> Option<usize> {
     found.into_iter().min_by_key(|&s| s.abs_diff(near))
 }
 
-/// The anchor of a thread at `head`, or `None` when what it pointed at is gone.
-fn reanchor(root: &Path, anchor: &Anchor, head: &str) -> Option<Anchor> {
+/// The lines a thread quotes, from the fenced block under its heading.
+fn quoted_of(body: &str, t: &Thread) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut fence: Option<&str> = None;
+    for l in body.lines().take(t.end).skip(t.start + 1) {
+        match fence {
+            None if l.starts_with("```") || l.starts_with("~~~") => fence = Some(&l[..3]),
+            None if l.starts_with("- ") => break,
+            None => {}
+            Some(f) if l.trim_end() == f => break,
+            Some(_) => out.push(l.to_string()),
+        }
+    }
+    out
+}
+
+/// A thread anchored in the working tree (`@ work`, ADR-0040): at `head` when its quoted
+/// lines or heading are there now that they are committed, still `@ work` while they are
+/// only on disk, `None` when they are in neither.
+fn reanchor_work(root: &Path, anchor: &Anchor, head: &str, quoted: &[String]) -> Option<Anchor> {
+    let committed = git(root, &["show", &format!("{head}:./{}", anchor_path(anchor)?)]).ok();
+    let on_disk = std::fs::read_to_string(root.join(anchor_path(anchor)?)).ok();
+    match anchor {
+        Anchor::Lines { path, from, .. } => {
+            let quoted: Vec<&str> = quoted.iter().map(String::as_str).collect();
+            let find = |text: &str| relocate(&text.lines().collect::<Vec<_>>(), &quoted, *from);
+            if let Some(at) = committed.as_deref().and_then(find) {
+                return Some(Anchor::Lines { path: path.clone(), from: at, to: at + quoted.len() - 1, commit: short(head).to_string() });
+            }
+            on_disk.as_deref().and_then(find).map(|at| Anchor::Lines { path: path.clone(), from: at, to: at + quoted.len() - 1, commit: "work".into() })
+        }
+        Anchor::Heading { path, heading, .. } => {
+            let has = |text: &str| text.lines().any(|l| l.starts_with('#') && l.trim_start_matches('#').trim() == heading);
+            if committed.as_deref().is_some_and(has) {
+                return Some(Anchor::Heading { path: path.clone(), heading: heading.clone(), commit: short(head).to_string() });
+            }
+            on_disk.as_deref().filter(|t| has(t)).map(|_| anchor.clone())
+        }
+        Anchor::General => None,
+    }
+}
+
+fn anchor_path(anchor: &Anchor) -> Option<&str> {
+    match anchor {
+        Anchor::Lines { path, .. } | Anchor::Heading { path, .. } => Some(path),
+        Anchor::General => None,
+    }
+}
+
+/// The anchor of a thread at `head`, or `None` when what it pointed at is gone; `quoted` is
+/// what the thread quotes, which a working-tree anchor is found again by.
+fn reanchor(root: &Path, anchor: &Anchor, head: &str, quoted: &[String]) -> Option<Anchor> {
     let commit = anchor.commit()?;
+    if commit == "work" {
+        return reanchor_work(root, anchor, head, quoted);
+    }
     let show = |c: &str, p: &str| git(root, &["show", &format!("{c}:./{p}")]).ok();
     match anchor {
         Anchor::General => None,
@@ -1625,7 +1679,8 @@ fn update(vault: &Vault, id: &str, to: Option<&str>) -> Res<i32> {
         // lines that are gone are expected of an addressed thread: the fix changed them. It
         // stays addressed at its old anchor until a human resolves or reopens it; only an
         // open thread becomes outdated
-        let (state, now, gone) = match reanchor(&home.root, anchor, &head) {
+        let quoted = quoted_of(&page.body, t);
+        let (state, now, gone) = match reanchor(&home.root, anchor, &head, &quoted) {
             Some(a) => (t.state.clone(), a.render(), false),
             None if t.state == "addressed" => (t.state.clone(), t.raw_anchor.clone(), true),
             None => ("outdated".to_string(), t.raw_anchor.clone(), true),
@@ -1745,13 +1800,16 @@ fn comment(
     }
     let author = author_of(vault, author)?;
     let (home, page) = find(vault, id)?;
-    // lines are quoted at the review's head, or at a commit read on its own, a fix's
+    // lines are quoted at the review's head, at a commit read on its own (a fix's), or as
+    // they are on disk, not committed yet (`work`, ADR-0040)
+    let work = commit == Some("work");
     let head = match commit {
+        Some("work") if at.is_some() => "work".to_string(),
         Some(c) if at.is_some() => rev(&home.root, c)?,
         Some(_) => return Err("--commit places --at lines; a general thread has none".into()),
         None => page.field("head").unwrap_or("").to_string(),
     };
-    let at_head = short(&head).to_string();
+    let at_head = if work { head.clone() } else { short(&head).to_string() };
     let (anchor, quoted) = match at {
         None => (Anchor::General, Vec::new()),
         Some(at) => {
@@ -1766,8 +1824,11 @@ fn comment(
                     }
                 },
             };
-            let content = git(&home.root, &["show", &format!("{head}:./{path}")])
-                .map_err(|_| format!("{path} is not in {at_head}"))?;
+            let content = if work {
+                std::fs::read_to_string(home.root.join(path)).map_err(|_| format!("{path} is not in the working tree"))?
+            } else {
+                git(&home.root, &["show", &format!("{head}:./{path}")]).map_err(|_| format!("{path} is not in {at_head}"))?
+            };
             let file: Vec<&str> = content.lines().collect();
             match which {
                 Ok(range) => {
@@ -2650,6 +2711,30 @@ impl yajna_serve::reviews::Reviews for Served {
         };
         done.map_err(Refused)?;
         self.get(id).map_err(Refused)
+    }
+
+    fn open_branch(&self, branch: &str) -> Result<serde_json::Value, yajna_serve::reviews::WriteError> {
+        use yajna_serve::reviews::WriteError::Refused;
+        let _one = self.lock.lock().map_err(|e| Refused(e.to_string()))?;
+        let vault = Vault::open(self.root.clone()).map_err(Refused)?;
+        let unfinished = |vault: &Vault| {
+            all_reviews(vault).into_iter().find_map(|(_, page)| {
+                let (kind, reference) = target_of(&page);
+                let live = matches!(page.field("status"), Some("open" | "changes_requested"));
+                (kind == "branch" && reference == branch && live).then(|| page.id().unwrap_or_default().to_string())
+            })
+        };
+        // one already open is the one, as `review list --open` would show it
+        let id = match unfinished(&vault) {
+            Some(id) => id,
+            None => {
+                let by = viewer(&vault);
+                open(&vault, branch, None, "main", &[], None, None, &[], Some(&by)).map_err(Refused)?;
+                let vault = Vault::open(self.root.clone()).map_err(Refused)?;
+                unfinished(&vault).ok_or_else(|| Refused(format!("{branch}: opened, but not found after")))?
+            }
+        };
+        self.get(&id).map_err(Refused)
     }
 }
 

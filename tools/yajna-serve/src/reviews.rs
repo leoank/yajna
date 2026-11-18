@@ -46,6 +46,11 @@ pub trait Reviews: Send + Sync {
     /// its fields in `body`, refused unless `body.version` is the page's current version;
     /// the review as it is afterwards
     fn write(&self, id: &str, action: &str, body: &Value) -> Result<Value, WriteError>;
+    /// open a review of `branch` against its base, written on the branch (ADR-0040), for a
+    /// comment on a worktree that has none; the review as `get` gives it
+    fn open_branch(&self, branch: &str) -> Result<Value, WriteError> {
+        Err(WriteError::Refused(format!("{branch}: this server does not open reviews")))
+    }
 }
 
 /// Who may write: the token the server printed, and the server itself as the origin.
@@ -135,6 +140,27 @@ pub(crate) async fn file_handler(
         r.file(&id, &q.path, q.old.as_deref(), q.work, between)
     })
     .await
+}
+
+/// `POST /api/reviews` `{branch}`: open a review of a branch (ADR-0040).
+pub(crate) async fn open_handler(State(app): State<App>, headers: HeaderMap, Json(body): Json<Value>) -> Response {
+    if !app.local {
+        if let Err((status, msg)) = may_write(app.token.as_deref(), &headers) {
+            return error(status, msg);
+        }
+    }
+    let Some(r) = app.reviews.clone() else {
+        return no_reviews();
+    };
+    let Some(branch) = body["branch"].as_str().filter(|b| !b.is_empty()).map(str::to_string) else {
+        return error(StatusCode::BAD_REQUEST, "which branch?");
+    };
+    match tokio::task::spawn_blocking(move || r.open_branch(&branch)).await {
+        Ok(Ok(v)) => Json(v).into_response(),
+        Ok(Err(WriteError::Conflict(m))) => error(StatusCode::CONFLICT, m),
+        Ok(Err(WriteError::Refused(m))) => error(StatusCode::UNPROCESSABLE_ENTITY, m),
+        Err(e) => error(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+    }
 }
 
 pub(crate) async fn write_handler(

@@ -3673,6 +3673,9 @@ fn serve_review_stages_and_commits_from_the_changes_view() {
     let (status, body) = http(&addr, "POST", "/api/git/commit", &headers, &format!("{{\"path\":\"notes\",\"message\":\"an agent's note, kept\",\"tree\":\"{tree}\"}}"));
     assert_eq!(status, 200, "{body}");
     assert_eq!(git(&v.root, &["log", "-1", "--format=%s"]).trim(), "an agent's note, kept");
+    // a review is opened for a branch, not for the base itself
+    let (status, body) = http(&addr, "POST", "/api/reviews", &headers, "{\"branch\":\"main\"}");
+    assert!(status == 422 && body.contains("is the base"), "{status} {body}");
     assert!(git(&v.root, &["status", "--porcelain", "--", "notes"]).trim().is_empty());
     child.kill().unwrap();
     let _ = child.wait();
@@ -3712,6 +3715,53 @@ fn serve_pages_api_gives_the_web_app_the_notebook() {
     }
     child.kill().unwrap();
     let _ = child.wait();
+}
+
+#[test]
+fn review_comment_on_uncommitted_lines_is_anchored_at_work_and_follows_them_into_a_commit() {
+    let _home = Home::new();
+    let lab = vault();
+    let root = lab.root.canonicalize().unwrap();
+    assert_eq!(lab.run(&["new", "project", "Toy model"]).code, 0);
+    fs::create_dir_all(root.join("code")).unwrap();
+    fs::write(root.join("code/x.py"), "a = 1\nb = 2\nc = 3\n").unwrap();
+    git(&root, &["init", "-q", "-b", "main"]);
+    git(&root, &["add", "-A"]);
+    git(&root, &["commit", "-q", "-m", "lab"]);
+    let spot = empty();
+    let wt = spot.root.join("speedup");
+    assert_eq!(lab.run(&["worktree", "PRJ-0001", "speedup", "--path", wt.to_str().unwrap()]).code, 0);
+    fs::write(wt.join("code/x.py"), "a = 1\nb = 20\nc = 30\n").unwrap();
+    git(&wt, &["commit", "-q", "-am", "faster"]);
+    let out = lab.run(&["review", "open", "toy-model/speedup"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let rev_path = PathBuf::from(out.stdout.lines().next().unwrap());
+    let id = rev_path.file_name().unwrap().to_string_lossy()[..19].to_string();
+
+    // the agent is still at work: two new lines, and one it will delete, not committed
+    fs::write(wt.join("code/x.py"), "a = 1\nb = 20\nc = 30\nd = 40  # new\ne = 50  # new\ntmp = 0\n").unwrap();
+    for (at, words) in [("code/x.py:4-5", "why these?"), ("code/x.py:6", "drop this")] {
+        let out = lab.run(&["review", "comment", &id, "--at", at, "--commit", "work", words]);
+        assert_eq!(out.code, 0, "{}", out.stderr);
+    }
+    let page = fs::read_to_string(&rev_path).unwrap();
+    assert!(page.contains("### T1 (open) code/x.py:4-5 @ work\n```py\nd = 40  # new\ne = 50  # new\n```"), "{page}");
+    assert!(page.contains("### T2 (open) code/x.py:6 @ work"), "{page}");
+    // the review is on the branch: validated there, where the `@ work` anchors are
+    let out = Command::new(env!("CARGO_BIN_EXE_yajna")).args(["--root", wt.to_str().unwrap(), "validate"]).env("YAJNA_CACHE", lab.root.join(".cache")).output().unwrap();
+    assert!(out.status.success(), "{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
+    // lines that are not there are refused, on disk as at a commit
+    assert_ne!(lab.run(&["review", "comment", &id, "--at", "code/x.py:7-9", "--commit", "work", "x"]).code, 0);
+
+    // the agent commits the two lines, moved down by one, and drops the third
+    fs::write(wt.join("code/x.py"), "a = 1\nb = 20\nc = 30\n# more\nd = 40  # new\ne = 50  # new\n").unwrap();
+    git(&wt, &["commit", "-q", "-am", "more"]);
+    let tip = git(&wt, &["rev-parse", "--short=7", "HEAD"]).trim().to_string();
+    let out = lab.run(&["review", "update", &id]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let page = fs::read_to_string(&rev_path).unwrap();
+    assert!(page.contains(&format!("### T1 (open) code/x.py:5-6 @ {tip}")), "{page}");
+    assert!(page.contains("### T2 (outdated) code/x.py:6 @ work"), "{page}");
 }
 
 #[test]

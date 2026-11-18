@@ -350,7 +350,7 @@ fn router(app: App) -> Router {
         .route("/api/log", get(pages::log_handler))
         .route("/api/tasks", get(pages::tasks_handler))
         .route("/w/{*rest}", any(worktrees::dispatch))
-        .route("/api/reviews", get(reviews::list_handler))
+        .route("/api/reviews", get(reviews::list_handler).post(reviews::open_handler))
         .route("/api/reviews/{id}", get(reviews::get_handler))
         .route("/api/reviews/{id}/file", get(reviews::file_handler))
         .route("/api/reviews/{id}/{action}", post(reviews::write_handler))

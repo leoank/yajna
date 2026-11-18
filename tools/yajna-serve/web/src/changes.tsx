@@ -121,6 +121,7 @@ export function Changes({ search }: { search: URLSearchParams }) {
         wt={w}
         wtName={chosen}
         path={file}
+        rel={search.get('rel') ?? undefined}
         old={search.get('old') ?? undefined}
         from={search.get('from') ?? 'HEAD'}
         to={search.get('to') ?? 'WORK'}
@@ -214,7 +215,7 @@ function WorktreeChanges({ w, name, many, go }: { w?: Worktree; name: string; ma
   const open = (c: Change, from: string, to: string, what: string) => {
     if (!c.path) return;
     const old = c.old && c.path.endsWith(c.rel) ? c.path.slice(0, c.path.length - c.rel.length) + c.old : undefined;
-    go({ wt: name || undefined, file: c.path, old, from, to, what });
+    go({ wt: name || undefined, file: c.path, rel: c.rel, old, from, to, what });
   };
   const section = (title: string, files: Change[], from: string, to: string, act?: 'stage' | 'unstage') =>
     files.length > 0 && (
@@ -362,7 +363,7 @@ function CommitRow({ c, open }: { c: Commit; open: (c: Change, from: string, to:
 
 /** A unified diff in one column: old and new line numbers, then the line; each hunk with its
  * own stage or unstage when that is possible. */
-function DiffLines({ d, act, onHunk, busy }: { d: Diff; act?: 'stage' | 'unstage'; onHunk: (id: string) => void; busy: boolean }) {
+function DiffLines({ d, act, onHunk, busy, sel, onLine }: { d: Diff; act?: 'stage' | 'unstage'; onHunk: (id: string) => void; busy: boolean; sel?: [number, number] | null; onLine?: (n: number) => void }) {
   const rows: ReactElement[] = [];
   let o = 0;
   let n = 0;
@@ -389,9 +390,14 @@ function DiffLines({ d, act, onHunk, busy }: { d: Diff; act?: 'stage' | 'unstage
       );
     } else if (!inHunk) {
       if (/^(new file|deleted file|rename from|rename to|similarity|Binary files|old mode|new mode)/.test(line)) notes.push(line);
-    } else if (line.startsWith('+')) rows.push(<Line key={i} cls="add" a="" b={String(n++)} text={line.slice(1)} />);
-    else if (line.startsWith('-')) rows.push(<Line key={i} cls="del" a={String(o++)} b="" text={line.slice(1)} />);
-    else if (line.startsWith(' ')) rows.push(<Line key={i} cls="" a={String(o++)} b={String(n++)} text={line.slice(1)} />);
+    } else if (line.startsWith('+') || line.startsWith(' ')) {
+      // a line of the new side can be picked for a comment
+      const at = n++;
+      const picked = !!sel && at >= sel[0] && at <= sel[1];
+      rows.push(
+        <Line key={i} cls={`${line.startsWith('+') ? 'add' : ''}${picked ? ' picked' : ''}${onLine ? ' pickable' : ''}`} a={line.startsWith(' ') ? String(o++) : ''} b={String(at)} text={line.slice(1)} onClick={onLine && (() => onLine(at))} />,
+      );
+    } else if (line.startsWith('-')) rows.push(<Line key={i} cls="del" a={String(o++)} b="" text={line.slice(1)} />);
     else if (line.startsWith('\\')) rows.push(<Line key={i} cls="meta" a="" b="" text={line.slice(2)} />);
     else if (line.startsWith('diff ')) inHunk = false;
   });
@@ -403,9 +409,80 @@ function DiffLines({ d, act, onHunk, busy }: { d: Diff; act?: 'stage' | 'unstage
   );
 }
 
-function Line({ cls, a, b, text }: { cls: string; a: string; b: string; text: string }) {
+interface ReviewRef {
+  id: string;
+  title: string;
+  status: string;
+  kind: string;
+  ref: string;
+  elsewhere: string | null;
+}
+
+/** Where a comment goes (ADR-0040): the worktree's open review, opened for its branch when
+ * there is none; on `main`, an open review of this checkout, else a word to open one. */
+function CommentBox({ api, wt, rel, sel, commit, done, fail, cancel }: { api: string; wt?: Worktree; rel: string; sel: [number, number]; commit: string; done: (s: string) => void; fail: (s: string) => void; cancel: () => void }) {
+  const qc = useQueryClient();
+  const [text, setText] = useState('');
+  const { data: root } = useRoot(api);
+  const status = useQuery({ queryKey: ['git-status', api], queryFn: () => getJson<Status>(`/api/git/status?path=${q(root!)}`, api), enabled: !!root });
+  const branch = wt?.branch ?? status.data?.branch ?? null;
+  const reviews = useQuery({ queryKey: ['reviews', api], queryFn: () => getJson<ReviewRef[]>('/api/reviews', api) });
+  const live = (r: ReviewRef) => r.status === 'open' || r.status === 'changes_requested';
+  const own = (reviews.data ?? []).filter((r) => live(r) && !r.elsewhere);
+  const forBranch = own.find((r) => r.kind === 'branch' && r.ref === branch);
+  const onMain = !branch || branch === 'main' || branch === 'master';
+  const choices = forBranch ? [forBranch] : own.sort((a, b) => b.id.localeCompare(a.id));
+  const [chosen, setChosen] = useState<string>('');
+  const target = choices.find((r) => r.id === chosen) ?? choices[0];
+  const send = useMutation({
+    mutationFn: async () => {
+      let id = target?.id;
+      if (!id) {
+        if (onMain) throw new Error('No open review here: open one first, e.g. yajna review open <range>.');
+        id = (await postJson<{ id: string }>('/api/reviews', { branch }, api)).id;
+      }
+      const page = await getJson<{ version: string }>(`/api/reviews/${q(id)}`, api);
+      const at = sel[0] === sel[1] ? `${rel}:${sel[0]}` : `${rel}:${sel[0]}-${sel[1]}`;
+      await postJson(`/api/reviews/${q(id)}/comment`, { version: page.version, at, commit, text }, api);
+      return id;
+    },
+    onSuccess: (id) => {
+      void qc.invalidateQueries({ queryKey: ['reviews', api] });
+      done(`Comment added to ${id}.`);
+    },
+    onError: (e) => fail((e as Error).message),
+  });
+  const lines = sel[0] === sel[1] ? `line ${sel[0]}` : `lines ${sel[0]}–${sel[1]}`;
   return (
-    <div className={`cv-line ${cls}`}>
+    <div className="card pad comment-box">
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+        <span style={{ fontWeight: 600 }}>Comment on {lines}</span>
+        <span className="muted" style={{ fontSize: 12.5 }}>{commit === 'work' ? 'not committed yet' : `at ${commit.slice(0, 7)}`}</span>
+        <span style={{ flex: 1 }} />
+        {choices.length > 1 ? (
+          <select className="input" style={{ width: 'auto', padding: '4px 8px' }} value={target?.id} onChange={(e) => setChosen(e.target.value)}>
+            {choices.map((r) => <option key={r.id} value={r.id}>{r.title || r.id}</option>)}
+          </select>
+        ) : (
+          <span className="muted" style={{ fontSize: 12.5 }}>
+            {target ? `on ${target.id}` : onMain ? 'no open review here' : `a review of ${branch} is opened`}
+          </span>
+        )}
+      </div>
+      <textarea className="input" rows={3} autoFocus placeholder="What should change, and why" value={text} onChange={(e) => setText(e.target.value)} />
+      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 10 }}>
+        <button className="btn" onClick={cancel}>Cancel</button>
+        <button className="btn primary" disabled={!text.trim() || send.isPending || (!target && onMain)} onClick={() => send.mutate()}>
+          Comment
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function Line({ cls, a, b, text, onClick }: { cls: string; a: string; b: string; text: string; onClick?: () => void }) {
+  return (
+    <div className={`cv-line ${cls}`} onClick={onClick}>
       <span className="cv-no">{a}</span>
       <span className="cv-no">{b}</span>
       <span className="cv-text">{text}</span>
@@ -413,7 +490,7 @@ function Line({ cls, a, b, text }: { cls: string; a: string; b: string; text: st
   );
 }
 
-function FileDiff({ wt, wtName, path, old, from, to, what, back }: { wt?: Worktree; wtName: string; path: string; old?: string; from: string; to: string; what: string; back: () => void }) {
+function FileDiff({ wt, wtName, path, rel, old, from, to, what, back }: { wt?: Worktree; wtName: string; path: string; rel?: string; old?: string; from: string; to: string; what: string; back: () => void }) {
   const api = rootOf(wt);
   const qc = useQueryClient();
   const { data: info } = useInfo();
@@ -437,6 +514,11 @@ function FileDiff({ wt, wtName, path, old, from, to, what, back }: { wt?: Worktr
   });
   const name = path.slice(path.lastIndexOf('/') + 1);
   const d = diff.data;
+  // comments: on lines of the working tree (`@ work`) or of a commit, where this viewer writes
+  const anchorAt = to === 'WORK' ? 'work' : /^[0-9a-f]{7,40}$/.test(to) ? to : null;
+  const canComment = !!info?.review && !!rel && !!anchorAt;
+  const [sel, setSel] = useState<[number, number] | null>(null);
+  const pick = (n: number) => setSel((s) => (!s || s[0] !== s[1] ? [n, n] : [Math.min(s[0], n), Math.max(s[0], n)]));
   return (
     <Shell title={name} wide>
       <div style={{ maxWidth: 1100, margin: '0 auto' }}>
@@ -476,8 +558,12 @@ function FileDiff({ wt, wtName, path, old, from, to, what, back }: { wt?: Worktr
           <div className="card"><Empty>No differences.</Empty></div>
         ) : (
           <div className="card" style={{ overflow: 'hidden' }}>
-            <DiffLines d={d} act={act} busy={write.isPending} onHunk={(hunk) => write.mutate({ path, old, hunk })} />
+            <DiffLines d={d} act={act} busy={write.isPending} onHunk={(hunk) => write.mutate({ path, old, hunk })} sel={sel} onLine={canComment ? pick : undefined} />
           </div>
+        )}
+        {canComment && d && !sel && <div className="muted" style={{ fontSize: 12.5, marginTop: 10 }}>Tap a line, then another, to comment on them.</div>}
+        {canComment && sel && (
+          <CommentBox api={api} wt={wt} rel={rel!} sel={sel} commit={anchorAt!} done={(said) => { setSel(null); show(said, 'ok'); }} fail={(e) => show(e, 'bad')} cancel={() => setSel(null)} />
         )}
         {d?.truncated && <div className="muted" style={{ marginTop: 10 }}>The diff is cut off: it is over 4 MB.</div>}
       </div>

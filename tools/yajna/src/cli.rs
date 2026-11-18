@@ -776,7 +776,8 @@ pub enum ReviewAction {
         /// <path>:<from>[-<to>] or <path>#<heading>, at the review's head; omit for a general thread
         #[arg(long)]
         at: Option<String>,
-        /// read --at at this commit instead of the head: a fix seen with show --fixes
+        /// read --at at this commit instead of the head: a fix seen with show --fixes; `work`
+        /// reads it in the working tree, for lines not committed yet (anchored `@ work`)
         #[arg(long, requires = "at")]
         commit: Option<String>,
         text: Vec<String>,

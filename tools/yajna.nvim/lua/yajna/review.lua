@@ -65,15 +65,16 @@ function R.parse_anchor(s)
   if s == "general" then
     return { kind = "general" }
   end
-  local path, from, to, commit = s:match("^(.-):(%d+)%-(%d+) @ (%x+)$")
+  -- a commit, or `work` for lines not committed yet (ADR-0040)
+  local path, from, to, commit = s:match("^(.-):(%d+)%-(%d+) @ (%w+)$")
   if not path then
-    path, from, commit = s:match("^(.-):(%d+) @ (%x+)$")
+    path, from, commit = s:match("^(.-):(%d+) @ (%w+)$")
     to = from
   end
   if path then
     return { kind = "lines", path = path, from = tonumber(from), to = tonumber(to), commit = commit }
   end
-  local hpath, heading, hcommit = s:match("^(.-)#(.-) @ (%x+)$")
+  local hpath, heading, hcommit = s:match("^(.-)#(.-) @ (%w+)$")
   if hpath then
     return { kind = "heading", path = hpath, heading = heading, commit = hcommit }
   end
@@ -561,7 +562,9 @@ function R.quickfix(review)
     local text = ("T%d (%s) %s"):format(t.n, t.state, first)
     if a and a.kind ~= "general" then
       local lnum = a.from or 1
-      items[#items + 1] = { filename = R.bufname(review.root, full(review.root, a.commit), a.path), lnum = lnum, text = text }
+      -- a thread on lines not committed yet points at the file on disk
+      local file = a.commit == "work" and (review.root .. "/" .. a.path) or R.bufname(review.root, full(review.root, a.commit), a.path)
+      items[#items + 1] = { filename = file, lnum = lnum, text = text }
     else
       items[#items + 1] = { filename = review.path, lnum = t.line, text = text }
     end
@@ -703,9 +706,14 @@ function R.activate(buf)
           end
         end
       end
-      -- outdated, on a fix, or in a file outside the diff: the file at the thread's commit
+      -- outdated, on a fix, or in a file outside the diff: the file at the thread's commit,
+      -- or on disk for lines not committed yet (`@ work`)
       vim.cmd.tabnew()
-      vim.cmd.edit(vim.fn.fnameescape(R.bufname(review.root, full(review.root, a.commit), a.path)))
+      if a.commit == "work" then
+        vim.cmd.edit(vim.fn.fnameescape(review.root .. "/" .. a.path))
+      else
+        vim.cmd.edit(vim.fn.fnameescape(R.bufname(review.root, full(review.root, a.commit), a.path)))
+      end
       if lnum then
         pcall(vim.api.nvim_win_set_cursor, 0, { lnum, 0 })
       end

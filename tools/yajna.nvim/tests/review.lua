@@ -83,6 +83,7 @@ return function(t)
   eq(more.threads[1].replies[1].text, "note the reuse\non the run page", "continued reply")
   eq(more.threads[1].replies[2].action, "resolved", "resolved reply")
   eq(review.parse_anchor("a/b.py:7 @ abc1234"), { kind = "lines", path = "a/b.py", from = 7, to = 7, commit = "abc1234" }, "one-line anchor")
+  eq(review.parse_anchor("a/b.py:3-4 @ work"), { kind = "lines", path = "a/b.py", from = 3, to = 4, commit = "work" }, "lines not committed yet")
 
   -- the overview
   vim.cmd.edit(repo .. "/notes/README.md")

@@ -108,6 +108,9 @@ one-line instructions under headings such as *Runs*.
   Change the code, bump `version` in its `metadata` and on the page together, then
   `yajna-protocol page <page>`; never edit those steps by hand. `yajna-protocol render
   <file> -p name=value` shows the steps for a run's parameters.
+- **Threads `@ work`** are on lines you have not committed yet, often written from the
+  phone: change them, and once you commit, `yajna review update REV-…` moves the thread to
+  that commit; address it with that commit as for any thread.
 - **Your changes go under a review.** Keep one `REV` page for the piece of work you are
   doing and add to it rather than opening one per change. Look first: `yajna review list
   --open` and `yajna review todo`; continue the unfinished review of your work when there

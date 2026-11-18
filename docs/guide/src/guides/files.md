@@ -101,7 +101,10 @@ It keeps itself current every few seconds, so an agent's work shows up as it lan
 the socket, or with `yajna serve --review` and the link it prints, it also stages and
 unstages a file or a single hunk and commits what is staged (ADR-0040): only what you were
 shown, so a hunk the agent changed meanwhile is refused rather than staged unseen, and a
-pre-commit hook that refuses says why.
+pre-commit hook that refuses says why. Tap a line of a diff, then another, to comment on them: the
+comment becomes a thread on the worktree's review (one is opened for an agent's branch when
+there is none), anchored `@ work` when the lines are not committed yet, so the agent finds
+it and `review update` moves it to the commit that takes them.
 
 ## Every worktree
 

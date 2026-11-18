@@ -85,7 +85,13 @@ os.environ["OMP_NUM_THREADS"] = "32"
 - **A thread** is a level-3 heading `T<n> (<state>) <anchor>`. Its states are `open`,
   `addressed`, `resolved` and `outdated`. The anchor is `<path>:<from>-<to> @ <commit>`
   (or `<path>:<line> @ <commit>`), `<path>#<heading> @ <commit>` for a heading of a page,
-  or `general`. The quoted lines under it are what the anchor pointed at when the thread
+  or `general`. `@ work` in place of the commit anchors lines that are not committed yet,
+  as they are on disk (ADR-0040, `review comment --commit work`, or a comment on a diff of
+  uncommitted work in the app); `review update` moves such a thread to the head where its
+  quoted lines are now committed, leaves it `@ work` while they are only on disk, and makes
+  it `outdated` when they are in neither. A branch with no commits of its own yet can be
+  reviewed, for such comments; the branch the others are reviewed against cannot. The
+  quoted lines under it are what the anchor pointed at when the thread
   was opened, in a fenced block (```` ``` ```` or `~~~`, whichever the lines do not
   contain), so links and headings in them are text.
 - **Replies** are list items `- <date> <time> <author>: <text>`, appended and never edited,

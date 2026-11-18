@@ -295,3 +295,7 @@ textarea.input:focus, input.input:focus { outline: none; border-color: var(--acc
   .cv-diff { font-size: 12px; }
 }
 .cv-hunk .btn { color: var(--text); }
+.cv-line.pickable { cursor: pointer; }
+.cv-line.pickable:hover .cv-no { color: var(--accent); }
+.cv-line.picked { box-shadow: inset 3px 0 0 var(--accent); background: var(--accent-tint); }
+.comment-box { position: sticky; bottom: 12px; margin-top: 14px; box-shadow: var(--shadow-pop); }

@@ -467,7 +467,8 @@ to its `until` (or the `(since <sha>)` that `yajna phase start PRJ-… "<words>"
 to an item of an unmigrated project).
 Comments are threads: `yajna review comment REV-… --at code/x.py:120-126 "<text>"` (or
 `--at <path>#<heading>`, or no `--at` for a general one) quotes the lines at the review's
-head. Replies, `address` (with the commit that fixes it)
+head; `--commit work` quotes them from disk, for work not committed yet, anchored `@ work`
+until `review update` finds them in a commit. Replies, `address` (with the commit that fixes it)
 and `resolve` append dated lines `- YYYY-MM-DD HH:MM <author>: <text>`; nothing is edited.
 An agent replies and addresses; only a human resolves, and `yajna validate` rejects a
 thread an agent resolved. `yajna review list` shows the reviews of every worktree, `show`
