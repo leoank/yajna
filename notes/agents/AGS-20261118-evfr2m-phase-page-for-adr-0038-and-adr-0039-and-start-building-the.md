@@ -7,7 +7,7 @@ model: "claude-opus-5-5"
 harness: "claude-code"
 started: 2026-11-18T13:31+00:00
 finished: null
-created_entities: [PHS-20261118-evfb8n]
+created_entities: [PHS-20261118-evfb8n, REV-20261118-gdmj5b]
 edited_entities: [PRJ-0001]
 outcome: pending          # done | failed | aborted | pending
 created: 2026-11-18
