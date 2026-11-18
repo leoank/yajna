@@ -7,6 +7,7 @@ import { queryClient, takeToken } from './api';
 import { RouterProvider, useRoute } from './router';
 import { Changes } from './changes';
 import { Files } from './files';
+import { ReviewView } from './review';
 import { Collection, LogScreen, Missing, Overview, PageView, Reviews, Tasks } from './screens';
 
 function App() {
@@ -24,6 +25,8 @@ function App() {
       return <Tasks />;
     case 'reviews':
       return <Reviews />;
+    case 'review':
+      return <ReviewView key={r.id} id={r.id} search={r.search} />;
     case 'changes':
       return <Changes search={r.search} />;
     case 'files':

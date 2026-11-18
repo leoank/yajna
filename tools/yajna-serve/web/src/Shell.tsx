@@ -121,7 +121,7 @@ export function Shell({ title, wide, children }: { title: string; wide?: boolean
         {notebook && <NavItem to="tasks" icon={<ListChecks size={16} />} label="Tasks" count={ov?.tasks_open} on={is('tasks')} close={close} />}
         <NavItem to="changes" icon={<GitBranch size={16} />} label="Changes" count={here ? dirty(here) : undefined} hot on={is('changes')} close={close} />
         <NavItem to="files" icon={<FolderTree size={16} />} label="Files" on={is('files')} close={close} />
-        {notebook && <NavItem to="reviews" icon={<GitPullRequestArrow size={16} />} label="Reviews" on={is('reviews')} close={close} />}
+        {notebook && <NavItem to="reviews" icon={<GitPullRequestArrow size={16} />} label="Reviews" on={is('reviews') || is('review')} close={close} />}
         {ov && ov.projects.length > 0 && (
           <>
             <div className="nav-head">Projects</div>

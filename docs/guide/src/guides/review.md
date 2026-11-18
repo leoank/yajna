@@ -111,29 +111,25 @@ with `status: merged`, `merge: <the tip merged>` and a line in the summary.
 
 ```sh
 yajna serve --review --open
-# reviews, writable: http://127.0.0.1:8765/files/?token=…
+# reviews, writable: http://127.0.0.1:8765/?token=…
 ```
 
 `--open` opens that writable URL in the browser.
 
-The files viewer lists the reviews above the tree. A review opens as a tab: an overview
-with the summary, the verdict buttons and every thread, then each changed file as a
-side-by-side diff with its threads under their lines. To comment, select lines on the
-right (or click a line number, shift-click for a range) and press *Comment on lines…*
-over them, or type in the comment box at the top of the diff, which stays while you
-scroll. Reply, address, resolve and reopen from the thread; Ctrl-Enter sends. The header's
-toggles hide the file list or the comment box, wrap long lines, show the diff in one pane
-(*Unified*, the removed lines above the added ones), and *Focus* hides the rest of the
-viewer (Esc brings it back). Drag the bar between the two sides to resize them;
-double-click it for half each. The tab reads the review again every two seconds, so
-an agent's reply appears while you read.
+*Reviews* in the app's sidebar lists them, unfinished first (ADR-0041). A review has three
+tabs: *Overview*, with the summary, the verdict buttons, the open threads and a comment on
+the whole review; *Threads*, every thread with its replies; and *Files*, the changed files,
+then what changed since the last round, each fix on its own, and what is *Not in the
+review yet* (later commits and uncommitted work). A file opens as a one-column diff with
+its threads under their lines, the same on a phone; *Whole file* shows every line. Tap a
+line, then another, to comment on them; on work not in the review yet the comment is
+anchored `@ work`, and `yajna review update` moves it to the commit that takes the lines.
+Reply, resolve and reopen from the thread; ⌘/Ctrl-Enter sends. The review is read again
+every few seconds, so an agent's reply appears while you read. The previous viewer, with
+side-by-side diffs and split tabs, is at `/classic/` for now.
 
-*Not in the review yet*, under the files, shows what has changed since the review's head:
-later commits, uncommitted edits and new files, each as a read-only diff against the file
-on disk. Commit them and run `yajna review update` to comment on them.
-
-Writing needs the printed URL: it carries a token the page keeps in memory, so a reload,
-or `yajna serve` without `--review`, is read-only. A write made after someone else changed
+Writing needs the printed URL, or the socket (ADR-0036): the URL carries a token the page
+keeps in memory, so a reload, or `yajna serve` without `--review`, is read-only. A write made after someone else changed
 the page is refused and the tab reloads with your text kept. Nothing is committed for you.
 What you write is signed with the notebook's author from `yajna.toml`, even when the
 server was started in an agent's worktree or shell, where `yajna` writes as the agent.

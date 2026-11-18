@@ -3709,7 +3709,7 @@ fn serve_pages_api_gives_the_web_app_the_notebook() {
     assert!(tasks.is_array());
     assert!(http_req(&addr, "/api/pages/EXP-19990101-000000", &[]).0.contains("404"));
     // the app's routes are the app's page
-    for route in ["/p/PRJ-0001", "/c/experiment", "/log", "/tasks", "/changes", "/reviews"] {
+    for route in ["/p/PRJ-0001", "/c/experiment", "/log", "/tasks", "/changes", "/reviews", "/reviews/REV-20261021-000001"] {
         let (status, _, body) = http_req(&addr, route, &[]);
         assert!(status.contains("200") && String::from_utf8_lossy(&body).contains("assets/app.js"), "{route}: {status}");
     }

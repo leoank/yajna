@@ -3,9 +3,8 @@
 
 import { useState, type ReactElement } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowUpRight, FileCode2 } from 'lucide-react';
+import { ChevronRight, FileCode2 } from 'lucide-react';
 import { fetchers, keys, useList, useOverview, usePage, type Page } from './api';
-import { base } from './base';
 import { Link } from './router';
 import { Shell } from './Shell';
 import { Empty, Failed, Html, Log, PageLink, PageRow, Sk, SkPage, SkRows, Status, typeLabel } from './ui';
@@ -273,7 +272,6 @@ export function PageView({ id }: { id: string }) {
                 </>
               )}
               <div className="muted" style={{ fontSize: 12.5, marginTop: 18 }}>
-                <Link to={`files/${shown.path.startsWith('notes/') ? shown.path : shown.path}`} style={{ display: 'none' }} />
                 {shown.path}
               </div>
             </>
@@ -400,12 +398,12 @@ export function Reviews() {
     <Shell title="Reviews">
       <div className="page-head">
         <h1 className="title">Reviews</h1>
-        <div className="sub">Threads and diffs open in the review viewer.</div>
+        <div className="sub">Reviews of every worktree, unfinished first.</div>
       </div>
       {error && !data ? <Failed error={error} retry={refetch} /> : !data ? <SkRows /> : !all.length ? <Empty>No reviews yet.</Empty> : (
         <div className="card rows">
           {all.map((r) => (
-            <a key={r.id} className="row" href={`${base}/classic/#review:${encodeURIComponent(r.id)}`}>
+            <Link key={r.id} className="row" to={`reviews/${encodeURIComponent(r.id)}`}>
               <span className="id">{r.id}</span>
               <span className="grow">
                 <div className="t">{r.title || r.id}</div>
@@ -416,8 +414,8 @@ export function Reviews() {
               </span>
               {r.open > 0 && <span className="chip run">{r.open} open</span>}
               <Status s={r.status} />
-              <ArrowUpRight size={14} className="muted" />
-            </a>
+              <ChevronRight size={14} className="muted" />
+            </Link>
           ))}
         </div>
       )}

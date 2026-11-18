@@ -329,6 +329,7 @@ fn router(app: App) -> Router {
         .route("/log", get(web_index))
         .route("/tasks", get(web_index))
         .route("/reviews", get(web_index))
+        .route("/reviews/{*rest}", get(web_index))
         .route("/changes", get(web_index))
         .route("/files", get(web_index))
         .route("/files/", get(web_index))

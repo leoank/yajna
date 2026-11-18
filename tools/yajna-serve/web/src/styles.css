@@ -299,3 +299,18 @@ textarea.input:focus, input.input:focus { outline: none; border-color: var(--acc
 .cv-line.pickable:hover .cv-no { color: var(--accent); }
 .cv-line.picked { box-shadow: inset 3px 0 0 var(--accent); background: var(--accent-tint); }
 .comment-box { position: sticky; bottom: 12px; margin-top: 14px; box-shadow: var(--shadow-pop); }
+
+/* reviews */
+.thread { padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+.thread.th-resolved { opacity: 0.72; }
+.thread-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; }
+.thread-n { font: 600 12px var(--mono); color: var(--text-2); }
+.linkish { border: 0; background: none; padding: 0; color: var(--accent); cursor: pointer; font: 12.5px var(--mono); text-align: left; word-break: break-all; }
+.linkish:disabled { color: var(--text-3); cursor: default; }
+.thread-quote { margin: 0; padding: 8px 10px; background: var(--surface-2); border-radius: var(--radius-s); font: 12px/1.5 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text-2); }
+.replies { display: flex; flex-direction: column; gap: 8px; }
+.reply-who { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12.5px; }
+.reply-text { white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 2px; }
+.thread-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.inline-thread { padding: 10px 12px; background: var(--surface-2); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); font-family: var(--font); font-size: 13.5px; }
+.inline-thread .thread { box-shadow: none; }

@@ -310,6 +310,15 @@ back button works; and a tab of the workbench, `changes:`, opened by *Changes* a
 of the sidebar, which shows how many files are uncommitted in the worktree shown. When the
 notebook has more than one worktree the top bar has a picker that opens another's viewer.
 
+### 6.4a Reviews in the app
+
+`web/src/review.tsx` (ADR-0041) reads `/api/reviews/<ID>` and its `file` route, which give
+a file at two commits rather than a diff, and diffs them itself (`linediff.ts`, Myers'
+algorithm, three lines of context; a pair of files over 25 million line pairs is shown as
+all removed and all added). Threads are drawn under the line their anchor ends at, at the
+commit shown (the head, a fix, or `work`). Writes are the same routes the CLI's
+`Reviews::write` takes, each with the page's `version`.
+
 ### 6.5 Building it
 
 - Source is TypeScript under `tools/yajna-serve/ui/src`, with `package.json` and

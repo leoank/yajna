@@ -11,6 +11,7 @@ export type Route =
   | { name: 'log' }
   | { name: 'tasks' }
   | { name: 'reviews' }
+  | { name: 'review'; id: string; search: URLSearchParams }
   | { name: 'changes'; search: URLSearchParams }
   | { name: 'files'; path: string }
   | { name: 'missing'; path: string };
@@ -32,7 +33,7 @@ export function parse(rel: string, search = ''): Route {
     case 'tasks':
       return { name: 'tasks' };
     case 'reviews':
-      return { name: 'reviews' };
+      return tail ? { name: 'review', id: decodeURIComponent(tail), search: new URLSearchParams(search) } : { name: 'reviews' };
     case 'changes':
       return { name: 'changes', search: new URLSearchParams(search) };
     case 'files':
