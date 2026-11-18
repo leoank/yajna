@@ -48,3 +48,14 @@ make a phase for the work if none exists, and start building.
   `/w/<branch>/`; a worktree's server writes to reviews by the served one's rules (its
   token, or the socket's); `/api/worktrees` answers 404 when worktrees are off; listing
   with no git (a notebook not in a repository) gives an empty list.
+- Committed every worktree (f2e6c26, f2ae8ae). Its first `nix flake check` failed on
+  ank's socket test from 0.31.0, flaky in the sandbox (passed on the rerun and 50 times
+  locally); the test now reports why its server stopped.
+- Built the changes view: `tools/yajna-serve/ui/src/changes.ts`, a page of its own at
+  `files/changes` and a `changes:` tab of the workbench opened by *Changes* in the sidebar,
+  with a worktree picker in the top bar; the server route `/files/changes`. Tried at
+  390 px and 1280 px wide against manthan: the worktree list, g2a's changed experiments and
+  a diff, a commit's twelve files and one of their diffs, the back button, a worktree's own
+  viewer under `w/g2a%2Fmain/files/`. That found file names cut by an ellipsis a fraction
+  of a pixel too narrow, and *Open* in a worktree's viewer going to a new window; both
+  fixed. 0.36.0.
