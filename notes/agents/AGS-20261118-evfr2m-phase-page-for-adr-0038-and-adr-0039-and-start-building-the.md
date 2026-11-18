@@ -32,3 +32,19 @@ make a phase for the work if none exists, and start building.
   take only `HEAD`, `INDEX`, `WORK` or a hex commit with an optional `^`, so nothing
   reaches git as an option; a diff over 4 MB is cut off and says so; a log is 30 commits a
   page, continued with `before`.
+- Committed the git API (71e6bb7) and the notebook pages (9e0ceb2) after `nix flake
+  check` passed on the staged tree.
+- Built ADR-0039: `tools/yajna-serve/src/worktrees.rs` lists the worktrees through git,
+  serves each under `/w/<branch>/` from a router opened on its first request through a
+  callback the CLI gives (`notebook_config` of the worktree's notebook), drops those that
+  went, and answers `/api/worktrees` with counts; `/api/notebooks` carries the same per
+  notebook. `[serve] worktrees = "this"` turns it off, checked by `validate`. Tests: two in
+  the crate's `worktrees`, one for the socket in `lib.rs`, one through `yajna serve` with a
+  second worktree on a `lab/topic` branch, added and removed; checked against manthan.
+  0.35.0.
+- Found while testing: axum carries the outer route's `{*rest}` match into the worktree's
+  router, where `page` then saw two path parameters; the request is now forwarded fresh.
+- Decided without asking: the served checkout is also reachable under its own
+  `/w/<branch>/`; a worktree's server writes to reviews by the served one's rules (its
+  token, or the socket's); `/api/worktrees` answers 404 when worktrees are off; listing
+  with no git (a notebook not in a repository) gives an empty list.

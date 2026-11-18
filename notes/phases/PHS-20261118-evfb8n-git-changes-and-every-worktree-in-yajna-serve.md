@@ -25,9 +25,9 @@ of manthan from the phone, through saarthi, file by file.
 One item per piece of work, ticked when it lands; add items as the plan grows and keep the
 done ones. The project page's *Progress* lists this phase on one line.
 - [x] The git API in `yajna-serve` (ADR-0038): `/api/git/status`, `log`, `diff` and `file`, read-only through the `git` CLI, paths through the files API's rules, a worktree found from the path (0.34.0)
-- [ ] Every worktree (ADR-0039): `git worktree list` re-read when a few seconds old, each served under `/w/<branch>/` (and `/n/<namespace>/w/<branch>/`), opened on its first request through a callback to the CLI, `/` unchanged
-- [ ] `/api/worktrees`, and the same per notebook in `/api/notebooks`: name, branch, path, head, whether served here, counts of changed, staged and untracked files
-- [ ] `[serve] worktrees = "this" | "all"` in `yajna.toml`, `"all"` the default; schema, conventions and the guide
+- [x] Every worktree (ADR-0039): `git worktree list` re-read when a few seconds old, each served under `/w/<branch>/` (and `/n/<namespace>/w/<branch>/`), opened on its first request through a callback to the CLI, `/` unchanged (0.35.0; manthan's six worktrees served from its main)
+- [x] `/api/worktrees`, and the same per notebook in `/api/notebooks`: name, branch, path, head, whether served here, counts of changed, staged and untracked files
+- [x] `[serve] worktrees = "this" | "all"` in `yajna.toml`, `"all"` the default, checked by `yajna validate`; the guide's configuration reference
 - [ ] The changes view (ADR-0038): `/files/changes?path=`, worktrees with their uncommitted counts, then a worktree's unstaged, staged and untracked files and its commits, each opening a one-column unified diff and the file in the existing viewers; phone-first
 - [ ] The changes view as a panel in the workbench, and a worktree picker in the files viewer
 - [x] The crate mountable on a bare directory with no notebook, as saarthi's node will: a test that builds the git routes alone (`yajna_serve::git::router(roots)`, the crate's git tests)
@@ -42,5 +42,9 @@ done ones. The project page's *Progress* lists this phase on one line.
 - A path to a deleted file is resolved through its directory, and never past what a root
   excludes (`.git`, `/notes` from a project's repo root): a test found the first version
   of that fallback reaching `repo/.git`.
+- A worktree's site renders on its first request: 12.6 s for g2a's in a debug build against
+  manthan, where `/api/worktrees` with counts for six worktrees took 0.18 s. Rendering
+  every worktree in the background from the start, as `--socket` does for notebooks, is an
+  option if that wait matters on the phone.
 - Order: the git API first (the view and saarthi both need it), then worktrees, then the
   view, so each step is usable on its own.
