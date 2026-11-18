@@ -47,6 +47,7 @@ items with the rest.
 - [ ] [[PHS-20261117-fysmxe]] Protocol framework: protocols as code (Phase 0, core and render)
 - [ ] [[PHS-20261118-evfb8n]] Git changes and every worktree in yajna serve
 - [ ] [[PHS-20261118-j1skx5]] Actions in the changes view: stage, commit, and comments that reach the session
+- [ ] [[PHS-20261118-k4kfg6]] One web app for the notebook: pages, files and changes in one design (ADR-0041)
 
 ## Open questions
 - New `build` and `artifact` pages fail their own schema: the templates write `null`

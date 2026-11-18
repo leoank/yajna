@@ -25,7 +25,7 @@ One item per piece of work, ticked when it lands; add items as the plan grows an
 done ones. The project page's *Progress* lists this phase on one line.
 - [x] ADR-0040: stage, unstage and commit, no discard; writes on the socket and with `--review`; comments as review threads (ank's choices, 2026-11-18)
 - [x] The git write API in `yajna-serve`: stage and unstage a file or a hunk (named by its header and a hash of its lines, refused with 409 when it changed), commit what is staged with the staged tree as the guard, the reviews' write check (0.37.0)
-- [ ] Stage, unstage and commit in the changes view: per file and per hunk, a commit form when something is staged, errors from hooks and races shown
+- [x] Stage, unstage and commit in the changes view: per file and per hunk, a commit form when something is staged, errors from hooks and races shown (in the new app, [[PHS-20261118-k4kfg6]]; 0.38.0)
 - [ ] Comments on a diff's lines in the changes view, written as a thread on the worktree's open review, one opened for its branch when there is none
 - [ ] An event for each new thread that clients follow (`/api/events` or a feed), its shape agreed with saarthi
 - [ ] The guide, `docs/files-viewer.md` and `docs/review.md` on the actions
