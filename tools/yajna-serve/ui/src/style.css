@@ -223,3 +223,65 @@ body.yr-focus #top, body.yr-focus #status, body.yr-focus #sidebar, body.yr-focus
 .yr-compose .yr-buttons { margin-top: 0; }
 .yr-thread.yr-draft { border-left-color: #2ea043; }
 .yr-about { margin: 10px 0 0; color: var(--muted); }
+
+/* the changes view (ADR-0038): a tab, and a page of its own made for a phone */
+.yc { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.yc-head { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--line); background: var(--side); flex: none; }
+.yc-back { font-size: 22px; line-height: 1; padding: 2px 10px 4px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--fg); cursor: pointer; }
+.yc-title { min-width: 0; }
+.yc-title .yc-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.yc-sub { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.yc-body { flex: 1; overflow: auto; min-height: 0; padding-bottom: 24px; }
+.yc-section { margin: 14px 12px 4px; font-size: 11.5px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; }
+.yc-list { list-style: none; margin: 0; padding: 0; }
+.yc-row { display: flex; align-items: center; gap: 10px; padding: 8px 12px; min-height: 40px; border-bottom: 1px solid var(--line); }
+.yc-tap { cursor: pointer; }
+.yc-tap:hover, .yc-tap:active { background: var(--hover); }
+.yc-off { color: var(--muted); }
+.yc-main { flex: 1; min-width: 0; }
+.yc-main .yc-name, .yc-subject { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.yc-path { display: flex; min-width: 0; overflow: hidden; white-space: nowrap; }
+/* the directory gives way first, down to an ellipsis, then the name */
+.yc-dir { color: var(--muted); overflow: hidden; text-overflow: ellipsis; flex: 0 1 auto; min-width: 1.2em; }
+/* the name does not shrink, so it never loses a fraction of a pixel to an ellipsis, unless
+   it alone is wider than the row */
+.yc-path .yc-name { flex: none; max-width: calc(100% - 1.2em); overflow: hidden; text-overflow: ellipsis; }
+.yc-badge { font-size: 11px; color: var(--accent); border: 1px solid var(--accent); border-radius: 8px; padding: 0 6px; }
+.yc-count { font-size: 12px; color: var(--muted); }
+.yc-status { flex: none; width: 1.6em; text-align: center; font: 600 12px ui-monospace, monospace; border-radius: 3px; padding: 1px 0; }
+.yc-s-M, .yc-s-T { color: #9a6700; }
+.yc-s-A, .yc-s-C, .yc-s-u { color: #1a7f37; }
+.yc-s-D { color: #cf222e; }
+.yc-s-R { color: var(--accent); }
+.yc-s-U { color: #fff; background: #cf222e; }
+.yc-nested .yc-row { padding-left: 24px; }
+.yc-commit.yc-open > .yc-row { background: var(--hover); }
+.yc-more { margin: 12px; padding: 8px 14px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--fg); cursor: pointer; }
+.yc-message { padding: 16px 12px; color: var(--muted); }
+.yc-bar { display: flex; align-items: center; gap: 10px; padding: 6px 12px; border-bottom: 1px solid var(--line); font-size: 12px; }
+.yc-bar .yc-path { flex: 1; }
+.yc-open-file { padding: 4px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--accent); cursor: pointer; }
+.yc-diff { font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.yc-notes { padding: 6px 12px; color: var(--muted); border-bottom: 1px solid var(--line); }
+.yc-line { display: grid; grid-template-columns: 3.2em 3.2em 1fr; }
+.yc-no { color: var(--muted); text-align: right; padding-right: 6px; user-select: none; opacity: 0.8; }
+.yc-text { white-space: pre-wrap; overflow-wrap: anywhere; padding-left: 6px; min-height: 1.45em; }
+.yc-add { background: color-mix(in srgb, #2da44e 16%, transparent); }
+.yc-add .yc-text::before { content: '+'; margin-left: -6px; position: absolute; opacity: 0.5; }
+.yc-del { background: color-mix(in srgb, #cf222e 14%, transparent); }
+.yc-del .yc-text::before { content: '−'; margin-left: -6px; position: absolute; opacity: 0.5; }
+.yc-hunk { color: var(--muted); background: var(--side); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.yc-meta { color: var(--muted); font-style: italic; }
+.yc-tab { height: 100%; }
+.yc-side { flex: none; display: flex; justify-content: space-between; padding: 6px 10px; cursor: pointer; font-weight: 600; font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; border-bottom: 1px solid var(--line); }
+.yc-side:hover { background: var(--hover); color: var(--fg); }
+#worktree { font: inherit; font-size: 12px; max-width: 16em; background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 4px; }
+/* the page of its own: the whole window, larger targets on a phone */
+body.yc-page { display: block; overflow: hidden; }
+body.yc-page .yc { height: 100vh; height: 100dvh; }
+@media (max-width: 700px) {
+  body.yc-page { font-size: 15px; }
+  body.yc-page .yc-row { min-height: 48px; }
+  body.yc-page .yc-line { grid-template-columns: 2.6em 2.6em 1fr; }
+  body.yc-page .yc-diff { font-size: 12.5px; }
+}

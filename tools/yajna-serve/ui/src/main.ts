@@ -6,7 +6,8 @@ import './viewers/markdown';
 import './viewers/image';
 import './viewers/binary';
 import './viewers/review';
-import { api, setLocal, setToken } from './api';
+import { api, base, setLocal, setToken } from './api';
+import { Changes, baseOf, notebookBase, placeFromUrl, placeToUrl, worktrees, type Worktree } from './changes';
 import { ReviewList } from './reviews';
 import { Tree } from './tree';
 import { Workbench, parseHash, type Status } from './workbench';
@@ -14,7 +15,51 @@ import { Live } from './live';
 
 const WIDTH_KEY = 'yajna-files:sidebar';
 
+/** `files/changes`: the changes view as a page of its own, phone-first (ADR-0038). */
+async function changesPage() {
+  document.body.className = 'yc-page';
+  const info = await api.info().catch(() => null);
+  document.title = `${info?.notebook ?? 'notebook'} · changes`;
+  const view = new Changes(
+    placeFromUrl(),
+    (p, replace) => (replace ? history.replaceState(null, '', placeToUrl(p)) : history.pushState(null, '', placeToUrl(p))),
+    (path, w) => (location.href = `${baseOf(w)}/files/#${encodeURI(path)}`),
+  );
+  document.body.replaceChildren(view.element);
+  window.addEventListener('popstate', () => view.go(placeFromUrl(), false));
+}
+
+/** The worktree this viewer shows, among the notebook's. */
+function shownHere(list: Worktree[]): Worktree | undefined {
+  return base === notebookBase ? list.find((w) => w.current) : list.find((w) => base.endsWith(`/${w.url.replace(/\/$/, '')}`));
+}
+
+/** The worktree picker in the top bar, and the uncommitted count on the sidebar's Changes. */
+async function worktreeBits(count: HTMLElement) {
+  const pick = document.querySelector('#worktree') as HTMLSelectElement;
+  let shown = '';
+  const load = async () => {
+    const list = await worktrees().catch(() => null);
+    if (!list) return;
+    const here = shownHere(list);
+    const n = here ? (here.changed ?? 0) + (here.staged ?? 0) + (here.untracked ?? 0) + (here.conflicted ?? 0) : 0;
+    count.textContent = n ? String(n) : '';
+    const key = JSON.stringify(list.map((w) => w.name));
+    if (key === shown || list.length < 2) return;
+    shown = key;
+    pick.replaceChildren(...list.map((w) => new Option(w.name, w.name, false, w === here)));
+    pick.hidden = false;
+    pick.onchange = () => {
+      const w = list.find((x) => x.name === pick.value);
+      if (w) location.href = `${baseOf(w)}/files/`;
+    };
+  };
+  await load();
+  window.setInterval(() => void load(), 5000);
+}
+
 async function main() {
+  if (/\/files\/changes\/?$/.test(location.pathname)) return changesPage();
   // the token of `yajna serve --review`, kept in memory and out of the address bar
   const token = new URLSearchParams(location.search).get('token');
   if (token) {
@@ -64,10 +109,21 @@ async function main() {
     (s) => ((stream = s), showLive()),
   );
   // review tabs read their review themselves; only files are watched
-  const watch = () => live.set([...bench.paths().filter((p) => !p.startsWith('review:')), ...tree.expanded()]);
+  const watch = () => live.set([...bench.paths().filter((p) => !p.startsWith('review:') && p !== 'changes:'), ...tree.expanded()]);
   const tree = new Tree(roots, (path, pin) => bench.open(path, { pin }), () => watch());
   const list = new ReviewList((id) => bench.open(`review:${id}`, { pin: true }));
-  document.querySelector('#sidebar')!.append(list.element, tree.element);
+  // what is uncommitted here and in the other worktrees (ADR-0038)
+  const changes = document.createElement('div');
+  changes.className = 'yc-side';
+  changes.title = 'What is changed, staged and committed in the worktrees';
+  const label = document.createElement('span');
+  label.textContent = 'Changes';
+  const count = document.createElement('span');
+  count.className = 'yr-count';
+  changes.append(label, count);
+  changes.addEventListener('click', () => bench.open('changes:', { pin: true }));
+  document.querySelector('#sidebar')!.append(changes, list.element, tree.element);
+  void worktreeBits(count);
 
   bench = new Workbench(
     document.querySelector('#editor')!,

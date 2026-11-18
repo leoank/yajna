@@ -281,7 +281,25 @@ text already), notebooks (`.ipynb`), TIFF and other microscopy formats converted
 server-side or tiled for OpenSeadragon, and HDF5 or Parquet summaries. Each is a new
 module in the registry and, where the browser cannot read the format, a server route.
 
-### 6.4 Building it
+### 6.4 The changes view
+
+What is uncommitted, staged and recently committed (ADR-0038), in `ui/src/changes.ts`, over
+`/api/worktrees` and `/api/git/`. It opens on the notebook's worktrees with how much is
+uncommitted in each (straight to the one when there is only one), then a worktree's
+conflicted, staged, changed and untracked files and its commits, 20 a page, a commit
+opening its files; a file opens its unified diff in one column (staged: `HEAD` to
+`INDEX`, changed: `INDEX` to `WORK`, untracked: added, a commit's: its parent to it), with
+the file's old and new line numbers, long lines wrapped, and an *Open* that shows the file
+in the viewer. A file no root shows is listed but not opened. It reads again every 4 s
+while it is visible, redrawing only what changed and keeping the scroll.
+
+It is two things: a page of its own at `files/changes` (and `w/<branch>/files/changes`),
+laid out for a phone, its place in the address (`?wt=&file=&from=&to=`) so the browser's
+back button works; and a tab of the workbench, `changes:`, opened by *Changes* at the top
+of the sidebar, which shows how many files are uncommitted in the worktree shown. When the
+notebook has more than one worktree the top bar has a picker that opens another's viewer.
+
+### 6.5 Building it
 
 - Source is TypeScript under `tools/yajna-serve/ui/src`, with `package.json` and
   `package-lock.json` pinning dockview-core, CodeMirror (`@codemirror/view`, `state`,

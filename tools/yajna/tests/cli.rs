@@ -3545,6 +3545,9 @@ fn serve_git_api_says_what_is_changed_staged_and_committed() {
     assert!(d["diff"].as_str().unwrap().contains("+A line from an agent."), "{d}");
     let (status, _, body) = http_req(&addr, &format!("/api/git/file?path={rel}&at=HEAD"), &[]);
     assert!(status.contains("200") && !String::from_utf8_lossy(&body).contains("from an agent"));
+    // the changes view is the viewer's app, at a page of its own
+    let (status, _, body) = http_req(&addr, "/files/changes?wt=main", &[]);
+    assert!(status.contains("200") && String::from_utf8_lossy(&body).contains("app.js"), "{status}");
     child.kill().unwrap();
     let _ = child.wait();
 }

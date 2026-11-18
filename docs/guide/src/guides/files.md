@@ -80,7 +80,14 @@ changed, staged, untracked and conflicted files, `/api/git/log` the commits with
 files, `/api/git/diff?path=<file>&from=HEAD&to=WORK` one file's unified diff (`INDEX`
 between them for what is staged, a commit with `^` for its parent), and `/api/git/file`
 a file as it was. Each change carries the path a root shows it at, so it opens in the
-viewer. A view of these in the browser is coming (`/files/changes`).
+viewer.
+
+The same is a view in the browser. *Changes* at the top of the sidebar opens it in a tab,
+and `/files/changes` is a page of its own made for a phone: the worktrees with what is
+uncommitted in each, then one worktree's staged, changed and untracked files and its
+recent commits, then a file's diff in one column, from which *Open* shows the whole file.
+It keeps itself current every few seconds, so an agent's work shows up as it lands. When
+the notebook has several worktrees, a picker in the top bar opens another one's viewer.
 
 ## Every worktree
 

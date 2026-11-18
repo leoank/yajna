@@ -301,6 +301,8 @@ fn router(app: App) -> Router {
             get(|| async { axum::response::Redirect::permanent("/files/") }),
         )
         .route("/files/", get(|| ui_file(Path("index.html".to_string()))))
+        // the changes view as a page of its own (ADR-0038); the same app, laid out for it
+        .route("/files/changes", get(|| ui_file(Path("index.html".to_string()))))
         .route("/files/{*asset}", get(ui_file))
         .merge(git::routes())
         .with_state(app)

@@ -58,7 +58,7 @@ class Tab implements ITabRenderer {
     this.render(e.params as Params);
   }
   private render(p: Params) {
-    this.title.textContent = basename(p.path);
+    this.title.textContent = p.path === 'changes:' ? 'Changes' : basename(p.path);
     this.element.title = p.path;
     this.element.classList.toggle('yw-preview', !p.pinned);
     this.element.classList.toggle('yw-changed', !!p.changed);
@@ -140,7 +140,8 @@ class Panel implements IContentRenderer {
       : s
         ? [formatSize(s.size), formatTime(s.mtime)].filter(Boolean).join(' · ')
         : '';
-    return { path: this.params.path, left, right: this.viewer?.status?.() ?? '' };
+    const path = this.params.path === 'changes:' ? 'Changes' : this.params.path;
+    return { path, left, right: this.viewer?.status?.() ?? '' };
   }
 
   private async load() {
@@ -153,9 +154,14 @@ class Panel implements IContentRenderer {
     this.element.replaceChildren(box);
     const path = this.params.path;
     try {
-      // a review tab, `review:<ID>`, is not a file
+      // a review tab, `review:<ID>`, and the changes tab, `changes:`, are not files
       const review = path.startsWith('review:');
-      this.stat = review ? { path, kind: 'review', mime: 'review', text: false } : await api.stat(path);
+      const changes = path === 'changes:';
+      this.stat = review
+        ? { path, kind: 'review', mime: 'review', text: false }
+        : changes
+          ? { path, kind: 'changes', mime: 'changes', text: false }
+          : await api.stat(path);
       if (token !== this.loads) return;
       const kind = review ? reviewKind : (this.params.kind && byName(this.params.kind)) || pick(this.stat);
       const ctx: Context = {
