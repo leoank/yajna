@@ -385,6 +385,36 @@ Steps are numbered 1..n without gaps; a step's stable address is `PRO-0012@3.s4`
 
 `stage: text` is the default. Once a codified version exists (`docs/protocol-framework.md`),
 set `stage: codified` and `source:`; from then on the steps are generated, not edited.
+The code sits beside the page, `notes/protocols/PRO-0012/protocol.py`, and
+`yajna-protocol page notes/protocols/PRO-0012-*.md --source <that file>` writes both fields
+and the steps the first time; afterwards `yajna-protocol page <page>` regenerates them and
+`--check` fails when they are stale. `source` is a path, not a link, and `yajna validate`
+fails a codified protocol whose `source` does not exist. The protocol's `metadata` names
+the same `id` and `version` as the page, so bumping one without the other is an error.
+Generated steps carry a `key` (or `keys`, for one step done on several containers): the
+stable name a run sheet and the bench watcher use, such as `prepare.add_cells[T1]`.
+
+```python
+from yajna_protocol import C, Protocol, minutes, ul
+
+requirements = {"yajna_protocol": "1"}
+metadata = {"id": "PRO-0012", "name": "Heat-shock transformation", "version": 4}
+
+def add_parameters(p):
+    p.add_int("n", "Number of transformations", default=2, minimum=1, maximum=12)
+
+def run(ctx: Protocol):
+    cells = ctx.material("MAT-0210", name="competent cells", liquid_class="cells")
+    tubes = ctx.tubes(ctx.params.n)
+    with ctx.group("Prepare"):
+        ctx.add(cells, 50 * ul, to=tubes, on="ice", key="add_cells")
+        ctx.incubate(tubes, on="ice", duration=30 * minutes)
+```
+
+`yajna-protocol render <protocol.py> -p n=4` prints the steps for a run's parameters,
+`yajna-protocol ir` the command stream they come from. The worked example is a small lab,
+`tools/yajna-protocol/examples/lab/`, whose PRO-0001 is generated from its `protocol.py`;
+the guide's *Protocols as code* walks through it.
 
 ## Materials
 

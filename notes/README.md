@@ -44,6 +44,7 @@ items with the rest.
 - [ ] [[PHS-20261106-2m7q13]] Phase 2b: bench planning (run sheets, inventory, schedules)
 - [ ] [[PHS-20261106-2m7r6j]] Phase 3: the server and agents over HTTP and MCP
 - [ ] [[PHS-20261106-2m7rq5]] Phase 4: apps and monitoring
+- [ ] [[PHS-20261117-fysmxe]] Protocol framework: protocols as code (Phase 0, core and render)
 
 ## Open questions
 - New `build` and `artifact` pages fail their own schema: the templates write `null`

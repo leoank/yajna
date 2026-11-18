@@ -1,0 +1,6 @@
+# Last allocated number per curated ID prefix. Managed by `yajna new`.
+PRJ: 0
+PRO: 1
+MAT: 6
+EQP: 2
+BLD: 0

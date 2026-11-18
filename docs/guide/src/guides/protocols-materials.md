@@ -42,7 +42,8 @@ the IDs they name exist.
 
 **Status** is `draft`, `active` or `deprecated`; **kind** (`--kind`) is `bench` (the
 default), `assembly` or `compute`. `stage: text` is the default; a protocol rewritten as code
-(`stage: codified`, with `source:`) has its steps generated from that code from then on.
+(`stage: codified`, with `source:`) has its steps generated from that code from then on; see
+[Protocols as code](protocols-as-code.md).
 
 ## Materials
 

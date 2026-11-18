@@ -86,6 +86,12 @@ pub const PATH_FIELDS: &[&str] = &[
     "previous_id",
     "bibliography",
 ];
+
+/// Whether frontmatter field `key` of a page of `page_type` holds a path, not links: the
+/// `PATH_FIELDS`, and a protocol's `source`, its code (`notes/protocols/PRO-0012/protocol.py`).
+pub fn is_path_field(page_type: Option<&str>, key: &str) -> bool {
+    PATH_FIELDS.contains(&key) || (page_type == Some("protocol") && key == "source")
+}
 const ALIASES: &[(&str, &str)] = &[
     ("agent", "agent_session"),
     ("exp", "experiment"),

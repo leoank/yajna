@@ -20,6 +20,7 @@
 - [Experiments](guides/experiments.md)
 - [Runs and results](guides/runs.md)
 - [Protocols, materials and equipment](guides/protocols-materials.md)
+- [Protocols as code](guides/protocols-as-code.md)
 - [References](guides/references.md)
 - [Tasks and queries](guides/queries.md)
 - [The static site](guides/site.md)
@@ -46,6 +47,7 @@
   - [Reproducing runs](design/reproduce.md)
   - [Todos and logs from anywhere](design/from-anywhere.md)
   - [Data stores](design/data.md)
+  - [Protocols as code](design/protocol-framework.md)
 - [Conventions](design/conventions.md)
 - [Decision records](design/decisions/README.md)
 <!-- ADRS -->

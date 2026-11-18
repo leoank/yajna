@@ -12,7 +12,7 @@ head: 0acf574d50e9064248648e34267aaee90da098f6
 rounds: [0bf15b5e2e8c0f9accc1e8d32ecbb0761c977e1c, 5098d2d62d9b3a41f45c8cba665ad901044098d0, ab4d5e3f4d10362d2be39335f03e0a16bd6ea9eb, 01fbc42e9c37785d6316588332b0496f2f971bb5, 7ecad1587ad26aa21cddab339d238e67cda0454e, 26488ad2f506b546aa06141de4319a75324000ed, 9d9df5d79b1cd8007c0b0c122ebc59d8c5a3062c]
 paths: []
 about: [PRJ-0001, PHS-20261106-2m7qaq, EXP-20261106-3t3nn2, EXP-20261106-3t40bg, EXP-20261106-3t4cyw, RUN-20261106-4a78zt, RUN-20261106-4vftn2, RUN-20261106-5g081k, RUN-20261106-5z2189]
-status: open              # open | changes_requested | approved | merged | closed
+status: approved          # open | changes_requested | approved | merged | closed
 created: 2026-11-06
 author: agent:claude
 ---
@@ -112,10 +112,12 @@ of the variable, machine A's path on machine B. Fixed in 4b13e9e (0.30.1): this 
 `tools/yajna/src/data.rs` and the new assertion in the step 7 test. Its *Things to look at*
 lists what I left as is: `drop` frees a xorb only when nothing uses it (the open
 fragmentation rule), `status` does not hash, `get --only` fetches whole xorbs.
+- 2026-11-18 12:07 ank approved: Looks good. approved
 
 ## Threads
 
-### T1 (addressed) general
+### T1 (resolved) general
 - 2026-11-12 15:12 ank: There is no progress bar when I do `yajna data add`. This will be a very bad UX when someone will add large data file.
 - 2026-11-12 15:15 ank: The same thing for `yajna data get`
 - 2026-11-17 13:21 agent:claude addressed in c45e9f0: data add, get, push and pull now draw a progress bar on a terminal once a transfer runs past half a second: storing, copying between stores, receiving over ssh, writing out; cleared before the summary lines, YAJNA_PROGRESS=0 turns it off (0.32.0)
+- 2026-11-18 12:07 ank resolved

@@ -12,7 +12,8 @@ author: agent:claude
 protocols: []
 materials: []
 tags: [data, xet]
-review: pending
+review: approved
+approval: {by: ank, on: 2026-11-18, in: REV-20261106-3rsd58}
 ---
 
 ## Question

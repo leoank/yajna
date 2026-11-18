@@ -11,8 +11,8 @@ use serde_json::{Map, Value};
 use crate::refs;
 use crate::vault::without_code;
 use crate::vault::{
-    load_yaml, prefix_to_type, rel, Page, Res, Schemas, Vault, ID_FULL_RE, LINK_RE, NS_ID_RE,
-    PATH_FIELDS,
+    is_path_field, load_yaml, prefix_to_type, rel, Page, Res, Schemas, Vault, ID_FULL_RE, LINK_RE,
+    NS_ID_RE,
 };
 
 static STEP_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(\d+)\.\s+(.*?)\s*$").unwrap());
@@ -260,6 +260,21 @@ pub fn validate(vault: &Vault) -> Res<(Vec<String>, usize)> {
                 problems.add(&page.path, format!("script {script} does not exist"));
             }
         }
+        if meta.get("type").and_then(|v| v.as_str()) == Some("protocol") {
+            // a code-native protocol's steps are generated from `source` (protocol-framework.md)
+            let source = meta.get("source").and_then(|v| v.as_str());
+            let codified = meta.get("stage").and_then(|v| v.as_str()) == Some("codified");
+            match source {
+                Some(s) if codified && !vault.root.join(s).is_file() => {
+                    problems.add(&page.path, format!("source {s} does not exist"))
+                }
+                None if codified => problems.add(
+                    &page.path,
+                    "stage: codified needs source: the protocol's code",
+                ),
+                _ => {}
+            }
+        }
         if let Some(code) = meta.get("code").and_then(|v| v.as_str()) {
             // a path under the repo, or a location (`github:owner/repo`, a URL) after a move
             if !code.contains(':') && !vault.root.join(code).is_dir() {
@@ -315,8 +330,9 @@ pub fn validate(vault: &Vault) -> Res<(Vec<String>, usize)> {
         }
         let mut targets = BTreeSet::new();
         let mut namespaced = Vec::new();
+        let ptype = meta.get("type").and_then(|v| v.as_str());
         for (k, v) in meta {
-            if k != "id" && !PATH_FIELDS.contains(&k.as_str()) {
+            if k != "id" && !is_path_field(ptype, k) {
                 ids_in(v, &mut targets, &mut namespaced);
             }
         }
