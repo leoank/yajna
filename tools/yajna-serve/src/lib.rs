@@ -114,6 +114,14 @@ impl axum::extract::FromRef<App> for git::Roots {
     }
 }
 
+/// The git writes follow the reviews' rule: the owner's socket, or `--review`'s token
+/// (ADR-0040); a server with neither, `dir_router`'s among them, refuses them.
+impl axum::extract::FromRef<App> for git::Writes {
+    fn from_ref(app: &App) -> git::Writes {
+        git::Writes { token: app.token.clone(), local: app.local, on: true }
+    }
+}
+
 impl App {
     fn new(cfg: Config, local: bool) -> Self {
         let worktrees = cfg
@@ -584,6 +592,12 @@ mod tests {
         // a socket file nothing answers on is replaced
         let stale = dir.join("stale.sock");
         drop(std::os::unix::net::UnixListener::bind(&stale).unwrap());
+        // a process another test forks just then holds the listener until it execs, and a
+        // connect still succeeds; wait until nothing answers, as after a server's death
+        let t0 = std::time::Instant::now();
+        while std::os::unix::net::UnixStream::connect(&stale).is_ok() && t0.elapsed() < std::time::Duration::from_secs(5) {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
         let rx = serve_in_thread(stale.clone());
         rx.recv_timeout(std::time::Duration::from_secs(10)).unwrap().unwrap();
     }

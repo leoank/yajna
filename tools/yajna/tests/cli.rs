@@ -3548,6 +3548,9 @@ fn serve_git_api_says_what_is_changed_staged_and_committed() {
     // the changes view is the viewer's app, at a page of its own
     let (status, _, body) = http_req(&addr, "/files/changes?wt=main", &[]);
     assert!(status.contains("200") && String::from_utf8_lossy(&body).contains("app.js"), "{status}");
+    // without --review the git writes are refused (ADR-0040)
+    let (status, body) = http(&addr, "POST", "/api/git/stage", &[("Content-Type", "application/json"), ("Origin", &format!("http://{addr}"))], &format!("{{\"path\":\"{rel}\"}}"));
+    assert_eq!(status, 403, "{body}");
     child.kill().unwrap();
     let _ = child.wait();
 }
@@ -3622,6 +3625,54 @@ fn serve_serves_every_worktree_under_its_branch() {
     fs::write(v.root.join("yajna.toml"), format!("{toml}\n[serve]\nworktrees = \"some\"\n")).unwrap();
     let out = v.run(&["validate"]);
     assert!(out.stdout.contains("[serve] worktrees") || out.stderr.contains("[serve] worktrees"), "{}{}", out.stdout, out.stderr);
+}
+
+#[test]
+fn serve_review_stages_and_commits_from_the_changes_view() {
+    use std::io::BufRead;
+    let v = indexed_lab();
+    git(&v.root, &["init", "-q", "-b", "main"]);
+    fs::write(v.root.join(".gitignore"), "/.cache/\n/site/\n").unwrap();
+    git(&v.root, &["add", "."]);
+    git(&v.root, &["commit", "-q", "-m", "the lab"]);
+    fs::write(v.root.join("notes/scratch.md"), "an agent's note\n").unwrap();
+    let mut child = Command::new(env!("CARGO_BIN_EXE_yajna"))
+        .arg("--root")
+        .arg(&v.root)
+        .args(["serve", "--review", "--port", "0", "--out"])
+        .arg(v.root.join("site"))
+        .env("YAJNA_CACHE", v.root.join(".cache"))
+        .env("XDG_STATE_HOME", v.root.join(".cache/state"))
+        .env("XDG_CONFIG_HOME", v.root.join(".cache/config"))
+        .env("GIT_AUTHOR_NAME", "t")
+        .env("GIT_AUTHOR_EMAIL", "t@example.com")
+        .env("GIT_COMMITTER_NAME", "t")
+        .env("GIT_COMMITTER_EMAIL", "t@example.com")
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    let url = std::io::BufReader::new(child.stdout.take().unwrap())
+        .lines()
+        .map(|l| l.unwrap())
+        .find_map(|l| l.strip_prefix("reviews, writable: ").map(str::to_string))
+        .unwrap();
+    let (addr, token) = url.strip_prefix("http://").unwrap().split_once("/files/?token=").map(|(a, t)| (a.to_string(), t.to_string())).unwrap();
+    let origin = format!("http://{addr}");
+    let headers = [("Content-Type", "application/json"), ("Origin", origin.as_str()), ("X-Yajna-Token", token.as_str())];
+
+    let (status, body) = http(&addr, "POST", "/api/git/stage", &headers, "{\"path\":\"notes/scratch.md\"}");
+    assert_eq!(status, 200, "{body}");
+    let st: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(st["staged"][0]["rel"], "notes/scratch.md", "{st}");
+    let tree = st["tree"].as_str().unwrap();
+    let (status, body) = http(&addr, "POST", "/api/git/commit", &headers, &format!("{{\"path\":\"notes\",\"message\":\"an agent's note, kept\",\"tree\":\"{tree}\"}}"));
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(git(&v.root, &["log", "-1", "--format=%s"]).trim(), "an agent's note, kept");
+    assert!(git(&v.root, &["status", "--porcelain", "--", "notes"]).trim().is_empty());
+    child.kill().unwrap();
+    let _ = child.wait();
 }
 
 #[test]

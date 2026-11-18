@@ -7,6 +7,12 @@
 //! goes through the `git` CLI, as the rest of yajna does, with optional locks off so a
 //! status never contends with an agent committing. The routes need only the roots, so a
 //! program with no notebook can mount them on a directory of its own (`router`).
+//!
+//! Three writes (ADR-0040): stage and unstage a file or one hunk, and commit what is
+//! staged, each only what the view was shown: a hunk by the ID its diff gave it, a commit
+//! by the staged tree its status gave. They pass the reviews' write check (the owner's
+//! socket, or `--review` with its token and Origin); a server of the routes alone is
+//! read-only.
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
@@ -14,9 +20,9 @@ use std::sync::Arc;
 
 use axum::body::Body;
 use axum::extract::{FromRef, Query, State};
-use axum::http::{header, HeaderValue, StatusCode};
+use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
-use axum::routing::get;
+use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 
@@ -31,22 +37,53 @@ const LOG_PAGE: usize = 30;
 #[derive(Clone)]
 pub struct Roots(pub Arc<Vec<Root>>);
 
-/// The git routes alone, over `roots`: for a program that serves only these.
-pub fn router(roots: Vec<Root>) -> Router {
-    routes().with_state(Roots(Arc::new(roots)))
+/// Whether and by whom the writes may be used (ADR-0040).
+#[derive(Clone)]
+pub struct Writes {
+    /// what a write over TCP must carry, `yajna serve --review`'s token
+    pub(crate) token: Arc<Option<String>>,
+    /// served on the owner's unix socket: no token needed (ADR-0036)
+    pub(crate) local: bool,
+    /// false: every write is refused
+    pub(crate) on: bool,
 }
 
-/// The git routes, for any state the roots can be taken from.
+/// The state of a server of the git routes alone: read-only.
+#[derive(Clone)]
+struct Alone(Roots);
+
+impl FromRef<Alone> for Roots {
+    fn from_ref(a: &Alone) -> Roots {
+        a.0.clone()
+    }
+}
+
+impl FromRef<Alone> for Writes {
+    fn from_ref(_: &Alone) -> Writes {
+        Writes { token: Arc::new(None), local: false, on: false }
+    }
+}
+
+/// The git routes alone, over `roots`, read-only: for a program that serves only these.
+pub fn router(roots: Vec<Root>) -> Router {
+    routes().with_state(Alone(Roots(Arc::new(roots))))
+}
+
+/// The git routes, for any state the roots and the write rules can be taken from.
 pub fn routes<S>() -> Router<S>
 where
     S: Clone + Send + Sync + 'static,
     Roots: FromRef<S>,
+    Writes: FromRef<S>,
 {
     Router::new()
         .route("/api/git/status", get(status_handler))
         .route("/api/git/log", get(log_handler))
         .route("/api/git/diff", get(diff_handler))
         .route("/api/git/file", get(file_handler))
+        .route("/api/git/stage", post(stage_handler))
+        .route("/api/git/unstage", post(unstage_handler))
+        .route("/api/git/commit", post(commit_handler))
 }
 
 fn err(code: StatusCode, msg: impl Into<String>) -> ApiError {
@@ -195,6 +232,9 @@ pub struct Status {
     pub staged: Vec<Changed>,
     pub untracked: Vec<Changed>,
     pub conflicted: Vec<Changed>,
+    /// the tree of what is staged, which a commit carries back (ADR-0040); `None` while a
+    /// conflict is unresolved
+    pub tree: Option<String>,
 }
 
 /// `git status --porcelain=v2 --branch -z` into a `Status`; paths below the top.
@@ -273,6 +313,7 @@ fn status(roots: &[Root], path: &str) -> Result<Status, ApiError> {
     )?;
     let mut s = parse_status(&raw);
     s.worktree = t.top.clone();
+    s.tree = staged_tree(&t.top);
     for c in s
         .unstaged
         .iter_mut()
@@ -435,6 +476,51 @@ pub struct Diff {
     pub diff: String,
     pub binary: bool,
     pub truncated: bool,
+    /// its hunks in order, each with the ID a stage or unstage of it names (ADR-0040)
+    pub hunks: Vec<Hunk>,
+}
+
+#[derive(Serialize, Debug, Clone, PartialEq)]
+pub struct Hunk {
+    /// its `@@ … @@` line
+    pub header: String,
+    /// a hash of its lines: the same hunk read again has the same ID, a changed one not
+    pub id: String,
+}
+
+/// A diff's file header (everything before the first hunk) and its hunks, each with the
+/// `@@` line and the lines under it, newline-terminated.
+fn split_hunks(diff: &str) -> (String, Vec<String>) {
+    let mut head = String::new();
+    let mut hunks: Vec<String> = Vec::new();
+    for line in diff.split_inclusive('\n') {
+        if line.starts_with("@@") {
+            hunks.push(String::new());
+        }
+        match hunks.last_mut() {
+            Some(h) => h.push_str(line),
+            None => head.push_str(line),
+        }
+    }
+    (head, hunks)
+}
+
+/// FNV-1a over a hunk's text, in hex: stable across processes and builds.
+fn hunk_id(text: &str) -> String {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in text.bytes() {
+        h ^= b as u64;
+        h = h.wrapping_mul(0x0100_0000_01b3);
+    }
+    format!("{h:016x}")
+}
+
+fn hunks_of(diff: &str) -> Vec<Hunk> {
+    split_hunks(diff)
+        .1
+        .iter()
+        .map(|h| Hunk { header: h.lines().next().unwrap_or("").to_string(), id: hunk_id(h) })
+        .collect()
 }
 
 fn untracked(top: &Path, rel: &str) -> Result<bool, ApiError> {
@@ -492,7 +578,8 @@ fn diff(roots: &[Root], path: &str, old: Option<&str>, from: &str, to: &str) -> 
     let truncated = out.stdout.len() > CAP;
     let text = String::from_utf8_lossy(&out.stdout[..out.stdout.len().min(CAP)]).into_owned();
     let binary = text.lines().any(|l| l.starts_with("Binary files ") && l.ends_with(" differ"));
-    Ok(Diff { from: from.to_string(), to: to.to_string(), diff: text, binary, truncated })
+    let hunks = if truncated { Vec::new() } else { hunks_of(&text) };
+    Ok(Diff { from: from.to_string(), to: to.to_string(), diff: text, binary, truncated, hunks })
 }
 
 async fn diff_handler(State(Roots(roots)): State<Roots>, Query(q): Query<DiffQuery>) -> Response {
@@ -540,6 +627,165 @@ async fn file_handler(State(Roots(roots)): State<Roots>, Query(q): Query<FileQue
         Ok(res)
     })
     .await
+}
+
+// --- writes (ADR-0040) -----------------------------------------------------------------
+
+/// `git write-tree`: the tree of what is staged; `None` while a conflict is unresolved.
+fn staged_tree(top: &Path) -> Option<String> {
+    let out = git(top).arg("write-tree").output().ok()?;
+    out.status.success().then(|| String::from_utf8_lossy(&out.stdout).trim().to_string())
+}
+
+fn has_head(top: &Path) -> bool {
+    git(top).args(["rev-parse", "-q", "--verify", "HEAD"]).output().is_ok_and(|o| o.status.success())
+}
+
+fn check_write(w: &Writes, headers: &HeaderMap) -> Result<(), ApiError> {
+    if !w.on {
+        return Err(err(StatusCode::FORBIDDEN, "this server is read-only"));
+    }
+    if w.local {
+        return Ok(());
+    }
+    crate::reviews::may_write(w.token.as_deref(), headers).map_err(|(s, m)| err(s, m))
+}
+
+#[derive(Deserialize)]
+struct StageBody {
+    path: String,
+    /// a staged rename's other side, an API path
+    old: Option<String>,
+    /// one hunk, by the ID the diff gave it; none: the whole file
+    hunk: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct CommitBody {
+    /// any path in the worktree
+    path: String,
+    message: String,
+    /// the staged tree the view's status gave
+    tree: String,
+}
+
+/// Stage (or with `undo`, unstage) a file or one of its hunks; the worktree's status after.
+fn stage(roots: &[Root], b: &StageBody, undo: bool) -> Result<Status, ApiError> {
+    let t = locate(roots, &b.path)?;
+    let old = match &b.old {
+        Some(o) => Some(locate(roots, o)?.rel),
+        None => None,
+    };
+    let refused = |m: &str| err(StatusCode::UNPROCESSABLE_ENTITY, m);
+    match &b.hunk {
+        None => {
+            let mut cmd = git(&t.top);
+            match (undo, has_head(&t.top)) {
+                (false, _) => cmd.args(["add", "-A", "--"]),
+                // from HEAD, both sides of a rename too (restore --staged refuses the old one)
+                (true, true) => cmd.args(["reset", "-q", "--"]),
+                // nothing committed yet: unstaging is taking it out of the index
+                (true, false) => cmd.args(["rm", "--cached", "-q", "-r", "--"]),
+            };
+            cmd.args(old.iter()).arg(&t.rel);
+            ok(run(&mut cmd)?, if undo { "git reset" } else { "git add" })
+                .map_err(|e| refused(&e.1))?;
+        }
+        Some(id) => {
+            if !undo && untracked(&t.top, &t.rel)? {
+                return Err(refused("an untracked file is staged whole"));
+            }
+            // read the diff again, as the view read it, and take the hunk it showed
+            let (from, to) = if undo { ("HEAD", "INDEX") } else { ("INDEX", "WORK") };
+            let d = diff(roots, &b.path, b.old.as_deref(), from, to)?;
+            if d.truncated || d.binary {
+                return Err(refused("a hunk of a binary or cut-off diff cannot be staged on its own"));
+            }
+            let (head, hunks) = split_hunks(&d.diff);
+            let Some(hunk) = hunks.iter().find(|h| hunk_id(h) == *id) else {
+                return Err(err(StatusCode::CONFLICT, "that hunk has changed or gone since it was shown; read the diff again"));
+            };
+            let mut cmd = git(&t.top);
+            cmd.args(["apply", "--cached", "--whitespace=nowarn"]);
+            if undo {
+                cmd.arg("--reverse");
+            }
+            cmd.arg("-").stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
+            let mut child = cmd.spawn().map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, format!("git: {e}")))?;
+            {
+                use std::io::Write;
+                let mut stdin = child.stdin.take().unwrap();
+                stdin
+                    .write_all(format!("{head}{hunk}").as_bytes())
+                    .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, format!("git apply: {e}")))?;
+            }
+            let out = child.wait_with_output().map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, format!("git: {e}")))?;
+            ok(out, "git apply").map_err(|e| refused(&e.1))?;
+        }
+    }
+    status(roots, &b.path)
+}
+
+#[derive(Serialize)]
+struct Committed {
+    commit: String,
+    status: Status,
+}
+
+/// Commit what is staged, when it is what the view showed.
+fn commit(roots: &[Root], b: &CommitBody) -> Result<Committed, ApiError> {
+    let message = b.message.trim();
+    if message.is_empty() {
+        return Err(err(StatusCode::BAD_REQUEST, "a commit needs a message"));
+    }
+    let t = locate(roots, &b.path)?;
+    if staged_tree(&t.top).as_deref() != Some(b.tree.as_str()) {
+        return Err(err(StatusCode::CONFLICT, "what is staged is not what was shown; read the status again"));
+    }
+    let nothing = git(&t.top).args(["diff", "--cached", "--quiet"]).status().is_ok_and(|s| s.success()) && has_head(&t.top);
+    if nothing {
+        return Err(err(StatusCode::UNPROCESSABLE_ENTITY, "nothing is staged"));
+    }
+    let mut cmd = git(&t.top);
+    cmd.args(["commit", "-q", "-F", "-"])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    let mut child = cmd.spawn().map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, format!("git: {e}")))?;
+    {
+        use std::io::Write;
+        let mut stdin = child.stdin.take().unwrap();
+        let _ = stdin.write_all(format!("{message}\n").as_bytes());
+    }
+    let out = child.wait_with_output().map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, format!("git: {e}")))?;
+    if !out.status.success() {
+        // a hook that refused says why on either stream
+        let said = format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
+        return Err(err(StatusCode::UNPROCESSABLE_ENTITY, format!("git commit: {}", said.trim())));
+    }
+    let sha = ok(run(git(&t.top).args(["rev-parse", "HEAD"]))?, "git rev-parse")?;
+    Ok(Committed { commit: String::from_utf8_lossy(&sha).trim().to_string(), status: status(roots, &b.path)? })
+}
+
+async fn stage_handler(State(Roots(roots)): State<Roots>, State(w): State<Writes>, headers: HeaderMap, Json(b): Json<StageBody>) -> Response {
+    if let Err(e) = check_write(&w, &headers) {
+        return e.into_response();
+    }
+    blocking(move || stage(&roots, &b, false).map(|s| Json(s).into_response())).await
+}
+
+async fn unstage_handler(State(Roots(roots)): State<Roots>, State(w): State<Writes>, headers: HeaderMap, Json(b): Json<StageBody>) -> Response {
+    if let Err(e) = check_write(&w, &headers) {
+        return e.into_response();
+    }
+    blocking(move || stage(&roots, &b, true).map(|s| Json(s).into_response())).await
+}
+
+async fn commit_handler(State(Roots(roots)): State<Roots>, State(w): State<Writes>, headers: HeaderMap, Json(b): Json<CommitBody>) -> Response {
+    if let Err(e) = check_write(&w, &headers) {
+        return e.into_response();
+    }
+    blocking(move || commit(&roots, &b).map(|c| Json(c).into_response())).await
 }
 
 async fn blocking(f: impl FnOnce() -> Result<Response, ApiError> + Send + 'static) -> Response {
@@ -761,6 +1007,146 @@ mod tests {
         assert_eq!(text("path=notes/a.md&at=HEAD^").await.1, "one\ntwo\n");
         assert_eq!(text("path=notes/gone.md&at=HEAD").await.1, "soon gone\n");
         assert_eq!(text("path=notes/fresh.md&at=HEAD").await.0, StatusCode::NOT_FOUND);
+    }
+
+    /// The routes with writes on, as the owner's socket has them, or behind `token`.
+    #[derive(Clone)]
+    struct Open(Roots, Writes);
+
+    impl FromRef<Open> for Roots {
+        fn from_ref(o: &Open) -> Roots {
+            o.0.clone()
+        }
+    }
+
+    impl FromRef<Open> for Writes {
+        fn from_ref(o: &Open) -> Writes {
+            o.1.clone()
+        }
+    }
+
+    fn writable(roots: Vec<Root>, token: Option<&str>) -> Router {
+        let w = Writes { token: Arc::new(token.map(str::to_string)), local: token.is_none(), on: true };
+        routes().with_state(Open(Roots(Arc::new(roots)), w))
+    }
+
+    async fn post(r: &Router, uri: &str, body: serde_json::Value, headers: &[(&str, &str)]) -> (StatusCode, serde_json::Value) {
+        let mut req = Request::builder().method("POST").uri(uri).header("content-type", "application/json");
+        for (k, v) in headers {
+            req = req.header(*k, *v);
+        }
+        let res = r.clone().oneshot(req.body(Body::from(body.to_string())).unwrap()).await.unwrap();
+        let status = res.status();
+        let bytes = axum::body::to_bytes(res.into_body(), 1 << 24).await.unwrap();
+        (status, serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::String(String::from_utf8_lossy(&bytes).into())))
+    }
+
+    #[tokio::test]
+    async fn stage_and_unstage_a_file_or_one_hunk_only_as_shown() {
+        let (dir, roots) = scratch("stage");
+        // a file with two changes far apart: two hunks
+        let long: String = (1..=40).map(|i| format!("line {i}\n")).collect();
+        write(&dir, "code/long.txt", &long);
+        sh(&dir, &["add", "code/long.txt"]);
+        sh(&dir, &["commit", "-q", "-m", "long"]);
+        write(&dir, "code/long.txt", &long.replace("line 3\n", "line three\n").replace("line 38\n", "line thirty-eight\n"));
+        let r = writable(roots, None);
+
+        // read-only without the write rules
+        let (s, _) = post(&router(scratch("stage-ro").1), "/api/git/stage", serde_json::json!({ "path": "repo/code/x.py" }), &[]).await;
+        assert_eq!(s, StatusCode::FORBIDDEN);
+
+        // one hunk of two, by the ID the diff gave it
+        let (_, d) = get_json(&r, "/api/git/diff?path=repo/code/long.txt&from=INDEX&to=WORK").await;
+        let hunks = d["hunks"].as_array().unwrap();
+        assert_eq!(hunks.len(), 2, "{d}");
+        let first = hunks[0]["id"].as_str().unwrap().to_string();
+        let (s, st) = post(&r, "/api/git/stage", serde_json::json!({ "path": "repo/code/long.txt", "hunk": first }), &[]).await;
+        assert_eq!(s, StatusCode::OK, "{st}");
+        assert!(names(&st, "staged").contains(&"M code/long.txt repo/code/long.txt".to_string()), "{st}");
+        assert!(names(&st, "unstaged").contains(&"M code/long.txt repo/code/long.txt".to_string()), "half is left");
+        let (_, staged) = get_json(&r, "/api/git/diff?path=repo/code/long.txt&from=HEAD&to=INDEX").await;
+        let staged = staged["diff"].as_str().unwrap();
+        assert!(staged.contains("+line three") && !staged.contains("thirty-eight"), "{staged}");
+
+        // the agent edits the other hunk: its old ID is refused, nothing is staged unseen
+        let second = hunks[1]["id"].as_str().unwrap().to_string();
+        write(&dir, "code/long.txt", &long.replace("line 3\n", "line three\n").replace("line 38\n", "line 38, again\n"));
+        let (s, v) = post(&r, "/api/git/stage", serde_json::json!({ "path": "repo/code/long.txt", "hunk": second }), &[]).await;
+        assert_eq!(s, StatusCode::CONFLICT, "{v}");
+
+        // the staged hunk back out, by the ID the staged diff gives it
+        let (_, d) = get_json(&r, "/api/git/diff?path=repo/code/long.txt&from=HEAD&to=INDEX").await;
+        let id = d["hunks"][0]["id"].as_str().unwrap().to_string();
+        let (s, st) = post(&r, "/api/git/unstage", serde_json::json!({ "path": "repo/code/long.txt", "hunk": id }), &[]).await;
+        assert_eq!(s, StatusCode::OK, "{st}");
+        assert!(!names(&st, "staged").iter().any(|n| n.contains("long.txt")), "{st}");
+
+        // whole files: an untracked one, and a deleted one; a hunk of an untracked file is refused
+        let (s, _) = post(&r, "/api/git/stage", serde_json::json!({ "path": "notes/fresh.md", "hunk": "0" }), &[]).await;
+        assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY);
+        for p in ["notes/fresh.md", "notes/gone.md"] {
+            let (s, st) = post(&r, "/api/git/stage", serde_json::json!({ "path": p }), &[]).await;
+            assert_eq!(s, StatusCode::OK, "{p}: {st}");
+        }
+        let (_, st) = get_json(&r, "/api/git/status?path=notes").await;
+        assert!(names(&st, "staged").contains(&"A notes/fresh.md notes/fresh.md".to_string()), "{st}");
+        assert!(names(&st, "staged").contains(&"D notes/gone.md notes/gone.md".to_string()), "{st}");
+        // and a whole file out again, the staged rename with both its sides
+        let (s, st) = post(&r, "/api/git/unstage", serde_json::json!({ "path": "notes/new.md", "old": "notes/old.md" }), &[]).await;
+        assert_eq!(s, StatusCode::OK, "{st}");
+        assert!(!names(&st, "staged").iter().any(|n| n.contains("new.md") || n.contains("old.md")), "{st}");
+    }
+
+    #[tokio::test]
+    async fn commit_only_what_was_shown_and_say_why_a_hook_refused() {
+        let (dir, roots) = scratch("commit");
+        let r = writable(roots, None);
+        let (_, st) = get_json(&r, "/api/git/status?path=repo").await;
+        let tree = st["tree"].as_str().unwrap().to_string();
+
+        for (body, code) in [
+            (serde_json::json!({ "path": "repo", "message": " ", "tree": tree }), StatusCode::BAD_REQUEST),
+            (serde_json::json!({ "path": "repo", "message": "x", "tree": "0000" }), StatusCode::CONFLICT),
+        ] {
+            assert_eq!(post(&r, "/api/git/commit", body, &[]).await.0, code);
+        }
+        // a pre-commit hook that refuses: its words come back, nothing is committed
+        std::fs::create_dir_all(dir.join(".git/hooks")).unwrap();
+        let hook = dir.join(".git/hooks/pre-commit");
+        std::fs::write(&hook, "#!/bin/sh\necho 'a file over git_max is staged' >&2\nexit 1\n").unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let (s, v) = post(&r, "/api/git/commit", serde_json::json!({ "path": "repo", "message": "staged work", "tree": tree }), &[]).await;
+        assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY, "{v}");
+        assert!(v["error"].as_str().unwrap().contains("over git_max"), "{v}");
+        std::fs::remove_file(&hook).unwrap();
+
+        let (s, v) = post(&r, "/api/git/commit", serde_json::json!({ "path": "repo", "message": "staged work\n\nfrom the view", "tree": tree }), &[]).await;
+        assert_eq!(s, StatusCode::OK, "{v}");
+        assert!(v["status"]["staged"].as_array().unwrap().is_empty(), "{v}");
+        assert_eq!(v["status"]["head"], v["commit"]);
+        let (_, l) = get_json(&r, "/api/git/log?path=repo&limit=1").await;
+        assert_eq!(l["commits"][0]["subject"], "staged work");
+        // nothing staged now
+        let tree = v["status"]["tree"].as_str().unwrap().to_string();
+        let (s, _) = post(&r, "/api/git/commit", serde_json::json!({ "path": "repo", "message": "again", "tree": tree }), &[]).await;
+        assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY);
+    }
+
+    #[tokio::test]
+    async fn over_tcp_writes_need_the_token_and_the_viewers_origin() {
+        let (_, roots) = scratch("token");
+        let r = writable(roots, Some("s3cret"));
+        let body = || serde_json::json!({ "path": "repo/code/x.py" });
+        assert_eq!(post(&r, "/api/git/stage", body(), &[]).await.0, StatusCode::FORBIDDEN);
+        let wrong = [("x-yajna-token", "nope"), ("host", "localhost:8765"), ("origin", "http://localhost:8765")];
+        assert_eq!(post(&r, "/api/git/stage", body(), &wrong).await.0, StatusCode::FORBIDDEN);
+        let elsewhere = [("x-yajna-token", "s3cret"), ("host", "localhost:8765"), ("origin", "http://evil.example")];
+        assert_eq!(post(&r, "/api/git/stage", body(), &elsewhere).await.0, StatusCode::FORBIDDEN);
+        let right = [("x-yajna-token", "s3cret"), ("host", "localhost:8765"), ("origin", "http://localhost:8765")];
+        let (s, v) = post(&r, "/api/git/stage", body(), &right).await;
+        assert_eq!(s, StatusCode::OK, "{v}");
     }
 
     #[test]

@@ -150,9 +150,13 @@ binary.
 | `GET /api/git/log?path=&before=&limit=` | commits newest first, 30 a page: `{commits: [{sha, short, author, time, parents, subject, files}], next?}`; a directory's log has the commits that touched it |
 | `GET /api/git/diff?path=<file>&from=&to=&old=` | `{diff, binary, truncated}`, a unified diff of one file from `from` (default `HEAD`) to `to` (default `WORK`), each `HEAD`, `INDEX`, `WORK` or a commit with an optional `^`; an untracked file shows as added, `old` gives a rename's other side |
 | `GET /api/git/file?path=&at=` | the file as it was at `at` (default `HEAD`) |
+| `POST /api/git/stage`, `POST /api/git/unstage` `{path, old?, hunk?}` | ADR-0040: stage or unstage a file, or one hunk by the `id` the diff's `hunks` gave it (409 when that hunk changed or went); an untracked file is staged whole; the worktree's status after |
+| `POST /api/git/commit` `{path, message, tree}` | commit what is staged when its tree is still the `tree` the status gave (409 otherwise), as git is configured on the machine, hooks run (422 with their words when one refuses); `{commit, status}` |
 
-Everything is `GET` except the review writes, which exist only behind `--review`. The git
-routes run the `git` CLI with optional locks off, take paths by the rules of 5.3 (a deleted
+Everything is `GET` except the review writes and the three git writes, which exist only
+behind `--review` or on the owner's socket. The git routes run the `git` CLI with optional locks off; the three git writes pass the review
+writes' check (the owner's socket, or `--review`'s token and `Origin`) and are refused
+everywhere else, `dir_router` and `git::router` included. The read routes take paths by the rules of 5.3 (a deleted
 file's path is resolved through its directory, never past an exclusion), and need only the
 roots: `yajna_serve::git::router(roots)` serves them alone, and
 `yajna_serve::dir_router(roots, render, version)` serves them with the viewer and its changes
