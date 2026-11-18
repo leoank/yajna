@@ -93,6 +93,11 @@ impl Root {
             exclude: Exclude::new(exclude).map_err(|e| format!("root {name}: {e}"))?,
         })
     }
+
+    /// Whether the viewer hides `rel`, a path below the root ending in `name`.
+    pub(crate) fn excluded(&self, rel: &str, name: &str) -> bool {
+        self.exclude.excludes(rel, name)
+    }
 }
 
 struct Exclude {
@@ -130,7 +135,7 @@ impl Exclude {
 }
 
 #[derive(Debug)]
-pub(crate) struct ApiError(StatusCode, String);
+pub(crate) struct ApiError(pub(crate) StatusCode, pub(crate) String);
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
@@ -151,7 +156,7 @@ pub(crate) struct Target<'a> {
     pub(crate) root: &'a Root,
     pub(crate) abs: PathBuf,
     /// below the root, `/`-separated; empty for the root itself
-    rel: String,
+    pub(crate) rel: String,
     /// (device, inode) of every directory from the root down, this one included when it is
     /// a directory
     ancestry: Vec<(u64, u64)>,

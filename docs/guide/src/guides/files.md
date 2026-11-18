@@ -72,6 +72,16 @@ run.
 Pages on the site link the paths in their frontmatter (a run's `script`, a project's
 `code`, an artifact's `path`) into the viewer when the site is served.
 
+## Git changes
+
+`yajna serve` also says what is uncommitted, staged and recently committed in the git
+worktree a root is in, read-only (ADR-0038): `GET /api/git/status?path=notes` lists the
+changed, staged, untracked and conflicted files, `/api/git/log` the commits with their
+files, `/api/git/diff?path=<file>&from=HEAD&to=WORK` one file's unified diff (`INDEX`
+between them for what is staged, a commit with `^` for its parent), and `/api/git/file`
+a file as it was. Each change carries the path a root shows it at, so it opens in the
+viewer. A view of these in the browser is coming (`/files/changes`).
+
 ## Every notebook on one socket
 
 `yajna serve --socket <path>` serves every notebook in your registry (the ones pinned in

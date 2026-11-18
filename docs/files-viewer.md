@@ -144,8 +144,15 @@ binary.
 | `GET /api/events?watch=<path>&watch=…` | SSE: `changed {path, size, mtime}`, `created`, `removed`, `listing {path}` |
 | `GET /api/reviews`, `GET /api/reviews/<ID>`, `GET /api/reviews/<ID>/file?path=&old=` | reviews, one review with its threads, changed files and `version`, a changed file at base and head (`docs/review.md` 7.2) |
 | `POST /api/reviews/<ID>/<action>` | with `yajna serve --review` only: a token, a matching `Origin` and the page's `version` |
+| `GET /api/git/status?path=<root>/<dir>` | the worktree the path is in (ADR-0038): `{worktree, branch, head, upstream, ahead, behind, unstaged, staged, untracked, conflicted}`, each change `{rel, path, status, old?}`, `rel` below the worktree's top and `path` where a root shows it (`null` when none does) |
+| `GET /api/git/log?path=&before=&limit=` | commits newest first, 30 a page: `{commits: [{sha, short, author, time, parents, subject, files}], next?}`; a directory's log has the commits that touched it |
+| `GET /api/git/diff?path=<file>&from=&to=&old=` | `{diff, binary, truncated}`, a unified diff of one file from `from` (default `HEAD`) to `to` (default `WORK`), each `HEAD`, `INDEX`, `WORK` or a commit with an optional `^`; an untracked file shows as added, `old` gives a rename's other side |
+| `GET /api/git/file?path=&at=` | the file as it was at `at` (default `HEAD`) |
 
-Everything is `GET` except the review writes, which exist only behind `--review`. The client opens a new event stream
+Everything is `GET` except the review writes, which exist only behind `--review`. The git
+routes run the `git` CLI with optional locks off, take paths by the rules of 5.3 (a deleted
+file's path is resolved through its directory, never past an exclusion), and need only the
+roots: `yajna_serve::git::router(roots)` serves them alone, as saarthi's node does. The client opens a new event stream
 when the set of open files and expanded directories changes, which is rare and cheap, so
 there is no subscription protocol.
 
@@ -298,8 +305,8 @@ module in the registry and, where the browser cannot read the format, a server r
   if ever for files.
 - **Search inside files or across the roots.** Quick open by name and full-text search
   need an index of the roots; later, and `qmd` already searches the vault.
-- **Show git state.** No diffs, blame or history; a dirty marker per file could come later
-  from `git status`.
+- **Write to git.** ADR-0038 added a read-only view of git state, the `/api/git/` routes of
+  5.2 and a changes view; staging, committing and blame are not built.
 - **Authenticate.** It relies on binding to loopback and on the tunnel. A shared machine
   where other users can open a loopback port needs the token (ADR-0027), which is not
   built.

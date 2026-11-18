@@ -3517,6 +3517,39 @@ fn api_json(addr: &str, path: &str) -> (String, serde_json::Value) {
 }
 
 #[test]
+fn serve_git_api_says_what_is_changed_staged_and_committed() {
+    let v = indexed_lab();
+    git(&v.root, &["init", "-q", "-b", "main"]);
+    git(&v.root, &["add", "."]);
+    git(&v.root, &["commit", "-q", "-m", "the lab"]);
+    let exp = v.root.join("notes").join(fs::read_dir(v.root.join("notes/projects")).unwrap().flatten().next().unwrap().path().strip_prefix(v.root.join("notes")).unwrap());
+    let readme = exp.join("README.md");
+    let rel = readme.strip_prefix(&v.root).unwrap().to_string_lossy().to_string();
+    fs::write(&readme, fs::read_to_string(&readme).unwrap() + "\nA line from an agent.\n").unwrap();
+    fs::write(v.root.join("notes/scratch.md"), "untracked\n").unwrap();
+    let (mut child, addr) = spawn_server(&v, &["serve"]);
+
+    let (status, s) = api_json(&addr, "/api/git/status?path=notes");
+    assert!(status.contains("200"), "{status} {s}");
+    assert_eq!(s["branch"], "main");
+    assert_eq!(s["unstaged"][0]["rel"], rel.as_str(), "{s}");
+    assert_eq!(s["unstaged"][0]["path"], rel.as_str(), "the vault root shows it at its own path");
+    // untracked, and the server's own output (site/, .cache/) too, shown by no root
+    let untracked = s["untracked"].as_array().unwrap();
+    let scratch = untracked.iter().find(|c| c["rel"] == "notes/scratch.md").unwrap();
+    assert_eq!(scratch["path"], "notes/scratch.md");
+    assert!(untracked.iter().any(|c| c["rel"].as_str().unwrap().starts_with("site/") && c["path"].is_null()), "{s}");
+    let (_, l) = api_json(&addr, "/api/git/log?path=notes");
+    assert_eq!(l["commits"][0]["subject"], "the lab");
+    let (_, d) = api_json(&addr, &format!("/api/git/diff?path={rel}"));
+    assert!(d["diff"].as_str().unwrap().contains("+A line from an agent."), "{d}");
+    let (status, _, body) = http_req(&addr, &format!("/api/git/file?path={rel}&at=HEAD"), &[]);
+    assert!(status.contains("200") && !String::from_utf8_lossy(&body).contains("from an agent"));
+    child.kill().unwrap();
+    let _ = child.wait();
+}
+
+#[test]
 fn serve_files_api_lists_reads_and_refuses() {
     let v = indexed_lab();
     let scratch = tempfile::tempdir().unwrap();

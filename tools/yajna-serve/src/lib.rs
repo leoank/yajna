@@ -7,12 +7,16 @@
 //! `/api/notebooks` lists them and each is served under `/n/<namespace>/` exactly as a
 //! server of one notebook serves it at `/`; the socket's permissions are the only check.
 //!
+//! `/api/git/` (ADR-0038, `git`) says what is changed, staged and committed in the git
+//! worktree a path is in, read-only; it needs only the roots, so it can be served alone.
+//!
 //! The crate knows HTTP and files, not the notebook: the CLI hands it the site directory,
 //! a callback that re-renders the site when a page changed, one that renders markdown the
 //! way the site does, the roots, and what reads and writes reviews (`reviews`). The viewer's frontend (`ui/`, ADR-0029) is built
 //! into `ui/dist` by `nix run .#ui` and embedded here.
 
 pub mod files;
+pub mod git;
 pub mod live;
 pub mod reviews;
 
@@ -96,6 +100,12 @@ pub(crate) struct App {
     token: Arc<Option<String>>,
     /// served on the owner's unix socket: writes need no token (ADR-0036)
     local: bool,
+}
+
+impl axum::extract::FromRef<App> for git::Roots {
+    fn from_ref(app: &App) -> git::Roots {
+        git::Roots(app.roots.clone())
+    }
 }
 
 impl App {
@@ -265,6 +275,7 @@ fn router(app: App) -> Router {
         )
         .route("/files/", get(|| ui_file(Path("index.html".to_string()))))
         .route("/files/{*asset}", get(ui_file))
+        .merge(git::routes())
         .with_state(app)
 }
 
