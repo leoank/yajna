@@ -837,6 +837,10 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         sh(&dir, &["init", "-q", "-b", "main"]);
+        // an identity in the repository itself, which the server's own git (a commit from
+        // the view) reads too; a sandbox has no global one to fall back on
+        sh(&dir, &["config", "user.name", "Ada"]);
+        sh(&dir, &["config", "user.email", "ada@example.org"]);
         write(&dir, "notes/a.md", "one\ntwo\n");
         write(&dir, "notes/old.md", "kept through a rename\nline\nline\nline\n");
         write(&dir, "notes/gone.md", "soon gone\n");
