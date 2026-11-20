@@ -9,13 +9,13 @@ jobs:
   checks:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: DeterminateSystems/nix-installer-action@v16
+      - uses: actions/checkout@v7
+      - uses: DeterminateSystems/nix-installer-action@v23
         with:
           # a cache that cannot be reached (GitHub's cache service down or rate-limited)
           # means building the path, not failing the run
           extra-conf: fallback = true
-      - uses: DeterminateSystems/magic-nix-cache-action@v9
+      - uses: DeterminateSystems/magic-nix-cache-action@v15
         with:
           # GitHub's Actions cache only; FlakeHub needs an account this repo does not have
           use-flakehub: false
@@ -30,7 +30,7 @@ jobs:
         os: [windows-latest, windows-11-arm]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo build --locked --manifest-path tools/Cargo.toml -p yajna
       - run: tools/target/debug/yajna.exe --version

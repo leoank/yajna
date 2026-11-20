@@ -16,18 +16,18 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: DeterminateSystems/nix-installer-action@v16
+      - uses: actions/checkout@v7
+      - uses: DeterminateSystems/nix-installer-action@v23
         with:
           # a cache that cannot be reached (GitHub's cache service down or rate-limited)
           # means building the path, not failing the run
           extra-conf: fallback = true
-      - uses: DeterminateSystems/magic-nix-cache-action@v9
+      - uses: DeterminateSystems/magic-nix-cache-action@v15
         with:
           # GitHub's Actions cache only; FlakeHub needs an account this repo does not have
           use-flakehub: false
       - run: nix build -L .#docs && cp -rL --no-preserve=mode result _site
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: _site
   deploy:
@@ -38,4 +38,4 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
