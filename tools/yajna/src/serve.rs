@@ -227,6 +227,12 @@ pub fn cmd_serve(
 /// `yajna serve --socket` (ADR-0036): every notebook in the registry on one unix socket,
 /// each under `/n/<namespace>/`. A notebook that cannot be opened is left out with a note,
 /// so one broken checkout does not keep the others from being served.
+#[cfg(not(unix))]
+pub fn cmd_serve_socket(_socket: &Path) -> Res<i32> {
+    Err("yajna serve --socket needs unix sockets, which this system does not have; use --port".to_string())
+}
+
+#[cfg(unix)]
 pub fn cmd_serve_socket(socket: &Path) -> Res<i32> {
     let socket = PathBuf::from(expand(&socket.to_string_lossy()));
     let mut notebooks = Vec::new();

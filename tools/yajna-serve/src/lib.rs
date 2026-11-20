@@ -175,6 +175,8 @@ pub fn run(cfg: Config, ready: impl FnOnce(SocketAddr)) -> Result<(), String> {
 /// Serve several notebooks on a unix socket until the process is killed (ADR-0036). The
 /// socket's directory is made for this user only, a stale socket is replaced, and one a
 /// server still answers on is an error. `ready` is called once it accepts connections.
+/// Unix only: Windows has no unix sockets in std or tokio.
+#[cfg(unix)]
 pub fn run_socket(
     socket: &std::path::Path,
     notebooks: Vec<Notebook>,
@@ -238,6 +240,7 @@ pub fn dir_router(roots: Vec<files::Root>, render: Render, version: &str) -> Rou
 }
 
 /// The router of a server of several notebooks: the list, and each one under its prefix.
+#[cfg_attr(not(unix), allow(dead_code))]
 fn many(notebooks: Vec<Notebook>) -> Router {
     let mut list = Vec::new();
     let mut by_name = std::collections::HashMap::new();
@@ -288,6 +291,7 @@ fn many(notebooks: Vec<Notebook>) -> Router {
 
 /// `/n/<namespace>/<rest>` to that notebook's router as `/<rest>`; `/n/<namespace>` is
 /// redirected to the slash form, which relative links in its pages need.
+#[cfg_attr(not(unix), allow(dead_code))]
 async fn dispatch(by_name: &std::collections::HashMap<String, Router>, mut req: Request) -> Response {
     use tower::ServiceExt;
     let path = req.uri().path().to_string();
@@ -593,6 +597,7 @@ mod tests {
     }
 
     /// A socket server on its own thread: `Ok` once it accepts connections, or why it stopped.
+    #[cfg(unix)]
     fn serve_in_thread(socket: PathBuf) -> std::sync::mpsc::Receiver<Result<(), String>> {
         let (tx, rx) = std::sync::mpsc::channel();
         let ready = tx.clone();
@@ -605,6 +610,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn the_socket_is_the_owners_and_not_taken_twice() {
         use std::os::unix::fs::PermissionsExt;
         let dir = std::env::temp_dir().join(format!("yajna-serve-sock-{}", std::process::id()));
