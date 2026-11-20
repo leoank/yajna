@@ -11,7 +11,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: DeterminateSystems/nix-installer-action@v16
+        with:
+          # a cache that cannot be reached (GitHub's cache service down or rate-limited)
+          # means building the path, not failing the run
+          extra-conf: fallback = true
       - uses: DeterminateSystems/magic-nix-cache-action@v9
+        with:
+          # GitHub's Actions cache only; FlakeHub needs an account this repo does not have
+          use-flakehub: false
       - run: nix flake check -L
       - run: nix build -L .#yajna
   # the release's Windows binaries: the tests are Unix-only (symlinks, permissions), so each

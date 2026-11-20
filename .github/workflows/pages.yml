@@ -18,7 +18,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: DeterminateSystems/nix-installer-action@v16
+        with:
+          # a cache that cannot be reached (GitHub's cache service down or rate-limited)
+          # means building the path, not failing the run
+          extra-conf: fallback = true
       - uses: DeterminateSystems/magic-nix-cache-action@v9
+        with:
+          # GitHub's Actions cache only; FlakeHub needs an account this repo does not have
+          use-flakehub: false
       - run: nix build -L .#docs && cp -rL --no-preserve=mode result _site
       - uses: actions/upload-pages-artifact@v3
         with:
