@@ -6347,7 +6347,10 @@ fn reproducible_lab() -> (Vault, String, PathBuf) {
     );
     set_field(&page, "script", &format!("{dir}/run.sh"));
     set_field(&page, "status", "done");
-    let ran = Command::new(v.root.join(&dir).join("run.sh"))
+    // through sh, not executed itself: on Linux a file just written can still be held open
+    // for writing by a child another test is forking, and exec fails with ETXTBSY
+    let ran = Command::new("sh")
+        .arg(v.root.join(&dir).join("run.sh"))
         .current_dir(&v.root)
         .env("SEED", "1")
         .output()
