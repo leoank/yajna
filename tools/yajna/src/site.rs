@@ -6,27 +6,75 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use pulldown_cmark::{html, Event, Options, Parser};
+use pulldown_cmark::{html, CowStr, Event, Options, Parser, Tag};
 use serde_json::Value;
 
 use crate::index::{Entity, Index, LogEntry};
 use crate::query;
 use crate::vault::{Res, Vault, LINK_RE, NS_ID_RE};
 
+/// The app's look (ADR-0041): its colour tokens, light and dark from the system, its type,
+/// cards, chips and tables, so a published notebook reads like the one served.
 pub(crate) const CSS: &str = r#"
-body{font:15px/1.5 system-ui,sans-serif;max-width:60rem;margin:2rem auto;padding:0 1rem;color:#222}
-a{color:#1a5fb4;text-decoration:none}a:hover{text-decoration:underline}
-nav{font-size:.9em;color:#666;margin-bottom:1.5rem}nav a{margin-right:1rem}
-h1{font-size:1.5rem;margin:.2rem 0}h1 small{font-weight:normal;color:#666;font-size:.7em;margin-left:.5rem}
-table{border-collapse:collapse;margin:.5rem 0 1rem}td,th{border:1px solid #ddd;padding:.2rem .6rem;text-align:left;vertical-align:top}
-th{background:#f4f4f4}code,pre{font-family:ui-monospace,monospace;font-size:.9em}pre{background:#f6f6f6;padding:.6rem;overflow:auto}
-.meta{font-size:.9em}.meta td:first-child{color:#666;white-space:nowrap}
-.status{display:inline-block;padding:0 .4em;border-radius:3px;background:#eee;font-size:.85em}
-.positive{background:#cfe8cf}.negative{background:#f3c9c9}.inconclusive{background:#f7e3b0}.infra{background:#ddd}
-.tl td:first-child{white-space:nowrap;color:#666}
-svg text{font:11px system-ui,sans-serif;paint-order:stroke;stroke:#fff;stroke-width:3px;stroke-linejoin:round}
+:root{--bg:#f7f7f8;--surface:#fff;--surface-2:#f1f1f3;--hover:#ececef;--line:#e4e4e8;--line-strong:#d3d3da;--text:#1d1d22;--text-2:#55555f;--text-3:#8a8a95;--accent:#5b5bd6;--accent-text:#fff;--ok:#1f8a4c;--ok-tint:rgba(31,138,76,.1);--run:#2b6fd6;--run-tint:rgba(43,111,214,.1);--warn:#b26a00;--warn-tint:rgba(178,106,0,.11);--bad:#c9322b;--bad-tint:rgba(201,50,43,.1);--shadow:0 1px 2px rgba(20,20,30,.04),0 4px 16px rgba(20,20,30,.05);--radius:10px;--radius-s:6px;--font:'Inter var',Inter,ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;--mono:ui-monospace,'SF Mono',SFMono-Regular,Menlo,'JetBrains Mono',monospace;color-scheme:light}
+@media (prefers-color-scheme:dark){:root{--bg:#111114;--surface:#18181c;--surface-2:#1f1f24;--hover:#26262c;--line:#2a2a31;--line-strong:#393941;--text:#e8e8ec;--text-2:#a8a8b3;--text-3:#75757f;--accent:#8b8cf6;--accent-text:#111114;--ok:#4fc483;--ok-tint:rgba(79,196,131,.13);--run:#6aa3f5;--run-tint:rgba(106,163,245,.13);--warn:#e2a33c;--warn-tint:rgba(226,163,60,.13);--bad:#f0716a;--bad-tint:rgba(240,113,106,.13);--shadow:0 1px 2px rgba(0,0,0,.3),0 4px 16px rgba(0,0,0,.25);color-scheme:dark}}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text)}
+body{font:14px/1.55 var(--font);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline;text-underline-offset:2px}
+code,pre{font-family:var(--mono);font-size:.92em}
+::selection{background:var(--hover)}
+header.top{position:sticky;top:0;z-index:1;display:flex;align-items:center;gap:16px;min-height:52px;padding:0 20px;background:var(--surface);border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:10px;color:var(--text);font-weight:650;letter-spacing:-.01em;min-width:0}
+.brand:hover{text-decoration:none}
+.mark{width:26px;height:26px;border-radius:7px;background:var(--accent);color:var(--accent-text);display:grid;place-items:center;font-weight:700;font-size:13px;flex:none}
+nav{display:flex;gap:2px;margin-left:auto;overflow-x:auto}
+nav a{color:var(--text-2);padding:6px 10px;border-radius:var(--radius-s);white-space:nowrap}
+nav a:hover{background:var(--hover);color:var(--text);text-decoration:none}
+main{max-width:1040px;margin:0 auto;padding:28px 32px 64px}
+h1{margin:8px 0 20px;font-size:26px;line-height:1.25;letter-spacing:-.02em;font-weight:680}
+h2{margin:30px 0 10px;font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text-3)}
+.head{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.id{font-family:var(--mono);font-size:12px;color:var(--text-3);white-space:nowrap}
+.chip{display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:999px;font-size:12px;font-weight:550;background:var(--surface-2);color:var(--text-2);white-space:nowrap;vertical-align:middle}
+.chip.ok{background:var(--ok-tint);color:var(--ok)}.chip.run{background:var(--run-tint);color:var(--run)}.chip.warn{background:var(--warn-tint);color:var(--warn)}.chip.bad{background:var(--bad-tint);color:var(--bad)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);margin:0 0 16px;overflow-x:auto}
+.card.pad{padding:16px 18px}
+table{border-collapse:collapse;font-size:13.5px}
+.card>table{width:100%}
+th{text-align:left;font-weight:550;color:var(--text-3);font-size:12px;padding:8px 14px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:8px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+tr:last-child td{border-bottom:0}
 td:first-child a{white-space:nowrap}
-.tree{overflow-x:auto;max-width:100%}.tree svg{display:block}
+.meta td:first-child{color:var(--text-3);white-space:nowrap;width:1%}
+.tl td:first-child{white-space:nowrap;color:var(--text-3);font-family:var(--mono);font-size:12px;width:1%}
+.tl td:nth-child(2){white-space:nowrap;color:var(--text-3);width:1%}
+.list{list-style:none;margin:0 0 16px;padding:0}
+.list li{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line)}
+.list li:last-child{border-bottom:0}
+.prose{font-size:15px;line-height:1.68;overflow-wrap:anywhere}
+.prose h1,.prose h2,.prose h3{color:var(--text);text-transform:none;letter-spacing:-.01em;line-height:1.3;margin:1.6em 0 .5em;font-weight:650}
+.prose h1{font-size:21px}.prose h2{font-size:18px}.prose h3{font-size:15.5px}
+.prose>:first-child{margin-top:0}
+.prose p{margin:.6em 0}
+.prose ul,.prose ol{padding-left:1.4em}
+.prose li{margin:.2em 0}
+.prose li:has(>input[type=checkbox]){list-style:none;margin-left:-1.3em}
+.prose input[type=checkbox]{accent-color:var(--accent);margin-right:6px}
+.prose code{background:var(--surface-2);padding:1px 5px;border-radius:4px}
+.prose pre{background:var(--surface-2);padding:12px 14px;border-radius:var(--radius-s);overflow:auto}
+.prose pre code{background:none;padding:0}
+.prose table{display:block;overflow:auto}
+.prose th,.prose td{padding:6px 10px}
+.prose blockquote{margin:.8em 0;padding:2px 14px;border-left:3px solid var(--line-strong);color:var(--text-2)}
+.prose img{max-width:100%;height:auto;border-radius:var(--radius-s)}
+.tree{overflow-x:auto;padding:8px}.tree svg{display:block}
+svg text{font:11px var(--font);fill:var(--text-2);paint-order:stroke;stroke:var(--surface);stroke-width:3px;stroke-linejoin:round}
+svg .edge{stroke:var(--line-strong);stroke-width:2}
+svg .influence{stroke:var(--accent);stroke-width:1.5;stroke-dasharray:4 3}
+svg circle{fill:var(--surface);stroke:var(--text-2);stroke-width:1.5}
+svg circle.positive{fill:var(--ok)}svg circle.negative{fill:var(--bad)}svg circle.inconclusive{fill:var(--warn)}svg circle.infra{fill:var(--text-3)}
+@media (max-width:640px){header.top{padding:0 12px;gap:8px}main{padding:18px 16px 48px}h1{font-size:22px}.brand span:last-child{display:none}}
 "#;
 
 pub(crate) fn esc(s: &str) -> String {
@@ -93,12 +141,23 @@ fn linkify_prose(ix: &Index, md: &str) -> String {
 }
 
 fn markdown(ix: &Index, md: &str) -> String {
+    markdown_with(ix, md, &|_| None)
+}
+
+/// Markdown with each image's source given by `img` when it has one for it.
+fn markdown_with(ix: &Index, md: &str, img: &dyn Fn(&str) -> Option<String>) -> String {
     let mut opts = Options::empty();
     opts.insert(Options::ENABLE_TABLES);
     opts.insert(Options::ENABLE_TASKLISTS);
     opts.insert(Options::ENABLE_STRIKETHROUGH);
     let text = linkify(ix, md);
-    let parser = Parser::new_ext(&text, opts);
+    let parser = Parser::new_ext(&text, opts).map(|ev| match ev {
+        Event::Start(Tag::Image { link_type, dest_url, title, id }) => {
+            let dest_url = img(&dest_url).map(CowStr::from).unwrap_or(dest_url);
+            Event::Start(Tag::Image { link_type, dest_url, title, id })
+        }
+        ev => ev,
+    });
     let mut out = String::new();
     html::push_html(&mut out, parser);
     out
@@ -126,23 +185,130 @@ pub(crate) fn markdown_for_viewer(ix: Option<&Index>, md: &str) -> String {
     out
 }
 
-fn page(title: &str, nav: &str, body: &str) -> String {
+fn page(site: &Site, title: &str, nav: &str, body: &str) -> String {
+    let mark: String = site.name.chars().next().map(|c| c.to_uppercase().collect()).unwrap_or_default();
     format!(
-        "<!doctype html>\n<html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>{}</title><style>{CSS}</style></head>\n<body><nav><a href=\"index.html\">home</a><a href=\"log.html\">log</a><a href=\"tasks.html\">tasks</a>{nav}</nav>\n{body}\n</body></html>\n",
-        esc(title)
+        "<!doctype html>\n<html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>{} · {}</title><style>{CSS}</style></head>\n<body><header class=\"top\"><a class=\"brand\" href=\"index.html\"><span class=\"mark\">{}</span><span>{}</span></a><nav><a href=\"index.html\">home</a><a href=\"log.html\">log</a><a href=\"tasks.html\">tasks</a>{nav}</nav></header>\n<main>{body}</main>\n</body></html>\n",
+        esc(title),
+        esc(&site.name),
+        esc(&mark),
+        esc(&site.name)
     )
+}
+
+/// What every page of one render shares: the notebook's name, where its links into files
+/// go, and where its images come from.
+pub(crate) struct Site<'a> {
+    name: String,
+    files: &'a FileLinks,
+    repo: &'a Path,
+    out: &'a Path,
+}
+
+impl Site<'_> {
+    /// The source of an image a page at `dir` (relative to the repo) gives as `src`: when
+    /// served, the files API for a path under a root; when exported, a copy under
+    /// `media/`, so the site carries its pictures. None leaves `src` as written: a URL,
+    /// an absolute path, or a file that is not there.
+    fn image(&self, dir: &Path, src: &str) -> Option<String> {
+        let rel = repo_relative(dir, src)?;
+        let ext = rel.rsplit_once('.')?.1.to_ascii_lowercase();
+        if !["png", "jpg", "jpeg", "gif", "svg", "webp", "avif"].contains(&ext.as_str()) {
+            return None;
+        }
+        let from = self.repo.join(&rel);
+        let meta = fs::metadata(&from).ok().filter(|m| m.is_file())?;
+        if !self.files.roots.is_empty() {
+            let at = self.files.href(&rel)?;
+            return Some(format!("api/files/raw?path={}", url_escape(at.trim_start_matches("files/#"), false)));
+        }
+        let to = self.out.join("media").join(&rel);
+        let stale = match fs::metadata(&to) {
+            Ok(t) => t.len() != meta.len() || t.modified().ok() < meta.modified().ok(),
+            Err(_) => true,
+        };
+        if stale {
+            fs::create_dir_all(to.parent()?).ok()?;
+            fs::copy(&from, &to).ok()?;
+        }
+        Some(format!("media/{}", url_escape(&rel, true)))
+    }
+}
+
+/// `src` (relative, as markdown wrote it, percent-escapes and all) from `dir`, as a path
+/// relative to the repo with `/` between its parts; None for a URL, an absolute path, an
+/// anchor, or one that climbs out of the repo.
+fn repo_relative(dir: &Path, src: &str) -> Option<String> {
+    let first = src.split(['/', '?', '#']).next().unwrap_or("");
+    if src.is_empty() || src.starts_with(['/', '#', '?', '\\']) || first.contains(':') {
+        return None;
+    }
+    let mut parts: Vec<String> = dir.iter().map(|c| c.to_string_lossy().into_owned()).collect();
+    for seg in src.split(['?', '#']).next()?.split('/') {
+        match url_unescape(seg)?.as_str() {
+            "" | "." => {}
+            ".." => {
+                parts.pop()?;
+            }
+            s if s.contains(['\\', '\0']) => return None,
+            s => parts.push(s.to_string()),
+        }
+    }
+    (!parts.is_empty()).then(|| parts.join("/"))
+}
+
+fn url_unescape(s: &str) -> Option<String> {
+    let b = s.as_bytes();
+    let mut out = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'%' {
+            let hex = std::str::from_utf8(b.get(i + 1..i + 3)?).ok()?;
+            out.push(u8::from_str_radix(hex, 16).ok()?);
+            i += 3;
+        } else {
+            out.push(b[i]);
+            i += 1;
+        }
+    }
+    String::from_utf8(out).ok()
+}
+
+/// Percent-escapes for a URL: everything but letters, digits, `-._~`, and `/` when
+/// `slash`.
+fn url_escape(s: &str, slash: bool) -> String {
+    s.bytes()
+        .map(|c| match c {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => (c as char).to_string(),
+            b'/' if slash => "/".to_string(),
+            _ => format!("%{c:02X}"),
+        })
+        .collect()
+}
+
+/// How a status reads, as the app colours it: done, running, waiting, failed.
+fn tone(s: &str) -> &'static str {
+    match s.to_ascii_lowercase().as_str() {
+        "done" | "complete" | "completed" | "supported" | "approved" | "merged" | "success" | "positive" => "ok",
+        "active" | "running" | "in_progress" | "open" => "run",
+        "planned" | "pending" | "changes_requested" | "inconclusive" | "paused" => "warn",
+        "failed" | "aborted" | "refuted" | "abandoned" | "closed" | "negative" => "bad",
+        _ => "",
+    }
 }
 
 fn status_span(e: &Entity) -> String {
     let mut s = e.status.clone().unwrap_or_default();
-    let class = e.outcome.clone().unwrap_or_default();
-    if !class.is_empty() {
-        s = format!("{s} / {class}");
+    let outcome = e.outcome.clone().unwrap_or_default();
+    // the outcome, when there is one, says more than the status
+    let class = tone(if outcome.is_empty() { &s } else { &outcome });
+    if !outcome.is_empty() {
+        s = format!("{s} / {outcome}");
     }
     if s.is_empty() {
         return String::new();
     }
-    format!("<span class=\"status {class}\">{}</span>", esc(&s))
+    format!("<span class=\"chip {class}\">{}</span>", esc(&s))
 }
 
 fn link_to(ix: &Index, id: &str) -> String {
@@ -234,11 +400,14 @@ fn meta_table(ix: &Index, e: &Entity, files: &FileLinks) -> String {
             rows.push_str(&format!("<tr><td>{}</td><td>{shown}</td></tr>\n", esc(k)));
         }
     }
-    format!("<table class=\"meta\">{rows}</table>")
+    if rows.is_empty() {
+        return String::new();
+    }
+    format!("<div class=\"card\"><table class=\"meta\">{rows}</table></div>")
 }
 
 fn log_rows(ix: &Index, entries: &[LogEntry]) -> String {
-    let mut out = String::from("<table class=\"tl\">");
+    let mut out = String::from("<div class=\"card\"><table class=\"tl\">");
     for m in entries {
         out.push_str(&format!(
             "<tr><td title=\"{}:{}\">{} {}</td><td>{}</td><td>{}</td></tr>\n",
@@ -253,7 +422,7 @@ fn log_rows(ix: &Index, entries: &[LogEntry]) -> String {
                 .trim_end_matches("</p>")
         ));
     }
-    out.push_str("</table>");
+    out.push_str("</table></div>");
     out
 }
 
@@ -285,7 +454,7 @@ fn tree_svg(ix: &Index, project: &str) -> String {
     for (row, (theme, exps)) in themes.iter().enumerate() {
         let y = 30.0 + row as f64 * dy;
         nodes.push_str(&format!(
-            "<text x=\"8\" y=\"{}\" fill=\"#555\">{}</text>\n",
+            "<text x=\"8\" y=\"{}\">{}</text>\n",
             y + 4.0,
             esc(if theme.is_empty() {
                 "(no theme)"
@@ -298,20 +467,18 @@ fn tree_svg(ix: &Index, project: &str) -> String {
             pos.insert(e.id.clone(), (x, y));
             if col > 0 {
                 lines.push_str(&format!(
-                    "<line x1=\"{}\" y1=\"{y}\" x2=\"{}\" y2=\"{y}\" stroke=\"#999\" stroke-width=\"2\"/>\n",
+                    "<line class=\"edge\" x1=\"{}\" y1=\"{y}\" x2=\"{}\" y2=\"{y}\"/>\n",
                     x - dx + r,
                     x - r
                 ));
             }
+            // the outcome as the class its colour comes from
             let fill = match e.outcome.as_deref() {
-                Some("positive") => "#4caf50",
-                Some("negative") => "#e05252",
-                Some("inconclusive") => "#f0b429",
-                Some("infra") => "#9e9e9e",
-                _ => "#fff",
+                Some(o @ ("positive" | "negative" | "inconclusive" | "infra")) => o,
+                _ => "",
             };
             nodes.push_str(&format!(
-                "<a href=\"{}\"><circle cx=\"{x}\" cy=\"{y}\" r=\"{r}\" fill=\"{fill}\" stroke=\"#333\" stroke-width=\"1.5\"><title>{}: {} ({})</title></circle><text x=\"{x}\" y=\"{}\" text-anchor=\"middle\">{}</text></a>\n",
+                "<a href=\"{}\"><circle class=\"{fill}\" cx=\"{x}\" cy=\"{y}\" r=\"{r}\"><title>{}: {} ({})</title></circle><text x=\"{x}\" y=\"{}\" text-anchor=\"middle\">{}</text></a>\n",
                 href(&e.id),
                 esc(&e.id),
                 esc(&e.title),
@@ -330,7 +497,7 @@ fn tree_svg(ix: &Index, project: &str) -> String {
                 }
                 if let (Some((x1, y1)), Some((x2, y2))) = (pos.get(&dst), pos.get(&e.id)) {
                     lines.push_str(&format!(
-                        "<line x1=\"{x1}\" y1=\"{y1}\" x2=\"{x2}\" y2=\"{y2}\" stroke=\"#1a5fb4\" stroke-width=\"1.5\" stroke-dasharray=\"4 3\"/>\n"
+                        "<line class=\"influence\" x1=\"{x1}\" y1=\"{y1}\" x2=\"{x2}\" y2=\"{y2}\"/>\n"
                     ));
                 }
             }
@@ -353,7 +520,7 @@ fn experiments_table(ix: &Index, project: &str) -> String {
         return String::new();
     }
     let mut out = String::from(
-        "<h2>Experiments</h2><table><tr><th>id</th><th>status</th><th>title</th><th>in short</th></tr>\n",
+        "<h2>Experiments</h2><div class=\"card\"><table><tr><th>id</th><th>status</th><th>title</th><th>in short</th></tr>\n",
     );
     for e in exps {
         out.push_str(&format!(
@@ -364,7 +531,7 @@ fn experiments_table(ix: &Index, project: &str) -> String {
             esc(&ix.note(project, &e.id).unwrap_or_default())
         ));
     }
-    out.push_str("</table>");
+    out.push_str("</table></div>");
     out
 }
 
@@ -386,7 +553,7 @@ fn runs_table(ix: &Index, experiment: &str) -> String {
         }
     }
     let mut out = String::from(
-        "<h2>Runs</h2><table><tr><th>run</th><th>status</th><th>finished</th><th>in short</th>",
+        "<h2>Runs</h2><div class=\"card\"><table><tr><th>run</th><th>status</th><th>finished</th><th>in short</th>",
     );
     for c in &columns {
         out.push_str(&format!("<th>{}</th>", esc(c)));
@@ -399,7 +566,7 @@ fn runs_table(ix: &Index, experiment: &str) -> String {
         out.push_str(&format!(
             "<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td>",
             link_to(ix, &run.id),
-            esc(&run.status.clone().unwrap_or_default()),
+            status_span(run),
             esc(run
                 .meta
                 .get("finished")
@@ -433,34 +600,40 @@ fn runs_table(ix: &Index, experiment: &str) -> String {
         }
         out.push_str("</tr>\n");
     }
-    out.push_str("</table>");
+    out.push_str("</table></div>");
     out
 }
 
-fn entity_page(ix: &Index, e: &Entity, files: &FileLinks) -> String {
+fn entity_page(ix: &Index, e: &Entity, site: &Site) -> String {
     let mut body = format!(
-        "<h1>{} <small>{} {}</small></h1>\n{}\n",
-        esc(&e.title),
+        "<div class=\"head\"><span class=\"id\">{}</span><span class=\"chip\">{}</span>{}</div><h1>{}</h1>\n{}\n",
+        esc(&e.id),
         esc(&e.etype),
         status_span(e),
-        meta_table(ix, e, files)
+        esc(&e.title),
+        meta_table(ix, e, site.files)
     );
     if e.etype == "project" {
         let svg = tree_svg(ix, &e.id);
         if !svg.is_empty() {
             body.push_str(&format!(
-                "<h2>Experiment tree</h2>\n<div class=\"tree\">{svg}</div>\n"
+                "<h2>Experiment tree</h2>\n<div class=\"card tree\">{svg}</div>\n"
             ));
         }
         body.push_str(&experiments_table(ix, &e.id));
     }
-    body.push_str(&markdown(ix, &e.body));
+    // the page's own text, its images from beside its file
+    let dir = Path::new(&e.path).parent().unwrap_or(Path::new(""));
+    let text = markdown_with(ix, &e.body, &|src| site.image(dir, src));
+    if !text.trim().is_empty() {
+        body.push_str(&format!("<div class=\"card pad prose\">{text}</div>"));
+    }
     if e.etype == "experiment" {
         body.push_str(&runs_table(ix, &e.id));
     }
     let back = ix.backlinks(&e.id);
     if !back.is_empty() {
-        body.push_str("<h2>Linked from</h2><ul>");
+        body.push_str("<h2>Linked from</h2><ul class=\"card list\">");
         let mut seen = Vec::new();
         for (src, ctx) in back {
             if seen.contains(&src) {
@@ -469,7 +642,7 @@ fn entity_page(ix: &Index, e: &Entity, files: &FileLinks) -> String {
             seen.push(src.clone());
             let title = ix.entity(&src).map(|s| s.title).unwrap_or_default();
             body.push_str(&format!(
-                "<li>{} {} <span class=\"status\">{}</span></li>",
+                "<li>{} {} <span class=\"chip\">{}</span></li>",
                 link_to(ix, &src),
                 esc(&title),
                 esc(&ctx)
@@ -486,11 +659,12 @@ fn entity_page(ix: &Index, e: &Entity, files: &FileLinks) -> String {
         Some(p) if p != &e.id => format!("<a href=\"{}\">{}</a>", href(p), esc(p)),
         _ => String::new(),
     };
-    page(&format!("{} {}", e.id, e.title), &nav, &body)
+    page(site, &format!("{} {}", e.id, e.title), &nav, &body)
 }
 
-fn index_page(ix: &Index) -> String {
-    let mut body = String::from("<h1>Notebook</h1>\n<h2>Projects</h2><table><tr><th>id</th><th>title</th><th>status</th><th>experiments</th></tr>");
+fn index_page(ix: &Index, site: &Site) -> String {
+    let mut body = format!("<h1>{}</h1>\n<h2>Projects</h2><div class=\"card\"><table>", esc(&site.name));
+    body.push_str("<tr><th>id</th><th>title</th><th>status</th><th>experiments</th></tr>");
     for p in ix.entities("WHERE type = 'project'", &[]) {
         let n = ix
             .entities("WHERE type = 'experiment' AND project = ?1", &[&p.id])
@@ -502,7 +676,7 @@ fn index_page(ix: &Index) -> String {
             status_span(&p)
         ));
     }
-    body.push_str("</table>");
+    body.push_str("</table></div>");
     for (etype, heading) in [
         ("protocol", "Protocols"),
         ("material", "Materials"),
@@ -519,7 +693,7 @@ fn index_page(ix: &Index) -> String {
         if items.is_empty() {
             continue;
         }
-        body.push_str(&format!("<h2>{heading}</h2><ul>"));
+        body.push_str(&format!("<h2>{heading}</h2><ul class=\"card list\">"));
         for e in items {
             body.push_str(&format!(
                 "<li>{} {} {}</li>",
@@ -530,21 +704,22 @@ fn index_page(ix: &Index) -> String {
         }
         body.push_str("</ul>");
     }
-    page("Notebook", "", &body)
+    page(site, "Overview", "", &body)
 }
 
-fn log_page(ix: &Index) -> String {
+fn log_page(ix: &Index, site: &Site) -> String {
     let mut entries = ix.log();
     entries.reverse();
     page(
+        site,
         "Log",
         "",
         &format!("<h1>Log</h1>\n{}", log_rows(ix, &entries)),
     )
 }
 
-fn tasks_page(ix: &Index) -> String {
-    let mut body = String::from("<h1>Tasks</h1><table>");
+fn tasks_page(ix: &Index, site: &Site) -> String {
+    let mut body = String::from("<h1>Tasks</h1><div class=\"card\"><table>");
     for t in ix.tasks(true) {
         let where_ = match &t.id {
             Some(id) => link_to(ix, id),
@@ -562,8 +737,8 @@ fn tasks_page(ix: &Index) -> String {
                 .trim_end_matches("</p>")
         ));
     }
-    body.push_str("</table>");
-    page("Tasks", "", &body)
+    body.push_str("</table></div>");
+    page(site, "Tasks", "", &body)
 }
 
 pub fn site_dir(vault: &Vault) -> PathBuf {
@@ -592,11 +767,17 @@ pub fn render(vault: &Vault, out: &Path, files: &FileLinks) -> Res<usize> {
         n += 1;
         Ok(())
     };
-    put("index.html".into(), index_page(&ix))?;
-    put("log.html".into(), log_page(&ix))?;
-    put("tasks.html".into(), tasks_page(&ix))?;
+    let site = Site {
+        name: vault.namespace().unwrap_or("notebook").to_string(),
+        files,
+        repo: &vault.root,
+        out,
+    };
+    put("index.html".into(), index_page(&ix, &site))?;
+    put("log.html".into(), log_page(&ix, &site))?;
+    put("tasks.html".into(), tasks_page(&ix, &site))?;
     for e in ix.entities("", &[]) {
-        put(href(&e.id), entity_page(&ix, &e, files))?;
+        put(href(&e.id), entity_page(&ix, &e, &site))?;
     }
     Ok(n)
 }

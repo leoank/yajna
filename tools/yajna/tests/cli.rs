@@ -1265,7 +1265,7 @@ fn site_renders_tree_links_and_log() {
     let project = v.read(&out_dir.join("PRJ-0001.html"));
     assert!(project.contains("<svg"), "tree on the project page");
     assert!(
-        project.contains("<div class=\"tree\"><svg")
+        project.contains("<div class=\"card tree\"><svg")
             && project.contains(">EXP-20261021</tspan><tspan"),
         "date IDs label on two lines in a scrolling box"
     );
@@ -1274,8 +1274,8 @@ fn site_renders_tree_links_and_log() {
         "influence edge is dotted"
     );
     assert!(
-        project.contains("fill=\"#4caf50\""),
-        "positive outcome is green"
+        project.contains("<circle class=\"positive\""),
+        "positive outcome takes its colour from the theme"
     );
     assert!(
         project.contains(">timing<") && project.contains(">mechanics<"),
@@ -4018,6 +4018,14 @@ fn serve_files_viewer_render_and_site_links() {
     } else {
         text.replacen("status:", "code: code/archaeal-division\nstatus:", 1)
     };
+    // a figure beside the page, one in the code tree, and one that climbs out of the repo
+    let figs = prj.parent().unwrap().join("figures");
+    fs::create_dir_all(&figs).unwrap();
+    fs::write(figs.join("ring 1.png"), b"\x89PNG\r\n\x1a\n").unwrap();
+    fs::write(code.join("plot.svg"), "<svg xmlns=\"http://www.w3.org/2000/svg\"/>").unwrap();
+    let text = format!(
+        "{text}\n![ring](figures/ring%201.png)\n![plot](../../../code/archaeal-division/plot.svg)\n![out](../../../../outside.png)\n"
+    );
     fs::write(&prj, text).unwrap();
     let out = v.run(&["validate"]);
     assert_eq!(out.code, 0, "{}", out.stdout);
@@ -4073,14 +4081,25 @@ fn serve_files_viewer_render_and_site_links() {
         page.contains("<a href=\"files/#code/archaeal-division\">code/archaeal-division</a>"),
         "{page}"
     );
+    // served, a page's images come from the files API, from beside the page's file
+    let src = "api/files/raw?path=notes%2Fprojects%2FPRJ-0001-archaeal-division%2Ffigures%2Fring%201.png";
+    assert!(page.contains(&format!("src=\"{src}\"")), "{page}");
+    assert!(page.contains("src=\"api/files/raw?path=code%2Farchaeal-division%2Fplot.svg\""), "{page}");
+    assert!(http_req(&addr, &format!("/{src}"), &[]).0.ends_with("200 OK"));
+    assert!(page.contains("src=\"../../../../outside.png\""), "left as written: {page}");
     child.kill().unwrap();
     let _ = child.wait();
 
-    // a static export has neither
+    // a static export has neither, and carries its images in media/
     let out = v.root.join("export");
     assert_eq!(v.run(&["site", "--out", out.to_str().unwrap()]).code, 0);
     assert!(!v.read(&out.join("index.html")).contains("files/"));
-    assert!(!v.read(&out.join("PRJ-0001.html")).contains("files/#"));
+    let page = v.read(&out.join("PRJ-0001.html"));
+    assert!(!page.contains("files/#"));
+    let rel = "notes/projects/PRJ-0001-archaeal-division/figures/ring%201.png";
+    assert!(page.contains(&format!("src=\"media/{rel}\"")), "{page}");
+    assert!(out.join("media/notes/projects/PRJ-0001-archaeal-division/figures/ring 1.png").is_file());
+    assert!(out.join("media/code/archaeal-division/plot.svg").is_file());
 }
 
 /// An open `/api/events` stream: its `change` events as JSON, read until one matches.

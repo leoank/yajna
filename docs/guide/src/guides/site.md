@@ -43,11 +43,19 @@ read the notebook through your browser.
 
 ## What is on it
 
+The pages look like the web app `yajna serve` shows at `/`: its colours, type, cards and
+status colours, light or dark as the system is, and readable on a phone. They need no
+JavaScript.
+
 - **The front page**: a table of projects with their experiment counts, then lists of
   protocols, materials, equipment, builds, analyses, artifacts, docs, agent sessions and
   reading notes.
 - **One page per entity**, with its frontmatter as a table, the body rendered, `[[links]]`
   and `@citations` as links, the pages that link to it, and the log lines that mention it.
+- **Images** a page shows with a relative path (`figures/plot.png`, from beside the
+  page's file) are copied into the site under `media/`, so a published site carries
+  them; served by `yajna serve`, they come from the files viewer instead. An image path
+  that leaves the repository, or a file that is not there, is left as written.
 - **Project pages** add a table of experiments (with the one-line descriptions from the
   project page) and a drawing of the **experiment tree**: themes as rows, outcome as
   colour (positive green, negative red, inconclusive amber, infra grey, still open white),
