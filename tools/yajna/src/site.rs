@@ -780,6 +780,11 @@ impl yajna_serve::pages::Pages for ServedPages {
         let mut v = summary(&e);
         v["path"] = e.path.clone().into();
         v["html"] = markdown_for_viewer(Some(&ix), &e.body).into();
+        // where the files view has the page's directory, which its relative images and
+        // links are relative to
+        if let Some(dir) = Path::new(&e.path).parent().and_then(|d| self.links.href(&d.to_string_lossy())) {
+            v["dir"] = dir.trim_start_matches("files/#").into();
+        }
         // the frontmatter beyond the summary, each value with the IDs in it that are pages
         // and, for a path, where the files view shows it
         let mut fields = Vec::new();

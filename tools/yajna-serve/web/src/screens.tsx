@@ -236,7 +236,7 @@ export function PageView({ id }: { id: string }) {
                 </>
               )}
               <div className="card pad">
-                <Html html={shown.html} />
+                <Html html={shown.html} dir={shown.dir ?? undefined} />
               </div>
               {shown.experiments && shown.experiments.length > 0 && (
                 <>

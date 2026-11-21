@@ -3696,6 +3696,10 @@ fn serve_pages_api_gives_the_web_app_the_notebook() {
     assert_eq!(pr["type"], "project");
     assert!(pr["experiments"].as_array().unwrap().iter().any(|x| x["id"] == "EXP-20261021-000001"), "{pr}");
     assert!(pr["html"].as_str().unwrap().contains("href=\"EXP-20261021-000001.html\""), "{pr}");
+    // and the directory its relative images and links come from, as the files view has it
+    let path = pr["path"].as_str().unwrap();
+    assert_eq!(pr["dir"].as_str(), path.rsplit_once('/').map(|(d, _)| d), "{pr}");
+    assert!(path.starts_with("notes/projects/PRJ-0001"), "{pr}");
     // an experiment: its fields, links to it and the project it belongs to
     let (_, e) = api_json(&addr, "/api/pages/EXP-20261021-000001");
     assert_eq!(e["project"], "PRJ-0001");

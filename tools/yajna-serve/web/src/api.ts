@@ -95,6 +95,8 @@ export interface Overview {
 
 export interface Page extends Summary {
   path: string;
+  /** The page's directory in the files view, when it lies under a root. */
+  dir?: string | null;
   html: string;
   fields: { key: string; value: string; ids: string[]; file: string | null }[];
   phases?: (Summary & { items: { done: number; total: number } })[];

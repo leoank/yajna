@@ -1,9 +1,10 @@
 // Pieces every screen uses: status chips, skeletons, error and empty states, rendered HTML
 // whose links stay in the app, and the log's timeline.
 
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, type ReactNode } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { ApiError, prefetchPage, type LogLine, type Summary } from './api';
+import { base } from './base';
 import { Link, navigate, routeOfHref } from './router';
 
 /** What a status means, as a colour: done or supported, running, waiting, failed. */
@@ -118,9 +119,53 @@ export function Failed({ error, retry }: { error: unknown; retry?: () => void })
   );
 }
 
+/** `rel` (a relative URL as markdown wrote it) from the files-view directory `dir`
+ * (`<root>/<path>`), as a files-view path; null for anything else: absolute, another
+ * scheme, an anchor, or above the root. */
+export function fromDir(dir: string, rel: string): string | null {
+  if (!rel || /^([a-z][a-z0-9+.-]*:|[/#?])/i.test(rel)) return null;
+  const out = dir.split('/').filter(Boolean);
+  for (const seg of rel.replace(/[?#].*$/, '').split('/')) {
+    let s: string;
+    try {
+      s = decodeURIComponent(seg);
+    } catch {
+      return null;
+    }
+    if (s === '' || s === '.') continue;
+    if (s === '..') {
+      if (out.length <= 1) return null;
+      out.pop();
+    } else out.push(s);
+  }
+  return out.length > 1 ? out.join('/') : null;
+}
+
+/** The rendered HTML with its relative images served from the files API and its relative
+ * links opening in the files view; parsed in a template, so nothing loads before it is
+ * rewritten. */
+function rebase(html: string, dir: string): string {
+  const t = document.createElement('template');
+  t.innerHTML = html;
+  for (const img of t.content.querySelectorAll('img[src]')) {
+    const p = fromDir(dir, img.getAttribute('src') ?? '');
+    if (p) img.setAttribute('src', `${base}/api/files/raw?path=${encodeURIComponent(p)}`);
+    img.setAttribute('loading', 'lazy');
+  }
+  for (const a of t.content.querySelectorAll('a[href]')) {
+    const href = a.getAttribute('href') ?? '';
+    if (routeOfHref(href)) continue;
+    const p = fromDir(dir, href);
+    if (p) a.setAttribute('href', `files/#${p}`);
+  }
+  return t.innerHTML;
+}
+
 /** HTML the server rendered (yajna's own markdown renderer, raw HTML shown as text); its
- * links to pages and files open in the app. */
-export function Html({ html, className = 'prose' }: { html: string; className?: string }) {
+ * links to pages and files open in the app. With `dir`, the files-view directory the
+ * markdown came from, its relative images and links are taken from there. */
+export function Html({ html, className = 'prose', dir }: { html: string; className?: string; dir?: string }) {
+  const shown = useMemo(() => (dir ? rebase(html, dir) : html), [html, dir]);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const el = ref.current;
@@ -146,7 +191,7 @@ export function Html({ html, className = 'prose' }: { html: string; className?: 
       el.removeEventListener('mouseover', hover);
     };
   }, []);
-  return <div ref={ref} className={className} dangerouslySetInnerHTML={{ __html: html }} />;
+  return <div ref={ref} className={className} dangerouslySetInnerHTML={{ __html: shown }} />;
 }
 
 /** Log lines grouped by day, newest first as given. */

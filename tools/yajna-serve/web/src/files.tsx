@@ -223,7 +223,7 @@ function Rendered({ path }: { path: string }) {
   if (!data) return <div className="card pad" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>{[90, 75, 85, 60].map((w, i) => <Sk key={i} w={`${w}%`} h={13} />)}</div>;
   return (
     <div className="card pad">
-      <Html html={data.html} />
+      <Html html={data.html} dir={path.replace(/\/?[^/]*$/, '')} />
     </div>
   );
 }
