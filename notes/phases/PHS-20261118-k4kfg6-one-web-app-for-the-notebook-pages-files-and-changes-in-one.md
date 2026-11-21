@@ -29,7 +29,7 @@ done ones. The project page's *Progress* lists this phase on one line.
 - [x] Served at `/` and its routes, the static pages at `/<ID>.html`, the classic viewer at `/classic/`; `nix run .#web` and the bundle check
 - [x] The review diffs in the app: overview, threads, changed files, since the last round, each fix, work not in the review yet; a one-column diff with threads at their lines; reply, resolve, reopen, comment on lines (`@ work` on uncommitted ones), approve, request changes (0.40.0)
 - [x] Live following of an open file in the app (`/api/events`, appending `Range` reads, logs at their end, text over 4 MB as its last 1 MB), then the classic viewer and ADR-0029's bundle removed (0.41.0)
-- [ ] `yajna site` takes the app's colours and type, so a published notebook looks like the app
+- [x] `yajna site` takes the app's colours and type, so a published notebook looks like the app; its relative images copied under `media/` on export, from the files API when served (0.42.0)
 - [ ] A dark and light setting in the app beside the system's, and a denser layout for desktops
 - [ ] Search across the notebook from the sidebar
 - [ ] Search within a file, image zoom and splits, if they are missed from the workbench
@@ -51,5 +51,8 @@ done ones. The project page's *Progress* lists this phase on one line.
   Its line numbers counted from the tail, so the tail view has none.
 - Not carried over from the workbench: splits and tabs, the hex view, image zoom,
   markdown's source toggle, search within a file. Kept as later items if missed.
+- The site restyled, tried against manthan's vesicle project at 1280 px light and 390 px
+  dark: no sideways scroll on a phone, the tree's outcome colours from the theme. Images
+  in markdown were broken in the app too (relative to the app's URL); fixed in 0.41.3.
 - `dir_router` (saarthi's node) gets the app's files and changes routes and nothing at
   `/`, as its test asks; the app hides the notebook's sections when there is no notebook.
