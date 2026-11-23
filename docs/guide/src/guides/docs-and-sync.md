@@ -123,7 +123,7 @@ yajna sync DOC-20261022-d4m1q8   # just this one
   an SVG, or a path that is not a file of the repo, stops that page's sync with the
   reason. A picture on the web is left for Google to fetch. Everything uploaded for one
   page, pictures included, has to stay under 5 MB.
-- A fenced block arrives as a paragraph in a monospaced font with its lines and
+- A fenced block arrives as a paragraph in Roboto Mono with its lines and
   indentation, which suits sample output and ASCII diagrams. A `mermaid` block arrives as
   its source: render the diagram to a PNG and include that instead.
 - Edits made in the Google Doc are overwritten at the next publish. Comment, do not edit,
@@ -239,7 +239,7 @@ it created and nothing else in your Drive.
    `YAJNA_GDOC_CREDENTIALS` points.
 
 **Testing mode tokens expire after seven days.** An External app left in *Testing* has to
-sign in again every week. To avoid that, choose *Publish app* on the audience page; with
+sign in again every week; `yajna sync` says so when the sign-in has expired. To avoid that, choose *Publish app* on the audience page; with
 only the `drive.file` scope Google does not require verification.
 
 The credentials file is a secret. Never commit it; on a managed machine, deliver it as a

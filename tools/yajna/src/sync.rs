@@ -445,7 +445,19 @@ fn refresh(agent: &ureq::Agent) -> Res<String> {
             .header("Content-Type", "application/x-www-form-urlencoded")
             .send(body),
         "refresh the Google token",
-    )?;
+    )
+    .map_err(|e| {
+        // Google refuses a refresh token that was revoked or expired (after 7 days while
+        // the OAuth app is in testing): only a new sign-in helps
+        if e.contains("invalid_grant") {
+            format!(
+                "the Google sign-in in {} has expired or was revoked; run `yajna sync login --client <client_secret.json>` again",
+                path.display()
+            )
+        } else {
+            e
+        }
+    })?;
     v["access_token"]
         .as_str()
         .map(str::to_string)
@@ -877,7 +889,13 @@ static ATTR_RE: LazyLock<Regex> =
 static PRE_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r#"(?s)<pre[^>]*><code[^>]*>(?P<code>.*?)</code></pre>"#).unwrap());
 
-const CODE_STYLE: &str = "font-family:'Roboto Mono',monospace;font-size:9pt;line-height:1.2;background-color:#f3f3f3;margin-top:0;margin-bottom:8pt";
+const CODE_STYLE: &str =
+    "font-size:9pt;line-height:1.2;background-color:#f3f3f3;margin-top:0;margin-bottom:8pt";
+/// Docs keeps a font named alone, in double quotes, on a span; given a fallback list
+/// (`'Roboto Mono',monospace`), or on the paragraph, it sets the text in Arial.
+const CODE_FONT: &str = "font-family:&quot;Roboto Mono&quot;";
+/// A caption with space under it, so the next paragraph does not run into it.
+const CAPTION_STYLE: &str = "text-align:center;margin-bottom:12pt";
 
 /// What Docs cannot take from the HTML as it is (issue #1). Its import cannot reach a local
 /// file, so an image of the repo goes inline as a `data:` URI, and an image on its own
@@ -904,7 +922,7 @@ fn for_docs(html: &str, dir: &Path, root: &Path) -> Res<String> {
         let mut out = format!("<p style=\"text-align:center\">{}</p>\n", inline(img));
         if !alt.is_empty() {
             out.push_str(&format!(
-                "<p style=\"text-align:center\"><i>{alt}</i></p>\n"
+                "<p style=\"{CAPTION_STYLE}\"><i>{alt}</i></p>\n"
             ));
         }
         out
@@ -925,7 +943,10 @@ fn for_docs(html: &str, dir: &Path, root: &Path) -> Res<String> {
             .split('\n')
             .map(|l| l.replace(' ', "&nbsp;"))
             .collect();
-        format!("<p style=\"{CODE_STYLE}\">{}</p>", lines.join("<br>"))
+        format!(
+            "<p style=\"{CODE_STYLE}\"><span style=\"{CODE_FONT}\">{}</span></p>",
+            lines.join("<br>")
+        )
     });
     Ok(html.into_owned())
 }
@@ -1756,7 +1777,7 @@ mod tests {
         assert_eq!(
             for_docs(html, root, root).unwrap(),
             format!(
-                "<p style=\"text-align:center\"><img src=\"data:image/gif;base64,R0lG\" alt=\"Figure 1. A.\" /></p>\n<p style=\"text-align:center\"><i>Figure 1. A.</i></p>\n\n<p style=\"{CODE_STYLE}\">a<br>&nbsp;&nbsp;b</p>"
+                "<p style=\"text-align:center\"><img src=\"data:image/gif;base64,R0lG\" alt=\"Figure 1. A.\" /></p>\n<p style=\"{CAPTION_STYLE}\"><i>Figure 1. A.</i></p>\n\n<p style=\"{CODE_STYLE}\"><span style=\"{CODE_FONT}\">a<br>&nbsp;&nbsp;b</span></p>"
             )
         );
         // a picture on the web is left for Docs to fetch, inline with the text

@@ -2618,15 +2618,14 @@ fn sync_carries_figures_and_fenced_blocks_into_the_doc() {
     let html = drive.lock().unwrap().docs[&doc].0.clone();
     // each figure its own paragraph, the file inline, the alt text as its caption under it
     assert!(
-        html.contains("<p style=\"text-align:center\"><img src=\"data:image/png;base64,iVBORyBmYWtl\" alt=\"Figure 1. The benchmark.\" /></p>\n<p style=\"text-align:center\"><i>Figure 1. The benchmark.</i></p>")
+        html.contains("<p style=\"text-align:center\"><img src=\"data:image/png;base64,iVBORyBmYWtl\" alt=\"Figure 1. The benchmark.\" /></p>\n<p style=\"text-align:center;margin-bottom:12pt\"><i>Figure 1. The benchmark.</i></p>")
             && html.contains("src=\"data:image/png;base64,UE5HMg==\"")
             && html.contains("<i>Figure 2. The splits.</i>"),
         "{html}"
     );
     // a fenced block keeps its lines and indentation in a monospaced paragraph
     assert!(
-        html.contains("monospace")
-            && html.contains("flowchart&nbsp;LR<br>&nbsp;&nbsp;A[x]&nbsp;--&gt;&nbsp;B</p>"),
+        html.contains("<span style=\"font-family:&quot;Roboto Mono&quot;\">flowchart&nbsp;LR<br>&nbsp;&nbsp;A[x]&nbsp;--&gt;&nbsp;B</span></p>"),
         "{html}"
     );
     assert!(!html.contains("<pre"), "{html}");
@@ -2825,6 +2824,27 @@ fn sync_publishes_and_pulls_comments_back() {
     );
     assert_eq!(out.code, 1);
     assert!(out.stderr.contains("yajna sync login"), "{}", out.stderr);
+    // a refresh token Google no longer takes asks for a new sign-in, not an HTTP error
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let token_uri = format!("http://{}/token", listener.local_addr().unwrap());
+    std::thread::spawn(move || {
+        use std::io::{Read, Write};
+        let (mut s, _) = listener.accept().unwrap();
+        let mut buf = [0; 4096];
+        let _ = s.read(&mut buf);
+        let body = r#"{"error": "invalid_grant", "error_description": "Bad Request"}"#;
+        let _ = write!(s, "HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
+    });
+    let creds = v.root.join("gdoc.json");
+    fs::write(&creds, format!(r#"{{"client_id": "c", "client_secret": "s", "refresh_token": "r", "token_uri": "{token_uri}"}}"#)).unwrap();
+    let out = v.run_with(&["sync"], None, &[("YAJNA_GDOC_CREDENTIALS", creds.to_str().unwrap())]);
+    assert_eq!(out.code, 1);
+    assert!(
+        out.stderr.contains("has expired or was revoked; run `yajna sync login --client")
+            && !out.stderr.contains("HTTP 400"),
+        "{}",
+        out.stderr
+    );
 }
 
 #[test]
