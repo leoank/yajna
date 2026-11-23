@@ -31,7 +31,7 @@ done ones. The project page's *Progress* lists this phase on one line.
 - [x] Live following of an open file in the app (`/api/events`, appending `Range` reads, logs at their end, text over 4 MB as its last 1 MB), then the classic viewer and ADR-0029's bundle removed (0.41.0)
 - [x] `yajna site` takes the app's colours and type, so a published notebook looks like the app; its relative images copied under `media/` on export, from the files API when served (0.42.0)
 - [ ] A dark and light setting in the app beside the system's, and a denser layout for desktops
-- [ ] Search across the notebook from the sidebar
+- [x] Search across the notebook from the sidebar: a box with the best pages as you type (`/`, ⌘K), a screen at `/search?q=` with every page and log line that has the words, `/api/search` over the index (0.43.0)
 - [ ] Search within a file, image zoom and splits, if they are missed from the workbench
 - [ ] Vite's dev server for working on the app (the bundle stays esbuild's)
 - [ ] Verified: ank uses the app from the phone through saarthi and from the laptop for a week of work
@@ -54,5 +54,8 @@ done ones. The project page's *Progress* lists this phase on one line.
 - The site restyled, tried against manthan's vesicle project at 1280 px light and 390 px
   dark: no sideways scroll on a phone, the tree's outcome colours from the theme. Images
   in markdown were broken in the app too (relative to the app's URL); fixed in 0.41.3.
+- Search tried against manthan (about 170 pages): 8 to 22 ms an answer with a debug build,
+  every page scanned, so no full-text index yet; at 390 px dark the screen fits and the
+  address follows what is typed.
 - `dir_router` (saarthi's node) gets the app's files and changes routes and nothing at
   `/`, as its test asks; the app hides the notebook's sections when there is no notebook.
