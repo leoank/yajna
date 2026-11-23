@@ -14,6 +14,7 @@ export type Route =
   | { name: 'review'; id: string; search: URLSearchParams }
   | { name: 'changes'; search: URLSearchParams }
   | { name: 'files'; path: string }
+  | { name: 'search'; q: string }
   | { name: 'missing'; path: string };
 
 /** The route of a path relative to the base, `p/EXP-…`. */
@@ -38,6 +39,8 @@ export function parse(rel: string, search = ''): Route {
       return { name: 'changes', search: new URLSearchParams(search) };
     case 'files':
       return { name: 'files', path: decodeURIComponent(tail) };
+    case 'search':
+      return { name: 'search', q: new URLSearchParams(search).get('q') ?? '' };
     default:
       return { name: 'missing', path };
   }

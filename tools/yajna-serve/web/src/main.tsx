@@ -8,6 +8,7 @@ import { RouterProvider, useRoute } from './router';
 import { Changes } from './changes';
 import { Files } from './files';
 import { ReviewView } from './review';
+import { SearchScreen } from './search';
 import { Collection, LogScreen, Missing, Overview, PageView, Reviews, Tasks } from './screens';
 
 function App() {
@@ -31,6 +32,8 @@ function App() {
       return <Changes search={r.search} />;
     case 'files':
       return <Files key={r.path} path={r.path} />;
+    case 'search':
+      return <SearchScreen q={r.q} />;
     default:
       return <Missing path={r.path} />;
   }

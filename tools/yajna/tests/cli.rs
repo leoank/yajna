@@ -3712,8 +3712,22 @@ fn serve_pages_api_gives_the_web_app_the_notebook() {
     let (_, tasks) = api_json(&addr, "/api/tasks?done=true");
     assert!(tasks.is_array());
     assert!(http_req(&addr, "/api/pages/EXP-19990101-000000", &[]).0.contains("404"));
+    // search: every word in a page, the ID first when asked by it, a passage as plain
+    // text, and the log lines with the words
+    let (_, s) = api_json(&addr, "/api/search?q=escrt");
+    assert_eq!(s["pages"][0]["id"], "EXP-20261021-000001", "{s}");
+    let (_, s) = api_json(&addr, "/api/search?q=EXP-20261021-000002");
+    assert_eq!(s["pages"][0]["id"], "EXP-20261021-000002", "{s}");
+    let (_, s) = api_json(&addr, "/api/search?q=thawed%20mat-0001");
+    assert!(s["log_total"].as_u64() >= Some(1) && s["log"][0]["html"].as_str().unwrap().contains("MAT-0001.html"), "{s}");
+    let (_, s) = api_json(&addr, "/api/search?q=escrt%20zzzqqq");
+    assert_eq!((s["pages_total"].as_u64(), s["log_total"].as_u64()), (Some(0), Some(0)), "{s}");
+    let (_, s) = api_json(&addr, "/api/search?q=archaeal");
+    let snips: Vec<&str> = s["pages"].as_array().unwrap().iter().filter_map(|p| p["snippet"].as_str()).collect();
+    assert!(snips.iter().all(|t| !t.contains("[[") && !t.contains("##")), "{s}");
+    assert!(http_req(&addr, "/search?q=x", &[]).0.ends_with("200 OK"));
     // the app's routes are the app's page
-    for route in ["/p/PRJ-0001", "/c/experiment", "/log", "/tasks", "/changes", "/reviews", "/reviews/REV-20261021-000001"] {
+    for route in ["/p/PRJ-0001", "/c/experiment", "/log", "/tasks", "/search", "/changes", "/reviews", "/reviews/REV-20261021-000001"] {
         let (status, _, body) = http_req(&addr, route, &[]);
         assert!(status.contains("200") && String::from_utf8_lossy(&body).contains("assets/app.js"), "{route}: {status}");
     }

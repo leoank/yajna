@@ -69,6 +69,13 @@ asks the server again, so a slow connection shows a page at once and a quiet
 sidebar shows the same screen in another worktree. The static pages `yajna site` writes
 are still served at `/<ID>.html`.
 
+**Search** is the box under the worktree picker; `/` or ⌘K (Ctrl-K) goes to it. It
+answers as you type with the best few pages, and Enter, or *Everything with …*, opens the
+search screen (`/search?q=…`, the search icon on a phone): every page with all the words
+in its ID, title, tags or text, an ID or a title that matches best first, each with the
+passage where the words are, then the log lines that have them, newest first. Case does
+not matter.
+
 ## Git changes
 
 `yajna serve` also says what is uncommitted, staged and recently committed in the git

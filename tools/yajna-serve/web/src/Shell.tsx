@@ -4,10 +4,11 @@
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useIsFetching } from '@tanstack/react-query';
-import { BookOpen, Check, ChevronsUpDown, FileText, FlaskConical, FolderTree, GitBranch, GitPullRequestArrow, House, ListChecks, Menu, ScrollText, Layers } from 'lucide-react';
+import { BookOpen, Check, ChevronsUpDown, FileText, FlaskConical, FolderTree, GitBranch, GitPullRequestArrow, House, ListChecks, Menu, ScrollText, Layers, Search } from 'lucide-react';
 import { ApiError, netState, useInfo, useOverview, useWorktrees, type Worktree } from './api';
 import { base, notebookBase, shownWorktree } from './base';
 import { Link, useRoute, type Route } from './router';
+import { SearchBox } from './search';
 import { typeLabel } from './ui';
 
 function useOnline() {
@@ -115,6 +116,7 @@ export function Shell({ title, wide, children }: { title: string; wide?: boolean
           </div>
         </div>
         <WorktreeSwitch />
+        {notebook && <SearchBox onGo={close} />}
         <div style={{ height: 8 }} />
         {notebook && <NavItem to="" icon={<House size={16} />} label="Overview" on={is('home')} close={close} />}
         {notebook && <NavItem to="log" icon={<ScrollText size={16} />} label="Log" on={is('log')} close={close} />}
@@ -165,6 +167,11 @@ export function Shell({ title, wide, children }: { title: string; wide?: boolean
             <Menu size={20} />
           </button>
           <div className="title">{title}</div>
+          {notebook && route.name !== 'search' && (
+            <Link to="search" className="icon-btn" aria-label="Search">
+              <Search size={19} />
+            </Link>
+          )}
         </header>
         <main className={`content${wide ? ' wide' : ''}`}>{children}</main>
       </div>

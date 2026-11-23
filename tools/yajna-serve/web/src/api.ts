@@ -1,7 +1,7 @@
 // The server's APIs (docs/files-viewer.md 5.2) as typed fetches, read through TanStack
 // Query so a slow network shows what was last known while it asks again (ADR-0041).
 
-import { QueryClient, useQuery, type UseQueryOptions } from '@tanstack/react-query';
+import { QueryClient, keepPreviousData, useQuery, type UseQueryOptions } from '@tanstack/react-query';
 import { base, notebookBase } from './base';
 
 export class ApiError extends Error {
@@ -108,6 +108,15 @@ export interface Page extends Summary {
   log: LogLine[];
 }
 
+/** What `/api/search` answers: the best pages with the passage where the words are, and
+ * the newest log lines with them. */
+export interface SearchResult {
+  pages: (Summary & { snippet: string | null })[];
+  pages_total: number;
+  log: LogLine[];
+  log_total: number;
+}
+
 export interface Task {
   done: boolean;
   page: Summary | null;
@@ -162,6 +171,7 @@ export const keys = {
   tasks: (done: boolean) => ['tasks', done] as const,
   reviews: ['reviews'] as const,
   worktrees: ['worktrees'] as const,
+  search: (text: string, limit: number) => ['search', text, limit] as const,
 };
 
 export const fetchers = {
@@ -173,6 +183,7 @@ export const fetchers = {
   log: (skip: number) => getJson<{ total: number; entries: LogLine[] }>(`/api/log?skip=${skip}&limit=100`),
   tasks: (done: boolean) => getJson<Task[]>(`/api/tasks?done=${done}`),
   reviews: () => getJson<ReviewSummary[]>('/api/reviews'),
+  search: (text: string, limit: number) => getJson<SearchResult>(`/api/search?q=${q(text)}&limit=${limit}`),
   // the notebook's own list, whichever worktree this app shows
   worktrees: async () => {
     try {
@@ -189,6 +200,16 @@ export const useOverview = () => useQuery({ queryKey: keys.overview, queryFn: fe
 export const usePage = (id: string) => useQuery({ queryKey: keys.page(id), queryFn: () => fetchers.page(id) });
 export const useList = (type?: string, project?: string, o: Opts<Summary[]> = {}) =>
   useQuery({ queryKey: keys.list(type, project), queryFn: () => fetchers.list(type, project), ...o });
+/** Search as it is typed: nothing for fewer than two characters, the last answer kept
+ * while the next one comes. */
+export const useSearch = (text: string, limit = 50) =>
+  useQuery({
+    queryKey: keys.search(text.trim(), limit),
+    queryFn: () => fetchers.search(text.trim(), limit),
+    enabled: text.trim().length >= 2,
+    placeholderData: keepPreviousData,
+    staleTime: 10_000,
+  });
 export const useWorktrees = () => useQuery({ queryKey: keys.worktrees, queryFn: fetchers.worktrees, refetchInterval: 10_000 });
 
 /** Read a page before it is opened: on hover or focus of a link to it. */

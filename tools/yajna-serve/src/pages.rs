@@ -1,6 +1,6 @@
 //! The JSON API of the notebook's pages that the web app reads (ADR-0041): the overview,
 //! pages by type or project, one page with its fields, rendered body, children and
-//! backlinks, the log and the tasks.
+//! backlinks, the log, the tasks, and search across them.
 //!
 //! The crate does not know what a page is: the CLI hands it a [`Pages`] that answers from
 //! the notebook's index, and this module does HTTP. Everything here is read-only.
@@ -28,6 +28,9 @@ pub trait Pages: Send + Sync {
     fn log(&self, skip: usize, limit: usize) -> Result<Value, String>;
     /// the checkboxes of the notebook, open ones, or all with `done`
     fn tasks(&self, done: bool) -> Result<Value, String>;
+    /// the pages and log lines with every word of `q` in them, the best `limit` pages
+    /// first, each with the passage of its text where the words are
+    fn search(&self, q: &str, limit: usize) -> Result<Value, String>;
 }
 
 fn error(status: StatusCode, msg: impl Into<String>) -> Response {
@@ -79,6 +82,17 @@ pub(crate) async fn log_handler(State(app): State<App>, Query(q): Query<LogQuery
 #[derive(Deserialize)]
 pub(crate) struct TasksQuery {
     done: Option<bool>,
+}
+
+#[derive(Deserialize)]
+pub(crate) struct SearchQuery {
+    q: Option<String>,
+    limit: Option<usize>,
+}
+
+pub(crate) async fn search_handler(State(app): State<App>, Query(q): Query<SearchQuery>) -> Response {
+    let (text, limit) = (q.q.unwrap_or_default(), q.limit.unwrap_or(50).clamp(1, 200));
+    answer(app, move |p| p.search(&text, limit).map(Some)).await
 }
 
 pub(crate) async fn tasks_handler(State(app): State<App>, Query(q): Query<TasksQuery>) -> Response {

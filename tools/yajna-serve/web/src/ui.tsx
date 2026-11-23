@@ -141,12 +141,38 @@ export function fromDir(dir: string, rel: string): string | null {
   return out.length > 1 ? out.join('/') : null;
 }
 
+/** The words of a search as one pattern that finds any of them, ignoring case; null for
+ * no words. */
+export function wordsOf(query: string): RegExp | null {
+  const words = query.trim().split(/\s+/).filter(Boolean).map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  return words.length ? new RegExp(`(${words.join('|')})`, 'gi') : null;
+}
+
+/** Text with the words of `query` marked. */
+export function Marked({ text, query }: { text: string; query?: string }) {
+  const re = query ? wordsOf(query) : null;
+  if (!re) return <>{text}</>;
+  return <>{text.split(re).map((part, i) => (i % 2 ? <mark key={i}>{part}</mark> : part))}</>;
+}
+
 /** The rendered HTML with its relative images served from the files API and its relative
- * links opening in the files view; parsed in a template, so nothing loads before it is
- * rewritten. */
-function rebase(html: string, dir: string): string {
+ * links opening in the files view (with `dir`), and the words of `mark` marked in its
+ * text; parsed in a template, so nothing loads before it is rewritten. */
+function rewrite(html: string, dir?: string, mark?: string): string {
   const t = document.createElement('template');
   t.innerHTML = html;
+  const re = mark ? wordsOf(mark) : null;
+  if (re) {
+    const walk = document.createTreeWalker(t.content, NodeFilter.SHOW_TEXT);
+    const texts: Text[] = [];
+    while (walk.nextNode()) texts.push(walk.currentNode as Text);
+    for (const node of texts) {
+      const parts = (node.data ?? '').split(re);
+      if (parts.length < 2) continue;
+      node.replaceWith(...parts.map((p, i) => (i % 2 ? Object.assign(document.createElement('mark'), { textContent: p }) : document.createTextNode(p))));
+    }
+  }
+  if (!dir) return t.innerHTML;
   for (const img of t.content.querySelectorAll('img[src]')) {
     const p = fromDir(dir, img.getAttribute('src') ?? '');
     if (p) img.setAttribute('src', `${base}/api/files/raw?path=${encodeURIComponent(p)}`);
@@ -164,8 +190,8 @@ function rebase(html: string, dir: string): string {
 /** HTML the server rendered (yajna's own markdown renderer, raw HTML shown as text); its
  * links to pages and files open in the app. With `dir`, the files-view directory the
  * markdown came from, its relative images and links are taken from there. */
-export function Html({ html, className = 'prose', dir }: { html: string; className?: string; dir?: string }) {
-  const shown = useMemo(() => (dir ? rebase(html, dir) : html), [html, dir]);
+export function Html({ html, className = 'prose', dir, mark }: { html: string; className?: string; dir?: string; mark?: string }) {
+  const shown = useMemo(() => (dir || mark ? rewrite(html, dir, mark) : html), [html, dir, mark]);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const el = ref.current;
@@ -195,7 +221,7 @@ export function Html({ html, className = 'prose', dir }: { html: string; classNa
 }
 
 /** Log lines grouped by day, newest first as given. */
-export function Log({ lines }: { lines: LogLine[] }) {
+export function Log({ lines, mark }: { lines: LogLine[]; mark?: string }) {
   const days: [string, LogLine[]][] = [];
   for (const l of lines) {
     const last = days[days.length - 1];
@@ -211,7 +237,7 @@ export function Log({ lines }: { lines: LogLine[] }) {
             <div className="log-line" key={i}>
               <div className="time">{l.time}</div>
               <div>
-                <Html html={l.html} className="what" />
+                <Html html={l.html} className="what" mark={mark} />
                 <div className="who">{l.author}</div>
               </div>
             </div>

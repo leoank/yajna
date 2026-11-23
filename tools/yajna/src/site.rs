@@ -838,6 +838,123 @@ fn log_json(ix: &Index, entries: &[LogEntry]) -> Value {
         .collect()
 }
 
+/// Search (ADR-0041): pages with every word of `q` in their ID, title, tags or text,
+/// ranked by where the words are (an ID over a title over a tag over the text, the whole
+/// query as the ID or in the title above all), newest first among equals; and the log
+/// lines with every word, newest first. Case is ignored. A scan of the index, which a
+/// notebook of a few thousand pages answers in milliseconds.
+fn search(ix: &Index, q: &str, limit: usize) -> Value {
+    let terms: Vec<String> = q.split_whitespace().map(str::to_lowercase).collect();
+    if terms.is_empty() {
+        return serde_json::json!({ "pages": [], "pages_total": 0, "log": [], "log_total": 0 });
+    }
+    let words = terms.iter().map(|t| regex::escape(t)).collect::<Vec<_>>().join("|");
+    let any = regex::RegexBuilder::new(&words).case_insensitive(true).build().expect("escaped words");
+    let whole = terms.join(" ");
+    let mut hits: Vec<(f64, Entity)> = Vec::new();
+    for e in ix.entities("", &[]) {
+        let (id, title) = (e.id.to_lowercase(), e.title.to_lowercase());
+        let tags = e.tags.join(" ").to_lowercase();
+        let body = e.body.to_lowercase();
+        let mut score = 0.0;
+        for t in &terms {
+            let mut s = 0.0;
+            if id.contains(t.as_str()) {
+                s += 8.0;
+            }
+            if title.contains(t.as_str()) {
+                s += 6.0;
+            }
+            if tags.split(' ').any(|g| g == t) {
+                s += 4.0;
+            }
+            let n = body.matches(t.as_str()).take(5).count();
+            if n > 0 {
+                s += 1.0 + 0.25 * n as f64;
+            }
+            if s == 0.0 {
+                score = 0.0;
+                break;
+            }
+            score += s;
+        }
+        if score == 0.0 {
+            continue;
+        }
+        if id == whole {
+            score += 100.0;
+        } else if title == whole {
+            score += 30.0;
+        } else if terms.len() > 1 && title.contains(&whole) {
+            score += 10.0;
+        }
+        hits.push((score, e));
+    }
+    hits.sort_by(|(a, x), (b, y)| b.total_cmp(a).then_with(|| y.created.cmp(&x.created)));
+    let pages_total = hits.len();
+    let pages: Vec<Value> = hits
+        .iter()
+        .take(limit)
+        .map(|(_, e)| {
+            let mut v = summary(e);
+            let parent = e.experiment.as_ref().or(e.project.as_ref());
+            if let Some(note) = parent.and_then(|p| ix.note(p, &e.id)) {
+                v["note"] = note.into();
+            }
+            v["snippet"] = passage(&e.body, &any).into();
+            v
+        })
+        .collect();
+    let mut log: Vec<LogEntry> = ix
+        .log()
+        .into_iter()
+        .filter(|m| {
+            let text = format!("{} {}", m.text, m.author).to_lowercase();
+            terms.iter().all(|t| text.contains(t.as_str()))
+        })
+        .collect();
+    log.reverse();
+    let log_total = log.len();
+    log.truncate(20);
+    serde_json::json!({ "pages": pages, "pages_total": pages_total, "log": log_json(ix, &log), "log_total": log_total })
+}
+
+/// The passage of `text` around the first match of `re`, on one line, about 200
+/// characters, cut at spaces, as plain text: `[[ID|label]]` as its label, headings,
+/// emphasis and code marks dropped; None when nothing in it matches.
+fn passage(text: &str, re: &regex::Regex) -> Option<String> {
+    static MARKS: std::sync::LazyLock<[regex::Regex; 2]> = std::sync::LazyLock::new(|| {
+        [
+            regex::Regex::new(r"\[\[(?:[^\]|]*\|)?([^\]]*)\]\]").unwrap(),
+            regex::Regex::new(r"(?m)^#{1,6}\s+|\*\*|__|`").unwrap(),
+        ]
+    });
+    let plain = MARKS[0].replace_all(text, "$1");
+    let plain = MARKS[1].replace_all(&plain, "");
+    let flat = plain.split_whitespace().collect::<Vec<_>>().join(" ");
+    let m = re.find(&flat)?;
+    let mut from = m.start().saturating_sub(60);
+    while !flat.is_char_boundary(from) {
+        from -= 1;
+    }
+    if from > 0 {
+        from = flat[from..m.start()].find(' ').map(|i| from + i + 1).unwrap_or(m.start());
+    }
+    let mut to = (m.end() + 160).min(flat.len());
+    while !flat.is_char_boundary(to) {
+        to -= 1;
+    }
+    if to < flat.len() {
+        to = flat[m.end()..to].rfind(' ').map(|i| m.end() + i).unwrap_or(to);
+    }
+    Some(format!(
+        "{}{}{}",
+        if from > 0 { "…" } else { "" },
+        &flat[from..to],
+        if to < flat.len() { "…" } else { "" }
+    ))
+}
+
 /// Ticked and all checkboxes of a page's body: a phase's progress.
 fn checkboxes(body: &str) -> (usize, usize) {
     let mut done = 0;
@@ -1087,6 +1204,11 @@ impl yajna_serve::pages::Pages for ServedPages {
         let total = all.len();
         let page: Vec<LogEntry> = all.into_iter().skip(skip).take(limit).collect();
         Ok(serde_json::json!({ "total": total, "entries": log_json(&ix, &page) }))
+    }
+
+    fn search(&self, q: &str, limit: usize) -> Result<Value, String> {
+        let (_, ix) = self.index()?;
+        Ok(search(&ix, q, limit))
     }
 
     fn tasks(&self, done: bool) -> Result<Value, String> {
