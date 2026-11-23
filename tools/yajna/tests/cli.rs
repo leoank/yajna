@@ -411,6 +411,24 @@ fn interactive_project_with_code() {
 }
 
 #[test]
+fn ref_note_quotes_a_title_with_a_colon() {
+    let v = vault();
+    fs::create_dir_all(v.root.join("references")).unwrap();
+    fs::write(
+        v.root.join("references/library.bib"),
+        "@software{cedar,\n  title = {Cedar: a policy language and evaluation engine},\n  author = {{Cedar contributors}: core #1},\n  year = {2026}\n}\n",
+    )
+    .unwrap();
+    fs::write(v.root.join("yajna.toml"), "author = \"tester\"\nvault = \"notes\"\ntimezone = \"UTC\"\nbibliography = \"references/library.bib\"\n").unwrap();
+    assert_eq!(v.run(&["ref", "cedar", "--note"]).code, 0);
+    let text = v.read(&v.root.join("notes/references/cedar.md"));
+    assert!(text.contains("title: \"Cedar: a policy language and evaluation engine\"\n"), "{text}");
+    assert!(text.contains("authors: \"Cedar contributors: core #1\"\n"), "{text}");
+    let out = v.run(&["validate"]);
+    assert!(!out.stdout.contains("does not parse"), "{}", out.stdout);
+}
+
+#[test]
 fn ref_and_citation_check() {
     let v = vault();
     fs::create_dir_all(v.root.join("references")).unwrap();

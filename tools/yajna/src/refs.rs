@@ -178,11 +178,13 @@ pub fn create_note(vault: &Vault, key: &str, fields: &BTreeMap<String, String>) 
         .filter(|s| !s.is_empty())
         .cloned()
         .unwrap_or_else(|| "null".to_string());
-    let title = fields
-        .get("title")
-        .cloned()
-        .unwrap_or_else(|| key.to_string());
-    let authors = fields.get("author").cloned().unwrap_or_default();
+    // quoted the way `yajna new` quotes a title: most paper titles carry a ': '
+    let title = crate::yamlfmt::title_scalar(fields.get("title").map_or(key, |t| t.as_str()));
+    let authors = fields
+        .get("author")
+        .filter(|a| !a.is_empty())
+        .map(|a| crate::yamlfmt::title_scalar(a))
+        .unwrap_or_default();
     let created = vault.today();
     let text = vault.render(
         "reference",
