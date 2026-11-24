@@ -48,6 +48,7 @@ items with the rest.
 - [ ] [[PHS-20261118-evfb8n]] Git changes and every worktree in yajna serve
 - [ ] [[PHS-20261118-j1skx5]] Actions in the changes view: stage, commit, and comments that reach the session
 - [ ] [[PHS-20261118-k4kfg6]] One web app for the notebook: pages, files and changes in one design (ADR-0041)
+- [ ] [[PHS-20261124-gpczmk]] Project scope in yajna serve: pick a project, not a worktree (ADR-0043)
 
 ## Open questions
 - New `build` and `artifact` pages fail their own schema: the templates write `null`
@@ -149,3 +150,4 @@ rejects a bare link here. Newest last.
 - [[EXP-20261106-3t3nn2]] does our own Xet crate match xet-core byte for byte; yes on all 11 cases tried, and on Hugging Face's reference files; conclusion for ank to write
 - [[EXP-20261106-3t40bg]] how much chunk-level dedup saves; on public stand-ins: much where versions share bytes, nothing for full-training checkpoints or a second sample, and LZ4 far behind zstd on sparse images; lab data still to try
 - [[EXP-20261106-3t4cyw]] is a store on another machine over plain ssh fast enough; yes once batched: push 2.4 times faster than scp to oppy on a slow link, 16k existence checks in 1.9 s; conclusion for ank to write
+- [[EXP-20261124-gq45yv]] Is opening every project worktree's index on each request fast enough for a merged overview and log in yajna serve?

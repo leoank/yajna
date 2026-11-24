@@ -1,0 +1,7 @@
+cusf-propulsion-intro/main median 48 ms (52 49 45 48 45)
+fbr-sim/main median 49 ms (49 49 48 46 49)
+g2a/main median 46 ms (42 46 46 43 47)
+manthan/main median 25 ms (26 24 27 25 25)
+rc2s2-a-remote-command-and-control-session-server/main median 44 ms (45 42 43 47 44)
+vesicle-protrusions-and-imaging/main median 56 ms (56 63 55 64 54)
+===RESULT=== {"sum_median_ms": 268}
