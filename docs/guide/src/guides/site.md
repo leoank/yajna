@@ -55,11 +55,15 @@ JavaScript.
 - **Images** a page shows with a relative path (`figures/plot.png`, from beside the
   page's file) are copied into the site under `media/`, so a published site carries
   them; served by `yajna serve`, they come from the files viewer instead. An image path
-  that leaves the repository, or a file that is not there, is left as written.
+  that leaves the repository, or a file that is not there, is left as written. A video
+  written in image syntax (a `clip.mp4` where an image would be) is a player, carried the
+  same way.
+  Mermaid blocks are drawn in `yajna serve`'s app; the static site shows their source.
 - **Project pages** add a table of experiments (with the one-line descriptions from the
   project page) and a drawing of the **experiment tree**: themes as rows, outcome as
   colour (positive green, negative red, inconclusive amber, infra grey, still open white),
-  creation order as the solid line, `influenced_by` as dotted edges.
+  creation order as the solid line, `influenced_by` as dotted edges. A conclusion an agent
+  drafted that no one has approved yet is drawn faded with a dashed ring.
 - **Experiment pages** add a table of their runs with their metrics.
 - **The log**: every author's lines, newest first.
 - **Tasks**: every open checkbox, with a link to its page.

@@ -4075,8 +4075,9 @@ fn serve_files_viewer_render_and_site_links() {
     fs::create_dir_all(&figs).unwrap();
     fs::write(figs.join("ring 1.png"), b"\x89PNG\r\n\x1a\n").unwrap();
     fs::write(code.join("plot.svg"), "<svg xmlns=\"http://www.w3.org/2000/svg\"/>").unwrap();
+    fs::write(figs.join("tubulation.mov"), b"\0\0\0\x14ftypqt  ").unwrap();
     let text = format!(
-        "{text}\n![ring](figures/ring%201.png)\n![plot](../../../code/archaeal-division/plot.svg)\n![out](../../../../outside.png)\n"
+        "{text}\n![ring](figures/ring%201.png)\n![plot](../../../code/archaeal-division/plot.svg)\n![out](../../../../outside.png)\n\n![A vesicle tubulating](figures/tubulation.mov)\n"
     );
     fs::write(&prj, text).unwrap();
     let out = v.run(&["validate"]);
@@ -4139,6 +4140,16 @@ fn serve_files_viewer_render_and_site_links() {
     assert!(page.contains("src=\"api/files/raw?path=code%2Farchaeal-division%2Fplot.svg\""), "{page}");
     assert!(http_req(&addr, &format!("/{src}"), &[]).0.ends_with("200 OK"));
     assert!(page.contains("src=\"../../../../outside.png\""), "left as written: {page}");
+    // a video in markdown is a player, its file from the files API, served as a video
+    let src = "api/files/raw?path=notes%2Fprojects%2FPRJ-0001-archaeal-division%2Ffigures%2Ftubulation.mov";
+    assert!(
+        page.contains(&format!("<video controls playsinline preload=\"metadata\" src=\"{src}\" aria-label=\"A vesicle tubulating\"")),
+        "{page}"
+    );
+    let (status, headers, _) = http_req(&addr, &format!("/{src}"), &[]);
+    assert!(status.ends_with("200 OK") && headers.contains("video/quicktime"), "{status} {headers}");
+    let (_, r) = api_json(&addr, "/api/files/render?path=notes/projects/PRJ-0001-archaeal-division/README.md");
+    assert!(r["html"].as_str().unwrap().contains("<video controls playsinline preload=\"metadata\" src=\"figures/tubulation.mov\""), "{r}");
     child.kill().unwrap();
     let _ = child.wait();
 
@@ -4152,6 +4163,8 @@ fn serve_files_viewer_render_and_site_links() {
     assert!(page.contains(&format!("src=\"media/{rel}\"")), "{page}");
     assert!(out.join("media/notes/projects/PRJ-0001-archaeal-division/figures/ring 1.png").is_file());
     assert!(out.join("media/code/archaeal-division/plot.svg").is_file());
+    assert!(page.contains("<video controls playsinline preload=\"metadata\" src=\"media/notes/projects/PRJ-0001-archaeal-division/figures/tubulation.mov\""), "{page}");
+    assert!(out.join("media/notes/projects/PRJ-0001-archaeal-division/figures/tubulation.mov").is_file());
 }
 
 /// An open `/api/events` stream: its `change` events as JSON, read until one matches.

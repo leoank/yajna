@@ -35,8 +35,13 @@ read, because ignored files are usually what a run produced. Symlinks are follow
 - **Roots** are listed first; a directory lists its entries, 500 at a time with *More*,
   directories first, and the breadcrumb above goes back up.
 - **A file** opens by what it is: markdown rendered as the site renders pages,
-  `[[links]]` and citations included; images fitted to the width; text and code
-  highlighted with line numbers; anything else as its size and type with a download link.
+  `[[links]]` and citations included; images fitted to the width; videos (`.mp4`, `.m4v`,
+  `.webm`, `.mov`, `.ogv`) in a player that seeks; text and code highlighted with line
+  numbers; anything else as its size and type with a download link.
+- **In markdown**, an image whose file is a video (`clip.mp4` in image syntax, the
+  caption as its alt text) is a video player, and an animated GIF plays as an image. A ` ```mermaid ` block is drawn as a diagram, following light and dark; one
+  that does not parse keeps its source, with the error under it. The diagram library is
+  loaded only when a page has one.
   *Raw* downloads any file. Raw HTML in a markdown file, and HTML or SVG files, are shown,
   never run.
 - **Addresses** name the file, `/files/code/g2a/train.py`, so a link can be pasted into a

@@ -67,7 +67,7 @@ td:first-child a{white-space:nowrap}
 .prose table{display:block;overflow:auto}
 .prose th,.prose td{padding:6px 10px}
 .prose blockquote{margin:.8em 0;padding:2px 14px;border-left:3px solid var(--line-strong);color:var(--text-2)}
-.prose img{max-width:100%;height:auto;border-radius:var(--radius-s)}
+.prose img,.prose video{max-width:100%;height:auto;border-radius:var(--radius-s)}
 .tree{overflow-x:auto;padding:8px}.tree svg{display:block}
 svg text{font:11px var(--font);fill:var(--text-2);paint-order:stroke;stroke:var(--surface);stroke-width:3px;stroke-linejoin:round}
 svg .edge{stroke:var(--line-strong);stroke-width:2}
@@ -161,7 +161,35 @@ fn markdown_with(ix: &Index, md: &str, img: &dyn Fn(&str) -> Option<String>) -> 
     });
     let mut out = String::new();
     html::push_html(&mut out, parser);
-    out
+    videos(&out)
+}
+
+/// The extensions a browser plays in `<video>`.
+const VIDEO: &[&str] = &["mp4", "m4v", "webm", "mov", "ogv"];
+
+/// `![caption](clip.mp4)` as a player: an image whose file is a video becomes `<video>`
+/// with controls, its alt text as the label. Raw HTML never reaches here as tags (the
+/// viewer shows it as text), so only markdown's own images are turned.
+fn videos(html: &str) -> String {
+    static IMG: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+        regex::Regex::new(r#"<img src="(?P<src>[^"]*)" alt="(?P<alt>[^"]*)"(?: title="[^"]*")? />"#).unwrap()
+    });
+    IMG.replace_all(html, |c: &regex::Captures| {
+        let src = &c["src"];
+        // the file's own name: a served page's src is the files API with it in `path=`
+        let target = src.split('#').next().unwrap_or("");
+        let path = match target.split_once("?path=") {
+            Some((_, p)) => p.split('&').next().unwrap_or(""),
+            None => target.split('?').next().unwrap_or(""),
+        };
+        let ext = path.rsplit_once('.').map(|(_, e)| e.to_ascii_lowercase()).unwrap_or_default();
+        if VIDEO.contains(&ext.as_str()) {
+            format!("<video controls playsinline preload=\"metadata\" src=\"{src}\" aria-label=\"{0}\" title=\"{0}\"></video>", &c["alt"])
+        } else {
+            c[0].to_string()
+        }
+    })
+    .into_owned()
 }
 
 /// Markdown for the files viewer (ADR-0029): the site's links and citations when the index
@@ -183,7 +211,7 @@ pub(crate) fn markdown_for_viewer(ix: Option<&Index>, md: &str) -> String {
     });
     let mut out = String::new();
     html::push_html(&mut out, parser);
-    out
+    videos(&out)
 }
 
 fn page(site: &Site, title: &str, nav: &str, body: &str) -> String {
@@ -209,12 +237,12 @@ pub(crate) struct Site<'a> {
 impl Site<'_> {
     /// The source of an image a page at `dir` (relative to the repo) gives as `src`: when
     /// served, the files API for a path under a root; when exported, a copy under
-    /// `media/`, so the site carries its pictures. None leaves `src` as written: a URL,
+    /// `media/`, so the site carries its pictures and videos. None leaves `src` as written: a URL,
     /// an absolute path, or a file that is not there.
     fn image(&self, dir: &Path, src: &str) -> Option<String> {
         let rel = repo_relative(dir, src)?;
         let ext = rel.rsplit_once('.')?.1.to_ascii_lowercase();
-        if !["png", "jpg", "jpeg", "gif", "svg", "webp", "avif"].contains(&ext.as_str()) {
+        if !["png", "jpg", "jpeg", "gif", "svg", "webp", "avif"].contains(&ext.as_str()) && !VIDEO.contains(&ext.as_str()) {
             return None;
         }
         let from = self.repo.join(&rel);

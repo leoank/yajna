@@ -253,7 +253,12 @@ a.row:hover, .row.tap:hover { background: var(--hover); }
 .prose table { border-collapse: collapse; display: block; overflow: auto; font-size: 13.5px; }
 .prose th, .prose td { border-bottom: 1px solid var(--line); padding: 6px 10px; text-align: left; }
 .prose blockquote { margin: 0.8em 0; padding: 2px 14px; border-left: 3px solid var(--line-strong); color: var(--text-2); }
-.prose img { max-width: 100%; border-radius: var(--radius-s); }
+.prose img, .prose video { max-width: 100%; border-radius: var(--radius-s); }
+.prose video { display: block; background: #000; }
+/* a mermaid block drawn (ui.tsx); its source stays a code block until then, or if it fails */
+.prose .mermaid { overflow-x: auto; margin: 12px 0; text-align: center; }
+.prose .mermaid svg { max-width: 100%; height: auto; }
+.prose .mermaid-error { color: var(--bad); font-size: 12.5px; margin: -6px 0 12px; }
 .prose > :first-child { margin-top: 0; }
 
 .table-wrap { overflow: auto; }

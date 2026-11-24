@@ -421,8 +421,10 @@ fn mime(name: &str) -> Option<&'static str> {
         "ico" => "image/x-icon",
         "tif" | "tiff" => "image/tiff",
         "pdf" => "application/pdf",
-        "mp4" => "video/mp4",
+        "mp4" | "m4v" => "video/mp4",
         "webm" => "video/webm",
+        "mov" => "video/quicktime",
+        "ogv" => "video/ogg",
         _ => return None,
     })
 }

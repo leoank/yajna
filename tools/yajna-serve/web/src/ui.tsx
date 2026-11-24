@@ -183,6 +183,10 @@ function rewrite(html: string, dir?: string, mark?: string): string {
     if (p) img.setAttribute('src', `${base}/api/files/raw?path=${encodeURIComponent(p)}`);
     img.setAttribute('loading', 'lazy');
   }
+  for (const video of t.content.querySelectorAll('video[src]')) {
+    const p = fromDir(dir, video.getAttribute('src') ?? '');
+    if (p) video.setAttribute('src', `${base}/api/files/raw?path=${encodeURIComponent(p)}`);
+  }
   for (const a of t.content.querySelectorAll('a[href]')) {
     const href = a.getAttribute('href') ?? '';
     if (routeOfHref(href)) continue;
@@ -222,6 +226,11 @@ export function Html({ html, className = 'prose', dir, mark }: { html: string; c
       el.removeEventListener('mouseover', hover);
     };
   }, []);
+  // mermaid blocks drawn as diagrams, the library loaded only when there is one
+  useEffect(() => {
+    const blocks = [...(ref.current?.querySelectorAll<HTMLElement>('pre > code.language-mermaid') ?? [])];
+    if (blocks.length) void import('./mermaid').then((m) => m.drawMermaid(blocks));
+  }, [shown]);
   return <div ref={ref} className={className} dangerouslySetInnerHTML={{ __html: shown }} />;
 }
 

@@ -5,7 +5,7 @@
 import { lazy, Suspense, useEffect } from 'react';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLive } from './live';
-import { ChevronRight, Download, File, FileCode2, Folder, ImageIcon } from 'lucide-react';
+import { ChevronRight, Download, File, FileCode2, Film, Folder, ImageIcon } from 'lucide-react';
 import { getJson } from './api';
 import { base } from './base';
 import { Link, navigate } from './router';
@@ -132,7 +132,7 @@ function Dir({ path }: { path: string }) {
       <div className="card rows">
         {entries.map((e) => (
           <Link key={e.name} to={`files/${path}/${e.name}`} className="row">
-            {e.kind === 'dir' ? <Folder size={16} style={{ color: 'var(--accent)' }} /> : /\.(png|jpe?g|gif|svg|webp)$/i.test(e.name) ? <ImageIcon size={16} className="muted" /> : /\.(md|txt)$/i.test(e.name) ? <File size={16} className="muted" /> : <FileCode2 size={16} className="muted" />}
+            {e.kind === 'dir' ? <Folder size={16} style={{ color: 'var(--accent)' }} /> : /\.(png|jpe?g|gif|svg|webp)$/i.test(e.name) ? <ImageIcon size={16} className="muted" /> : /\.(mp4|m4v|webm|mov|ogv)$/i.test(e.name) ? <Film size={16} className="muted" /> : /\.(md|txt)$/i.test(e.name) ? <File size={16} className="muted" /> : <FileCode2 size={16} className="muted" />}
             <span className="grow t">{e.name}</span>
             <span className="muted" style={{ fontSize: 12.5 }}>{e.kind === 'dir' ? '' : size(e.size)}</span>
           </Link>
@@ -166,6 +166,7 @@ function FileView({ st }: { st: Stat }) {
   const raw = `${base}/api/files/raw?path=${q(st.path)}`;
   const md = /\.(md|markdown)$/i.test(st.path);
   const img = st.mime.startsWith('image/');
+  const video = st.mime.startsWith('video/');
   const meta = (
     <div className="head-row" style={{ marginBottom: 14 }}>
       <span className="chip">{st.mime}</span>
@@ -191,6 +192,16 @@ function FileView({ st }: { st: Stat }) {
         {meta}
         <div className="card pad" style={{ display: 'grid', placeItems: 'center' }}>
           <img src={`${raw}&v=${st.mtime ?? 0}`} alt={st.path} style={{ maxWidth: '100%', height: 'auto' }} />
+        </div>
+      </>
+    );
+  }
+  if (video) {
+    return (
+      <>
+        {meta}
+        <div className="card pad" style={{ display: 'grid', placeItems: 'center' }}>
+          <video key={st.mtime ?? 0} src={`${raw}&v=${st.mtime ?? 0}`} controls playsInline preload="metadata" style={{ maxWidth: '100%', maxHeight: '75vh', background: '#000' }} />
         </div>
       </>
     );

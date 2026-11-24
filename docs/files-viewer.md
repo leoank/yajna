@@ -42,6 +42,8 @@ a narrower meaning (ADR-0020).
 | Text and code | CodeMirror 6, read-only, loaded when a file opens; above 4 MB the last 1 MB; growing files followed by appending `Range` reads | 0029, 0041 |
 | Markdown | Rendered by yajna's own renderer with links and citations resolved | 0029 |
 | Images | `<img>` fitted to the width, drawn again when rewritten | 0041 |
+| Video | `<video>` with controls from `raw`, which answers byte ranges for seeking; a video in markdown's image syntax is a player too | 0041 |
+| Mermaid | ` ```mermaid ` blocks in rendered markdown drawn by mermaid (`securityLevel: strict`), split into chunks loaded only when a page has one | 0041 |
 | Frontend build | React in TypeScript, bundled by esbuild through Nix (`nix run .#web`); the bundle is committed and embedded with rust-embed; a flake check fails when it is stale | 0041 |
 
 ## 3. Shape
@@ -255,6 +257,7 @@ sections. What follows describes the app's files, changes and review screens.
 |---|---|
 | Markdown | Rendered through `/api/files/render`, so `[[ID]]` links and citations work and open in the app |
 | Images | `<img>` from `raw`, fitted to the width, drawn again when the file is rewritten |
+| Video (`.mp4`, `.m4v`, `.webm`, `.mov`, `.ogv`) | `<video>` with controls from `raw`, seeking by byte ranges |
 | Text up to 4 MB | CodeMirror 6, read-only, line numbers, highlighting by extension (the language packages are chunks loaded when needed); logs (`.log`, `.out`, `.err`, `.jsonl`) open at their end |
 | Text over 4 MB | Its last 1 MB from the first whole line, without line numbers (they would count from the tail), followed as it grows |
 | Anything else | Size, type and a download link |
