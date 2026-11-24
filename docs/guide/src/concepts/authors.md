@@ -47,8 +47,13 @@ When an agent creates or edits one, it sets
 review: pending
 ```
 
-in the frontmatter. You read the page, change what needs changing, and set
-`review: approved` (or remove the field). The conclusion of an experiment is written once,
-by a person; an agent proposes one in its session page or the log instead.
+in the frontmatter. You read the page, change what needs changing, and approve it with
+`yajna approve <ID>…`, which records who approved it and when.
+
+An agent may conclude an experiment it finished: it writes the *Conclusion* and sets
+`status: concluded` and `outcome`, all under `review: pending`. That is a draft
+conclusion, and every view says so: the experiment tree draws it faded with a dashed ring,
+`yajna tree` marks it, and its status shows a *draft* chip. Read it, edit what needs
+editing, and approve it; until then it is the agent's reading, not yours.
 
 The [Claude Code plugin](../guides/claude-code.md) teaches agents all of this.

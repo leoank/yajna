@@ -66,6 +66,8 @@ export interface Summary {
   title: string;
   status: string | null;
   outcome: string | null;
+  /** concluded by an agent, not yet approved by a human (ADR-0042) */
+  draft?: boolean;
   kind: string | null;
   project: string | null;
   experiment: string | null;

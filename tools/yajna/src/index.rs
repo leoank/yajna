@@ -530,6 +530,14 @@ impl Entity {
     pub fn theme(&self) -> String {
         self.tags.first().cloned().unwrap_or_default()
     }
+
+    /// A concluded experiment no human has approved yet: an agent's draft conclusion
+    /// (ADR-0042).
+    pub fn draft_conclusion(&self) -> bool {
+        self.etype == "experiment"
+            && self.status.as_deref() == Some("concluded")
+            && self.meta.get("review").and_then(|v| v.as_str()) == Some("pending")
+    }
 }
 
 #[derive(Debug, Clone)]

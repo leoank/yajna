@@ -174,7 +174,7 @@ export function PageView({ id }: { id: string }) {
             </div>
             <h1 className="title">{shown.title}</h1>
             <div className="head-row">
-              <Status s={shown.status} outcome={shown.outcome} />
+              <Status s={shown.status} outcome={shown.outcome} draft={shown.draft} />
               {shown.kind && <span className="chip">{shown.kind}</span>}
               {shown.items && shown.items.total > 0 && (
                 <span className="chip">

@@ -253,7 +253,7 @@ Recruitment onset measurable in >= 20 cells with < 2 min uncertainty.
 Filled in by tooling: links to RUN-* pages, or a rendered view of results.tsv.
 
 ## Conclusion
-Written once, by a human, when status becomes `concluded`.
+Written when status becomes `concluded`; an agent's draft waits for a human to approve it.
 ```
 
 Example daily log (`notes/log/2026/2026-10-14.md`). Entries are appended, never reordered:
@@ -635,15 +635,18 @@ write carries `author: agent:<name>` and an `AGS` session ID that links to the m
 prompt, the tool calls, the transcript, and the resulting commit. Rules:
 
 - Log entries, new `RUN` pages, `results.tsv` rows, and `report.md` land directly.
-- Edits to `EXP`, `PRO`, and `MAT` pages, and the `Conclusion` section specifically, land on
-  a branch (or with `review: pending` in frontmatter) and show up in the web UI for human
-  approval. The notebook is also the thesis evidence, so curated pages stay human-signed.
+- Edits to `EXP`, `PRO`, and `MAT` pages land on a branch (or with `review: pending` in
+  frontmatter) and show up in the web UI for human approval. The notebook is also the
+  thesis evidence, so curated pages stay human-signed.
+- An agent may conclude an experiment: write its `Conclusion` and set `status: concluded`
+  and `outcome`, under `review: pending`. That is a draft conclusion, marked as one in the
+  tree, until a human approves it (ADR-0042).
 - Agents never delete. Git history is the safety net anyway, but the API simply has no delete.
 
 **Performing experiments.** Dry lab first, copying AutoGo's `autoresearch` loop: an agent
 creates an `EXP` draft with a target metric, iterates on one script, each run emits
 `===RESULT===`, the CLI records a `RUN` and a `results.tsv` row, the agent keeps or reverts,
-and at the end writes `report.md` and a proposed conclusion. The human's job is interactive
+and at the end writes `report.md` and a draft conclusion on the experiment. The human's job is interactive
 interpretation, which is also how AutoGo describes the division of labour. Wet lab is the
 subject of 7.1 and 7.2.
 

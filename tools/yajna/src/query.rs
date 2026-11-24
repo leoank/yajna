@@ -32,6 +32,9 @@ pub fn line(e: &Entity) -> String {
     if let Some(o) = &e.outcome {
         state = format!("{state}/{o}");
     }
+    if e.draft_conclusion() {
+        state.push_str(" (draft)");
+    }
     if let Some(k) = &e.kind {
         state = if state.is_empty() {
             k.clone()

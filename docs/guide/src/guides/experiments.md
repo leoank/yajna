@@ -64,7 +64,9 @@ influenced_by: [EXP-20261019-a3f9k2]
 
 `yajna tree` prints `<- EXP-…` for it, and the site draws it as a dotted edge in the
 project's experiment tree. Over months this is the map of how the project actually
-thought, dead ends included.
+thought, dead ends included. An experiment an agent concluded that no one has approved yet
+is drawn faded with a dashed ring: a draft conclusion (see
+[Authors](../concepts/authors.md)).
 
 ## Analyses and artifacts
 

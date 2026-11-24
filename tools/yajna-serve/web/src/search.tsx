@@ -184,7 +184,7 @@ function Results({ r, query }: { r: SearchResult; query: string }) {
                   </div>
                 )}
               </span>
-              <Status s={p.status} outcome={p.outcome} />
+              <Status s={p.status} outcome={p.outcome} draft={p.draft} />
             </PageLink>
           ))}
         </div>

@@ -201,7 +201,9 @@ pre-commit hook; `yajna validate` warns about the ones already in git.
 Fill `Question`, `Hypothesis and predictions`, `Plan` and `Success criteria` before the
 first run. Set `status` as it moves: `planned`, `active`, `paused`, `concluded`,
 `abandoned`. When it concludes, set `outcome` (`positive`, `negative`, `inconclusive`,
-`infra`) and write `Conclusion` once, by hand. Record which earlier experiment motivated
+`infra`) and write `Conclusion`. An agent may conclude an experiment too: its conclusion,
+status and outcome are a draft under `review: pending` until a human approves it with
+`yajna approve` (ADR-0042); once approved, an agent does not rewrite it. Record which earlier experiment motivated
 this one in `influenced_by`; the dead ends are the useful part. When a design rests on an
 assumption nobody has checked against the real thing (an external API, a filesystem, a
 size limit), plan an experiment for it and run it before building on it.

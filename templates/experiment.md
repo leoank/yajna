@@ -29,4 +29,4 @@ One line per run after its link, what was tried and what it showed; `yajna valid
 rejects a bare link here. Metric runs also land in results.tsv.
 
 ## Conclusion
-Written once, by a human, when status becomes `concluded`.
+Written when status becomes `concluded`; an agent's draft waits for a human to approve it.

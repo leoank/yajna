@@ -40,7 +40,7 @@ export function tone(s: string | null | undefined): '' | 'ok' | 'run' | 'warn' |
   }
 }
 
-export function Status({ s, outcome }: { s?: string | null; outcome?: string | null }) {
+export function Status({ s, outcome, draft }: { s?: string | null; outcome?: string | null; draft?: boolean }) {
   if (!s && !outcome) return null;
   return (
     <>
@@ -51,6 +51,11 @@ export function Status({ s, outcome }: { s?: string | null; outcome?: string | n
         </span>
       )}
       {outcome && <span className={`chip ${tone(outcome)}`}>{outcome}</span>}
+      {draft && (
+        <span className="chip warn" title="An agent's conclusion, awaiting approval">
+          draft
+        </span>
+      )}
     </>
   );
 }
@@ -257,7 +262,7 @@ export function PageRow({ p }: { p: Summary }) {
         <div className="t">{p.title}</div>
         {p.note && <div className="n2">{p.note}</div>}
       </span>
-      <Status s={p.status} outcome={p.outcome} />
+      <Status s={p.status} outcome={p.outcome} draft={p.draft} />
     </PageLink>
   );
 }

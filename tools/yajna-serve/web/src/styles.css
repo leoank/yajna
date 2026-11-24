@@ -275,6 +275,8 @@ table.data td.num { font-variant-numeric: tabular-nums; font-family: var(--mono)
 .tree svg circle.negative { fill: var(--bad); }
 .tree svg circle.inconclusive { fill: var(--warn); }
 .tree svg circle.infra { fill: var(--text-3); }
+/* a conclusion an agent drafted and no human has approved yet (ADR-0042) */
+.tree svg circle.draft { fill-opacity: 0.35; stroke-dasharray: 3 2; }
 .tree svg a:hover circle { stroke: var(--accent); stroke-width: 2.5; }
 
 /* skeletons: the shape of what is coming, shimmering */

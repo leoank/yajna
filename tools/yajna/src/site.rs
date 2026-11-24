@@ -74,6 +74,7 @@ svg .edge{stroke:var(--line-strong);stroke-width:2}
 svg .influence{stroke:var(--accent);stroke-width:1.5;stroke-dasharray:4 3}
 svg circle{fill:var(--surface);stroke:var(--text-2);stroke-width:1.5}
 svg circle.positive{fill:var(--ok)}svg circle.negative{fill:var(--bad)}svg circle.inconclusive{fill:var(--warn)}svg circle.infra{fill:var(--text-3)}
+svg circle.draft{fill-opacity:.35;stroke-dasharray:3 2}
 @media (max-width:640px){header.top{padding:0 12px;gap:8px}main{padding:18px 16px 48px}h1{font-size:22px}.brand span:last-child{display:none}}
 "#;
 
@@ -308,7 +309,12 @@ fn status_span(e: &Entity) -> String {
     if s.is_empty() {
         return String::new();
     }
-    format!("<span class=\"chip {class}\">{}</span>", esc(&s))
+    let draft = if e.draft_conclusion() {
+        " <span class=\"chip warn\" title=\"an agent's conclusion, awaiting approval\">draft</span>"
+    } else {
+        ""
+    };
+    format!("<span class=\"chip {class}\">{}</span>{draft}", esc(&s))
 }
 
 fn link_to(ix: &Index, id: &str) -> String {
@@ -472,17 +478,29 @@ fn tree_svg(ix: &Index, project: &str) -> String {
                     x - r
                 ));
             }
-            // the outcome as the class its colour comes from
+            // the outcome as the class its colour comes from; a conclusion no human has
+            // approved yet is drawn as a draft (ADR-0042)
             let fill = match e.outcome.as_deref() {
                 Some(o @ ("positive" | "negative" | "inconclusive" | "infra")) => o,
                 _ => "",
             };
+            let (class, state) = if e.draft_conclusion() {
+                (
+                    format!("{fill} draft").trim().to_string(),
+                    format!(
+                        "concluded, {}; draft conclusion, awaiting approval",
+                        e.outcome.as_deref().unwrap_or("no outcome")
+                    ),
+                )
+            } else {
+                (fill.to_string(), e.status.clone().unwrap_or_default())
+            };
             nodes.push_str(&format!(
-                "<a href=\"{}\"><circle class=\"{fill}\" cx=\"{x}\" cy=\"{y}\" r=\"{r}\"><title>{}: {} ({})</title></circle><text x=\"{x}\" y=\"{}\" text-anchor=\"middle\">{}</text></a>\n",
+                "<a href=\"{}\"><circle class=\"{class}\" cx=\"{x}\" cy=\"{y}\" r=\"{r}\"><title>{}: {} ({})</title></circle><text x=\"{x}\" y=\"{}\" text-anchor=\"middle\">{}</text></a>\n",
                 href(&e.id),
                 esc(&e.id),
                 esc(&e.title),
-                esc(&e.status.clone().unwrap_or_default()),
+                esc(&state),
                 y + r + 14.0,
                 node_label(&e.id, x)
             ));
@@ -817,6 +835,7 @@ fn summary(e: &Entity) -> Value {
         "title": e.title,
         "status": e.status,
         "outcome": e.outcome,
+        "draft": e.draft_conclusion(),
         "kind": e.kind,
         "project": e.project,
         "experiment": e.experiment,

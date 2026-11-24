@@ -5534,6 +5534,54 @@ fn conventions_are_checked_from_a_date() {
 }
 
 #[test]
+fn an_agents_conclusion_is_a_draft_until_a_human_approves_it() {
+    let v = vault();
+    assert_eq!(v.run(&["new", "project", "Toy"]).code, 0);
+    let out = v.run(&["new", "experiment", "Does it fold?", "--project", "PRJ-0001"]);
+    let exp = v.path(&out);
+    let eid = v
+        .read(&exp)
+        .lines()
+        .find_map(|l| l.strip_prefix("id: ").map(str::to_string))
+        .unwrap();
+    // the template's hint alone is not a conclusion
+    let concluded = v
+        .read(&exp)
+        .replace("status: planned", "status: concluded")
+        .replace("outcome: null", "outcome: positive")
+        .replace("tags: []", "tags: [folding]");
+    fs::write(&exp, concluded.replace("\ntags:", "\nreview: pending\ntags:")).unwrap();
+    assert!(v.run(&["validate"]).stdout.contains("concluded with no Conclusion written"));
+    // an agent's conclusion under review: pending
+    let text = v.read(&exp);
+    let hint = text.lines().skip_while(|l| *l != "## Conclusion").nth(1).unwrap().to_string();
+    fs::write(&exp, text.replace(&hint, "It folds, in all three runs.")).unwrap();
+    let out = v.run(&["validate"]);
+    assert!(!out.stdout.contains("Conclusion"), "{}", out.stdout);
+    let out = v.run(&["tree", "PRJ-0001"]);
+    assert!(out.stdout.contains("concluded/positive (draft)"), "{}", out.stdout);
+    let site = v.root.join("site");
+    assert_eq!(v.run(&["site", "--out", site.to_str().unwrap()]).code, 0);
+    let project = v.read(&site.join("PRJ-0001.html"));
+    assert!(
+        project.contains("<circle class=\"positive draft\"")
+            && project.contains("(concluded, positive; draft conclusion, awaiting approval)")
+            && project.contains("svg circle.draft{")
+            && project.contains(">draft</span>"),
+        "{project}"
+    );
+    // approved by a human, it is a conclusion like any other
+    assert_eq!(v.run(&["approve", &eid]).code, 0);
+    assert!(v.run(&["tree", "PRJ-0001"]).stdout.contains("concluded/positive  "));
+    assert_eq!(v.run(&["site", "--out", site.to_str().unwrap()]).code, 0);
+    let project = v.read(&site.join("PRJ-0001.html"));
+    assert!(
+        project.contains("<circle class=\"positive\"") && !project.contains(">draft</span>"),
+        "{project}"
+    );
+}
+
+#[test]
 fn crlf_pages_from_a_windows_checkout_are_read_and_written_as_lf() {
     let lab = vault();
     let root = lab.root.canonicalize().unwrap();

@@ -25,8 +25,11 @@ static DATE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\d{4}-\d{2}-\d{
 
 /// Lines the experiment template starts with, to be replaced before the first run.
 const PLACEHOLDERS: &[&str] = &["If H1 is true we expect ... ; if false we expect ...", "1."];
-/// The instruction under *Conclusion* in the template.
-const CONCLUSION_HINT: &str = "Written once, by a human, when status becomes `concluded`.";
+/// The instruction under *Conclusion* in the template, now and before ADR-0042.
+const CONCLUSION_HINTS: &[&str] = &[
+    "Written when status becomes `concluded`; an agent's draft waits for a human to approve it.",
+    "Written once, by a human, when status becomes `concluded`.",
+];
 
 /// Problems, as `path: message`. With `since`, pages created and logs dated before that day
 /// are not held to the conventions; a broken frontmatter, a protocol pin and a committed
@@ -365,7 +368,7 @@ impl Checks<'_> {
                 self.add(&page.path, "concluded without an outcome");
             }
             let said = section(&page.body, "Conclusion");
-            if said.iter().all(|l| l == CONCLUSION_HINT) {
+            if said.iter().all(|l| CONCLUSION_HINTS.contains(&l.as_str())) {
                 self.add(&page.path, "concluded with no Conclusion written");
             }
         }

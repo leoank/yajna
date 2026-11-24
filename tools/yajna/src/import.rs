@@ -511,7 +511,7 @@ fn import_entry(
             prev_list = is_list;
         }
     }
-    body.push_str("\n## Conclusion\nWritten once, by a human, when status becomes `concluded`.\n");
+    body.push_str("\n## Conclusion\nWritten when status becomes `concluded`; an agent's draft waits for a human to approve it.\n");
     let mut fields: Vec<(&str, &str)> = vec![("status", opts.status), ("benchling", &key)];
     if !created.is_empty() {
         fields.push(("created", &created));
