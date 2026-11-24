@@ -70,11 +70,11 @@ with their phases, every page with its fields, body, children and what links to 
 log, the tasks, the reviews, what is changed in each worktree, and the files. It is the
 same on a phone, where the sidebar becomes a menu, and keeps what it last showed while it
 asks the server again, so a slow connection shows a page at once and a quiet
-*Reconnecting…* when the server cannot be reached. The worktree picker at the top of the
-sidebar shows the same screen in another worktree. The static pages `yajna site` writes
+*Reconnecting…* when the server cannot be reached. The picker at the top of the sidebar
+shows the same screen for another project ([in a lab](#projects-in-a-lab)) or worktree. The static pages `yajna site` writes
 are still served at `/<ID>.html`.
 
-**Search** is the box under the worktree picker; `/` or ⌘K (Ctrl-K) goes to it. It
+**Search** is the box under the picker; `/` or ⌘K (Ctrl-K) goes to it. It
 answers as you type with the best few pages, and Enter, or *Everything with …*, opens the
 search screen (`/search?q=…`, the search icon on a phone): every page with all the words
 in its ID, title, tags or text, an ID or a title that matches best first, each with the
@@ -113,6 +113,39 @@ at `/` too. `GET /api/worktrees` lists them with how many files are changed, sta
 untracked in each; a worktree added or removed shows within a few seconds, and is opened
 only when asked for. `[serve] worktrees = "this"` in `yajna.toml` serves the one checkout
 only.
+
+## Projects in a lab
+
+In a lab each project is usually worked on in a worktree of its own, on a branch named
+after it (`yajna worktree PRJ-0004 main` makes `g2a/main`), and that is where the project
+is current. So in a lab the picker at the top of the sidebar picks a project, not a
+worktree (ADR-0043): *All projects*, or one project, shown from its own worktree, with the
+worktree named under it. A project with several worktrees lists them under it; worktrees
+that belong to no project come last.
+
+A project's scope is an address of its own, `/project/<slug>/`, and every screen works
+under it: `/project/g2a/files/code/g2a/train.py`, `/project/g2a/log`. In a scope:
+
+- **Home** is the project's: its counts and phases, *Needs you* (draft conclusions waiting
+  for `yajna approve` and other pages under `review: pending`), its folders, its latest
+  lines.
+- **Experiments, runs and the other pages** are the project's. Protocols, materials and
+  equipment are shared, so they stay listed, under *Lab-wide*.
+- **The log** has the lines that name one of the project's pages (`[[EXP-…]]`, a run, a
+  phase, the project). A line that names no page is not guessed at: it shows under *All
+  projects* only. Name the pages a line is about and it lands in the right project.
+- **Tasks** are those on the project's pages; **search** looks in the project and says how
+  many more there are elsewhere; **changes** and **reviews** are the project's worktrees
+  and branches.
+- **Files** opens on the project's folders (its `code`, its notes, roots inside them),
+  then the roots; paths are the same in every scope.
+
+*All projects* is current too: each project's card, and the log, are read from the
+project's own worktree, and say which one. A page or a file opened under `main` whose
+project's branch is ahead says so, with a link to the current one.
+
+`GET /api/projects` lists the projects with their worktrees, which is home, how many
+commits each is ahead and what is uncommitted.
 
 ## Every notebook on one socket
 

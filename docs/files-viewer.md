@@ -147,12 +147,14 @@ binary.
 | `GET /api/reviews`, `GET /api/reviews/<ID>`, `GET /api/reviews/<ID>/file?path=&old=` | reviews, one review with its threads, changed files and `version`, a changed file at base and head (`docs/review.md` 7.2) |
 | `POST /api/reviews/<ID>/<action>` | with `yajna serve --review` only: a token, a matching `Origin` and the page's `version` |
 | `GET /`, `/p/<ID>`, `/c/<type>`, `/log`, `/tasks`, `/search?q=`, `/reviews`, `/changes`, `/files/…`; `/assets/*` | the web app (ADR-0041) and its files; it works out its base from its own address. Without notebook pages (`dir_router`) `/` is not served. The static site's pages stay at `/<ID>.html`, the classic viewer at `/classic/` |
-| `GET /api/notebook` | the overview: `{namespace, shape, projects: [summary + experiments, runs, phases: {done, total, active}], collections: [{type, label, count}], recent, tasks_open}` |
+| `GET /api/notebook` | the overview: `{namespace, shape, projects: [summary + experiments, runs, phases: {done, total, active}, needs, worktree?], collections: [{type, label, count}], recent, tasks_open}`; a project worked on in a worktree of its own is counted there (`worktree`), and its lines are merged into `recent` (ADR-0043) |
 | `GET /api/pages?type=&project=`, `GET /api/pages/<ID>` | pages newest first, each a summary (`id, type, title, status, outcome, kind, project, experiment, created, author, tags`, and `note`, the line its parent gives it); one page with `path`, `html` (yajna's renderer, raw HTML as text), `fields` (`{key, value, ids, file}`), a project's `phases`, `experiments` and `tree`, an experiment's `runs: {columns, rows}`, `backlinks` and `log` |
-| `GET /api/log?skip=&limit=`, `GET /api/tasks?done=` | `{total, entries}` newest first; the checkboxes with their page |
+| `GET /api/log?skip=&limit=`, `GET /api/tasks?done=` | `{total, entries}` newest first, with each project's lines from its own worktree merged in, those marked `scope` and `worktree` (ADR-0043); the checkboxes with their page |
 | `GET /api/search?q=&limit=` | the pages with every word of `q` in their ID, title, tags or body, ignoring case, best first (an ID over a title over a tag over the body; the whole query as the ID or title above all), `limit` (50) of them as summaries with `snippet`, the passage with the first word as plain text; and the log lines with every word, the newest 20: `{pages, pages_total, log, log_total}` |
 | `GET /api/worktrees` | every worktree of the notebook (ADR-0039): `{worktrees: [{name, branch, path, head, current, url, changed, staged, untracked, conflicted}]}`, `name` the branch or `@<short sha>`, `url` relative to the notebook's address |
 | `/w/<branch>/…` | everything above, for that worktree, the branch percent-encoded (`/w/lab%2Ftopic/files/`); opened on its first request, dropped when the worktree goes; `/w/<branch>` redirects to the slash form |
+| `GET /api/projects` | a lab's projects as scopes (ADR-0043): `{projects: [{id, slug, title, status, folders: [{label, path}], url, home, worktrees: [worktree + home, ahead]}], others: [worktrees of no project]}`; a project's worktrees are those on `<slug>/…`, its `home` the one on `<slug>/main`, else the one committed to last; `ahead` counts commits not in the served checkout. 404 in a `project` notebook or with `[serve] worktrees = "this"` |
+| `/project/<slug>/…`, `/project/<slug>/w/<branch>/…` | everything above, for one project, from its home worktree (or the named one of its own, or the served checkout); the pages API answers for the project: lists, log, tasks and search filtered (a page belongs by its `project`, or by its links when it has none; a log line by the pages it names, a line naming none only under *All projects*; protocols, materials and equipment listed as lab-wide), `/api/notebook` the project's home with `scope`, `needs` (drafts and `review: pending` pages) and its folders, `/api/search` with `outside: {pages, log}` |
 | `GET /api/git/status?path=<root>/<dir>` | the worktree the path is in (ADR-0038): `{worktree, branch, head, upstream, ahead, behind, unstaged, staged, untracked, conflicted}`, each change `{rel, path, status, old?}`, `rel` below the worktree's top and `path` where a root shows it (`null` when none does) |
 | `GET /api/git/log?path=&before=&limit=` | commits newest first, 30 a page: `{commits: [{sha, short, author, time, parents, subject, files}], next?}`; a directory's log has the commits that touched it |
 | `GET /api/git/diff?path=<file>&from=&to=&old=` | `{diff, binary, truncated}`, a unified diff of one file from `from` (default `HEAD`) to `to` (default `WORK`), each `HEAD`, `INDEX`, `WORK` or a commit with an optional `^`; an untracked file shows as added, `old` gives a rename's other side |
@@ -241,10 +243,19 @@ sections. What follows describes the app's files, changes and review screens.
 
 ### 6.1 Layout and state
 
-- **Sidebar**: the notebook, the worktree picker (ADR-0039), the sections (overview, log,
-  tasks, changes, files, reviews), the projects and the page types; on a phone it is a
-  drawer behind the top bar's menu button.
-- **Files**: the roots, then a directory a page of 500 at a time, then a file; a
+- **Sidebar**: the notebook, the scope switcher in a lab (ADR-0043: *All projects*, or a
+  project shown from its own worktree, its other worktrees under it and the worktrees of
+  no project after them) or the worktree picker elsewhere (ADR-0039), the sections
+  (overview, log, tasks, changes, files, reviews), the projects (each opening as its scope)
+  and the page types, lab-wide ones apart in a scope; on a phone it is a drawer behind the
+  top bar's menu button, and the top bar names the scope.
+- **A project's home**: in a scope the overview is the project's: its counts, its phases,
+  *Needs you* (draft conclusions and pages under `review: pending`), its folders and its
+  latest lines. Under *All projects* each card says where its project is worked on, how far
+  ahead and how much is uncommitted; a page or a file of a project whose worktree is ahead
+  of the served checkout says so and links to the current one.
+- **Files**: in a scope its project's folders first, under *All projects* each project's
+  folders (opening in its scope), then the roots; then a directory a page of 500 at a time, then a file; a
   breadcrumb goes back up. The address names the file (`files/<root>/<path>`), so links
   can be pasted; `files/#<root>/<path>`, the previous viewer's form, is turned into it.
 - **Loading**: every read goes through a cache that shows what it last had while it reads

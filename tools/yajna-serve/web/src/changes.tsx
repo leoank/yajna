@@ -8,7 +8,7 @@ import { useState, type ReactElement } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Check, ChevronRight, FileText, GitCommitHorizontal, Minus, Plus } from 'lucide-react';
 import { ApiError, getJson, postJson, useInfo, useWorktrees, type Worktree } from './api';
-import { base, notebookBase, shownWorktree } from './base';
+import { base, notebookBase, scope, shownWorktree } from './base';
 import { Link, navigate } from './router';
 import { Shell } from './Shell';
 import { Empty, Failed, Sk, SkRows } from './ui';
@@ -95,12 +95,18 @@ function useRoot(api: string) {
 }
 
 export function Changes({ search }: { search: URLSearchParams }) {
-  const { data: wts, isLoading: wtLoading } = useWorktrees();
+  const { data: all, isLoading: wtLoading } = useWorktrees();
+  // in a project's scope, the project's worktrees, or the served checkout when it has none
+  // (ADR-0043)
+  const wts = scope && all ? (() => {
+    const mine = all.filter((w) => w.branch?.startsWith(`${scope!.slug}/`));
+    return mine.length ? mine : all.filter((w) => w.current);
+  })() : all;
   const wt = search.get('wt');
   const file = search.get('file');
   const many = (wts?.length ?? 0) > 1;
   // one worktree, or a server of one checkout: straight to it
-  const chosen: string | null = wt ?? (wts && !many ? wts[0]?.name ?? '' : shownWorktree);
+  const chosen: string | null = wt ?? (wts && !many ? wts[0]?.name ?? '' : scope ? null : shownWorktree);
   const w = wts?.find((x) => x.name === chosen);
   const go = (params: Record<string, string | undefined>) => {
     const s = new URLSearchParams();
@@ -143,7 +149,7 @@ function WorktreeList({ list, go }: { list: Worktree[]; go: (p: Record<string, s
     <Shell title="Changes">
       <div className="page-head">
         <h1 className="title">Changes</h1>
-        <div className="sub">What is uncommitted in each worktree of the notebook.</div>
+        <div className="sub">{scope ? `What is uncommitted in each of ${scope.slug}’s worktrees.` : "What is uncommitted in each worktree of the notebook."}</div>
       </div>
       <div className="card rows">
         {list.map((w) => (

@@ -3774,6 +3774,93 @@ fn serve_pages_api_gives_the_web_app_the_notebook() {
 }
 
 #[test]
+fn serve_scopes_the_app_to_a_project_from_its_own_worktree() {
+    // ADR-0043: a lab of two projects, the second worked on in a worktree of its own
+    let v = indexed_lab();
+    assert_eq!(v.run(&["new", "project", "Second"]).code, 0);
+    assert_eq!(v.run(&["log", "tidied the bench, nothing named"]).code, 0);
+    git(&v.root, &["init", "-q", "-b", "main"]);
+    fs::write(v.root.join(".gitignore"), "/.cache/\n/site/\n").unwrap();
+    git(&v.root, &["add", "."]);
+    git(&v.root, &["commit", "-q", "-m", "the lab"]);
+    let spot = tempfile::tempdir().unwrap();
+    let wt = spot.path().join("second");
+    assert_eq!(v.run(&["worktree", "PRJ-0002", "main", "--path", wt.to_str().unwrap()]).code, 0);
+    let on_branch = |args: &[&str]| {
+        let out = Command::new(env!("CARGO_BIN_EXE_yajna"))
+            .arg("--root")
+            .arg(&wt)
+            .args(args)
+            .env_remove("YAJNA_AUTHOR")
+            .env("YAJNA_CACHE", v.root.join(".cache"))
+            .env("XDG_STATE_HOME", v.root.join(".cache/state"))
+            .env("XDG_CONFIG_HOME", v.root.join(".cache/config"))
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    };
+    let made = on_branch(&["new", "experiment", "Does the branch work", "--project", "PRJ-0002"]);
+    let exp = made.rsplit('/').next().unwrap()[..19].to_string();
+    on_branch(&["log", &format!("started [[{exp}]] on the branch")]);
+    on_branch(&["log", "an unnamed thought on the branch"]);
+    git(&wt, &["add", "-A"]);
+    git(&wt, &["commit", "-q", "-m", "work on second"]);
+    let (mut child, addr) = spawn_server(&v, &["serve"]);
+
+    // the projects, each with its worktrees and home, the branch one commit ahead
+    let (status, pj) = api_json(&addr, "/api/projects");
+    assert!(status.contains("200"), "{status} {pj}");
+    let second = pj["projects"].as_array().unwrap().iter().find(|p| p["id"] == "PRJ-0002").unwrap().clone();
+    assert_eq!((second["slug"].as_str(), second["home"].as_str()), (Some("second"), Some("second/main")), "{pj}");
+    assert_eq!(second["worktrees"][0]["ahead"].as_u64(), Some(1), "{pj}");
+    assert_eq!(second["url"], "project/second/");
+    assert!(second["folders"].as_array().unwrap().iter().any(|f| f["label"] == "Notes"), "{pj}");
+
+    // its scope answers from the branch, for the project only
+    let (status, o) = api_json(&addr, "/project/second/api/notebook");
+    assert!(status.contains("200"), "{status} {o}");
+    assert_eq!(o["scope"]["id"], "PRJ-0002", "{o}");
+    let (_, exps) = api_json(&addr, "/project/second/api/pages?type=experiment");
+    let ids: Vec<&str> = exps.as_array().unwrap().iter().filter_map(|e| e["id"].as_str()).collect();
+    assert_eq!(ids, [exp.as_str()], "{exps}");
+    // lab-wide pages stay listed in a scope
+    let (_, pros) = api_json(&addr, "/project/second/api/pages?type=protocol");
+    assert_eq!(pros.as_array().unwrap().len(), 1, "{pros}");
+    // a line names the project's page: in its scope; a line that names none: only in all
+    let (_, log) = api_json(&addr, "/project/second/api/log");
+    let text = log["entries"].to_string();
+    assert!(text.contains("on the branch") && !text.contains("unnamed") && !text.contains("tidied"), "{log}");
+    let (_, log) = api_json(&addr, "/project/archaeal-division/api/log");
+    assert!(!log["entries"].to_string().contains("tidied"), "{log}");
+    let (_, s) = api_json(&addr, "/project/second/api/search?q=escrt");
+    assert_eq!((s["pages_total"].as_u64(), s["outside"]["pages"].as_u64().map(|n| n > 0)), (Some(0), Some(true)), "{s}");
+
+    // all projects: the branch's lines about its project merged in, marked with where
+    // they were read; its unnamed line is not guessed at
+    let (_, all) = api_json(&addr, "/api/log");
+    let entries = all["entries"].as_array().unwrap();
+    let merged = entries.iter().find(|e| e["html"].as_str().unwrap().contains("on the branch")).expect("the branch's line");
+    assert_eq!((merged["scope"].as_str(), merged["worktree"].as_str()), (Some("second"), Some("second/main")), "{all}");
+    assert!(entries.iter().any(|e| e["html"].as_str().unwrap().contains("tidied")), "{all}");
+    assert!(!all.to_string().contains("unnamed"), "{all}");
+    // and the card counts the experiment made on the branch
+    let (_, o) = api_json(&addr, "/api/notebook");
+    let card = o["projects"].as_array().unwrap().iter().find(|p| p["id"] == "PRJ-0002").unwrap();
+    assert_eq!((card["experiments"].as_u64(), card["worktree"].as_str()), (Some(1), Some("second/main")), "{o}");
+
+    // the app under a scope, the bare form redirected, an unknown project not found
+    let (status, _, body) = http_req(&addr, "/project/second/files/notes", &[]);
+    assert!(status.contains("200") && String::from_utf8_lossy(&body).contains("assets/app.js"), "{status}");
+    assert!(http_req(&addr, "/project/second", &[]).0.contains("308"));
+    assert!(http_req(&addr, "/project/nope/api/notebook", &[]).0.contains("404"));
+    assert!(http_req(&addr, "/project/second/w/main/api/notebook", &[]).0.contains("200"));
+    assert!(http_req(&addr, "/project/second/w/lab%2Felse/api/notebook", &[]).0.contains("404"));
+    child.kill().unwrap();
+    let _ = child.wait();
+}
+
+#[test]
 fn review_comment_on_uncommitted_lines_is_anchored_at_work_and_follows_them_into_a_commit() {
     let _home = Home::new();
     let lab = vault();

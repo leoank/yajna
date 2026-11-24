@@ -4,7 +4,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent as KeyEvent } from 'react';
 import { ArrowRight, Search as SearchIcon } from 'lucide-react';
 import { prefetchPage, useSearch, type SearchResult } from './api';
-import { base } from './base';
+import { at, base, scope } from './base';
 import { navigate, useRoute } from './router';
 import { Shell } from './Shell';
 import { Empty, Failed, Log, Marked, PageLink, SkRows, Status } from './ui';
@@ -163,10 +163,35 @@ export function SearchScreen({ q }: { q: string }) {
   );
 }
 
+/** In a project's scope, how many more there are in the whole notebook, and a link to them
+ * (ADR-0043). */
+function Outside({ r, query }: { r: SearchResult; query: string }) {
+  const n = (r.outside?.pages ?? 0) + (r.outside?.log ?? 0);
+  if (!scope || !n) return null;
+  return (
+    <div className="banner">
+      <SearchIcon size={15} />
+      <span style={{ flex: 1, minWidth: 0 }}>
+        {n} more {n === 1 ? 'result' : 'results'} outside {scope.slug}.
+      </span>
+      <a className="btn small" href={at('', searchUrl(query))}>
+        Search all projects <ArrowRight size={13} />
+      </a>
+    </div>
+  );
+}
+
 function Results({ r, query }: { r: SearchResult; query: string }) {
-  if (r.pages_total === 0 && r.log_total === 0) return <Empty>Nothing in the notebook has “{query.trim()}”.</Empty>;
+  if (r.pages_total === 0 && r.log_total === 0)
+    return (
+      <>
+        <Outside r={r} query={query} />
+        <Empty>Nothing {scope ? `in ${scope.slug}` : 'in the notebook'} has “{query.trim()}”.</Empty>
+      </>
+    );
   return (
     <>
+      <Outside r={r} query={query} />
       <h2 className="section">
         Pages <span className="n">{r.pages_total > r.pages.length ? `${r.pages.length} of ${r.pages_total}` : r.pages_total}</span>
       </h2>

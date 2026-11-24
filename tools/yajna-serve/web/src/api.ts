@@ -84,15 +84,50 @@ export interface LogLine {
   html: string;
   path: string;
   line: number;
+  /** read from a project's own worktree (ADR-0043): its slug and the worktree */
+  scope?: string;
+  worktree?: string;
 }
+
+/** A project's folder in the files view: its code, its notes, a root inside them. */
+export interface Folder {
+  label: string;
+  path: string;
+}
+
+/** A page waiting for a human, and why. */
+export type Need = Summary & { why: string };
 
 export interface Overview {
   namespace: string | null;
   shape: string;
-  projects: (Summary & { experiments: number; runs: number; phases: { done: number; total: number; active: Summary | null } })[];
-  collections: { type: string; label: string; count: number }[];
+  projects: (Summary & {
+    experiments: number;
+    runs: number;
+    phases: { done: number; total: number; active: Summary | null };
+    needs: number;
+    /** counted in this worktree, the project's own */
+    worktree?: string;
+  })[];
+  collections: { type: string; label: string; count: number; lab_wide?: boolean }[];
   recent: LogLine[];
   tasks_open: number;
+  /** in a project's scope (ADR-0043) */
+  scope?: { id: string; slug: string | null; title: string; folders: Folder[] };
+  needs?: Need[];
+}
+
+/** A lab's project as a scope (ADR-0043). */
+export interface ProjectScope {
+  id: string;
+  slug: string;
+  title: string;
+  status: string | null;
+  folders: Folder[];
+  /** relative to the notebook's address */
+  url: string;
+  home: string | null;
+  worktrees: (Worktree & { home: boolean; ahead?: number })[];
 }
 
 export interface Page extends Summary {
@@ -117,6 +152,8 @@ export interface SearchResult {
   pages_total: number;
   log: LogLine[];
   log_total: number;
+  /** in a project's scope: how many more are outside it */
+  outside?: { pages: number; log: number };
 }
 
 export interface Task {
@@ -173,6 +210,7 @@ export const keys = {
   tasks: (done: boolean) => ['tasks', done] as const,
   reviews: ['reviews'] as const,
   worktrees: ['worktrees'] as const,
+  projects: ['projects'] as const,
   search: (text: string, limit: number) => ['search', text, limit] as const,
 };
 
@@ -186,6 +224,15 @@ export const fetchers = {
   tasks: (done: boolean) => getJson<Task[]>(`/api/tasks?done=${done}`),
   reviews: () => getJson<ReviewSummary[]>('/api/reviews'),
   search: (text: string, limit: number) => getJson<SearchResult>(`/api/search?q=${q(text)}&limit=${limit}`),
+  // a lab's projects with their worktrees; none where the server has no scopes
+  projects: async () => {
+    try {
+      return await getJson<{ projects: ProjectScope[]; others: (Worktree & { ahead?: number })[] }>('/api/projects', notebookBase);
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 404) return { projects: [] as ProjectScope[], others: [] };
+      throw e;
+    }
+  },
   // the notebook's own list, whichever worktree this app shows
   worktrees: async () => {
     try {
@@ -212,6 +259,7 @@ export const useSearch = (text: string, limit = 50) =>
     placeholderData: keepPreviousData,
     staleTime: 10_000,
   });
+export const useProjects = () => useQuery({ queryKey: keys.projects, queryFn: fetchers.projects, refetchInterval: 15_000 });
 export const useWorktrees = () => useQuery({ queryKey: keys.worktrees, queryFn: fetchers.worktrees, refetchInterval: 10_000 });
 
 /** Read a page before it is opened: on hover or focus of a link to it. */

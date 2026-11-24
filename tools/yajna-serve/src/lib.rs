@@ -20,6 +20,7 @@ pub mod files;
 pub mod git;
 pub mod live;
 pub mod pages;
+pub(crate) mod projects;
 pub mod reviews;
 pub mod worktrees;
 
@@ -354,6 +355,8 @@ fn router(app: App) -> Router {
         .route("/api/tasks", get(pages::tasks_handler))
         .route("/api/search", get(pages::search_handler))
         .route("/w/{*rest}", any(worktrees::dispatch))
+        .route("/api/projects", get(projects::list_handler))
+        .route("/project/{*rest}", any(projects::dispatch))
         .route("/api/reviews", get(reviews::list_handler).post(reviews::open_handler))
         .route("/api/reviews/{id}", get(reviews::get_handler))
         .route("/api/reviews/{id}/file", get(reviews::file_handler))
@@ -577,7 +580,7 @@ mod tests {
         // the opened worktree is named after its directory, to tell it apart
         nbs[0].config.worktrees = Some(worktrees::WorktreesConfig {
             root: main.clone(),
-            open: Arc::new(|root: &std::path::Path| {
+            open: Arc::new(|root: &std::path::Path, _project: Option<&str>| {
                 Ok(config(&root.file_name().unwrap().to_string_lossy()))
             }),
         });

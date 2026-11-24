@@ -10,6 +10,8 @@ use pulldown_cmark::{html, CowStr, Event, Options, Parser, Tag};
 use serde_json::Value;
 
 use crate::index::{Entity, Index, LogEntry};
+use crate::scope::Membership;
+use yajna_serve::pages::Elsewhere;
 use crate::query;
 use crate::vault::{Res, Vault, LINK_RE, NS_ID_RE};
 
@@ -890,7 +892,7 @@ fn log_json(ix: &Index, entries: &[LogEntry]) -> Value {
 /// query as the ID or in the title above all), newest first among equals; and the log
 /// lines with every word, newest first. Case is ignored. A scan of the index, which a
 /// notebook of a few thousand pages answers in milliseconds.
-fn search(ix: &Index, q: &str, limit: usize) -> Value {
+fn search(ix: &Index, q: &str, limit: usize, scope: Option<(&Membership, &str)>) -> Value {
     let terms: Vec<String> = q.split_whitespace().map(str::to_lowercase).collect();
     if terms.is_empty() {
         return serde_json::json!({ "pages": [], "pages_total": 0, "log": [], "log_total": 0 });
@@ -938,6 +940,12 @@ fn search(ix: &Index, q: &str, limit: usize) -> Value {
         hits.push((score, e));
     }
     hits.sort_by(|(a, x), (b, y)| b.total_cmp(a).then_with(|| y.created.cmp(&x.created)));
+    // in a project's scope (ADR-0043), its pages and the lab-wide ones; how many were left
+    // out is said
+    let all_pages = hits.len();
+    if let Some((m, p)) = scope {
+        hits.retain(|(_, e)| m.belongs(&e.id, p) || crate::scope::lab_wide(e));
+    }
     let pages_total = hits.len();
     let pages: Vec<Value> = hits
         .iter()
@@ -960,10 +968,17 @@ fn search(ix: &Index, q: &str, limit: usize) -> Value {
             terms.iter().all(|t| text.contains(t.as_str()))
         })
         .collect();
+    let all_log = log.len();
+    if let Some((m, p)) = scope {
+        log.retain(|l| m.of_line(&l.text).contains(p));
+    }
     log.reverse();
     let log_total = log.len();
     log.truncate(20);
-    serde_json::json!({ "pages": pages, "pages_total": pages_total, "log": log_json(ix, &log), "log_total": log_total })
+    serde_json::json!({
+        "pages": pages, "pages_total": pages_total, "log": log_json(ix, &log), "log_total": log_total,
+        "outside": { "pages": all_pages - pages_total, "log": all_log - log_total },
+    })
 }
 
 /// The passage of `text` around the first match of `re`, on one line, about 200
@@ -1018,15 +1033,17 @@ fn checkboxes(body: &str) -> (usize, usize) {
     (done, all)
 }
 
-/// The notebook's pages as `yajna serve` gives them to the web app.
+/// The notebook's pages as `yajna serve` gives them to the web app, all of them or, in a
+/// project's scope, the project's (ADR-0043).
 pub(crate) struct ServedPages {
     root: PathBuf,
     links: std::sync::Arc<FileLinks>,
+    project: Option<String>,
 }
 
 impl ServedPages {
-    pub(crate) fn new(root: PathBuf, links: std::sync::Arc<FileLinks>) -> Self {
-        ServedPages { root, links }
+    pub(crate) fn new(root: PathBuf, links: std::sync::Arc<FileLinks>, project: Option<String>) -> Self {
+        ServedPages { root, links, project }
     }
 
     fn index(&self) -> Result<(Vault, Index), String> {
@@ -1034,6 +1051,189 @@ impl ServedPages {
         let ix = Index::open(&vault, false)?;
         Ok((vault, ix))
     }
+
+    /// A project's home (ADR-0043): the project, what of it waits for a human, its pages by
+    /// type (lab-wide ones apart), its latest lines, its open tasks and its folders.
+    fn scoped_overview(&self, vault: &Vault, ix: &Index, p: &str) -> Result<Value, String> {
+        let prj = ix.entity(p).ok_or_else(|| format!("{p}: no such project in this worktree"))?;
+        let m = Membership::of(ix);
+        let all = ix.entities("", &[]);
+        let collections: Vec<Value> = COLLECTIONS
+            .iter()
+            .filter(|(t, _)| *t != "project")
+            .map(|(t, label)| {
+                let of_type = all.iter().filter(|e| e.etype == *t);
+                let shared = all.iter().any(|e| e.etype == *t && crate::scope::lab_wide(e));
+                let count = of_type.filter(|e| m.belongs(&e.id, p) || crate::scope::lab_wide(e)).count();
+                serde_json::json!({ "type": t, "label": label, "count": count, "lab_wide": shared })
+            })
+            .filter(|c| c["count"].as_u64().unwrap_or(0) > 0)
+            .collect();
+        let (_, recent) = merged_log(ix, &[], 0, 12, |l| m.of_line(&l.text).contains(p));
+        let tasks_open = ix.tasks(false).iter().filter(|t| t.id.as_deref().is_some_and(|id| m.belongs(id, p))).count();
+        Ok(serde_json::json!({
+            "namespace": vault.namespace().ok(),
+            "shape": vault.shape(),
+            "scope": {
+                "id": prj.id,
+                "slug": project_slug(vault, p),
+                "title": prj.title,
+                "folders": project_folders(vault, &self.links, &prj),
+            },
+            "projects": [project_card(ix, &prj)],
+            "needs": needs(ix, &m, p),
+            "collections": collections,
+            "recent": recent,
+            "tasks_open": tasks_open,
+        }))
+    }
+}
+
+/// A project's directory name less its ID: `g2a` for `PRJ-0004-g2a`, the prefix of its
+/// branches (`yajna worktree`).
+fn project_slug(vault: &Vault, id: &str) -> Option<String> {
+    let dir = vault.project_dir(id).ok()?;
+    let name = dir.file_name()?.to_string_lossy().to_string();
+    Some(name.strip_prefix(&format!("{id}-")).unwrap_or(&name).to_string())
+}
+
+/// A project's folders in the files view: its code (`code`, when it is a path here), its
+/// notes, and the roots that lie inside them; each `{label, path}`.
+fn project_folders(vault: &Vault, links: &FileLinks, p: &Entity) -> Vec<Value> {
+    let mut dirs: Vec<(&str, PathBuf)> = Vec::new();
+    if let Some(code) = p.meta.get("code").and_then(Value::as_str) {
+        if !code.contains(':') {
+            dirs.push(("Code", vault.root.join(code)));
+        }
+    }
+    if let Ok(d) = vault.project_dir(&p.id) {
+        dirs.push(("Notes", d));
+    }
+    let mut out = Vec::new();
+    for (label, d) in &dirs {
+        if let Some(h) = d.is_dir().then(|| links.href(&d.to_string_lossy())).flatten() {
+            out.push(serde_json::json!({ "label": label, "path": h.trim_start_matches("files/#") }));
+        }
+    }
+    for (name, root) in &links.roots {
+        let root: PathBuf = root.components().collect();
+        if dirs.iter().any(|(_, d)| {
+            let d: PathBuf = d.components().collect();
+            root != d && root.starts_with(&d)
+        }) {
+            out.push(serde_json::json!({ "label": name, "path": name }));
+        }
+    }
+    out
+}
+
+/// A project's card on the overview: its counts, its phases, and how many of its pages
+/// wait for a human (drafts and `review: pending`).
+fn project_card(ix: &Index, p: &Entity) -> Value {
+    let count = |t: &str| ix.entities("WHERE type = ?1 AND project = ?2", &[&t.to_string(), &p.id]).len();
+    let phases = ix.entities("WHERE type = 'phase' AND project = ?1", &[&p.id]);
+    let done = phases.iter().filter(|ph| ph.status.as_deref() == Some("done")).count();
+    let active = phases.iter().find(|ph| ph.status.as_deref() == Some("active")).map(summary);
+    let mut v = summary(p);
+    v["experiments"] = count("experiment").into();
+    v["runs"] = count("run").into();
+    v["phases"] = serde_json::json!({ "done": done, "total": phases.len(), "active": active });
+    v["needs"] = needs(ix, &Membership::of(ix), &p.id).len().into();
+    v
+}
+
+/// The project's pages waiting for a human: draft conclusions (ADR-0042) and other pages
+/// under `review: pending`, each with `why`.
+fn needs(ix: &Index, m: &Membership, project: &str) -> Vec<Value> {
+    ix.entities("", &[])
+        .iter()
+        .filter(|e| m.belongs(&e.id, project))
+        .filter_map(|e| {
+            let why = if e.draft_conclusion() {
+                "draft conclusion"
+            } else if e.meta.get("review").and_then(Value::as_str) == Some("pending") {
+                "review pending"
+            } else {
+                return None;
+            };
+            let mut v = summary(e);
+            v["why"] = why.into();
+            Some(v)
+        })
+        .collect()
+}
+
+/// A log line as the app gets it, from another worktree when `from` names it.
+fn line_json(ix: &Index, m: &LogEntry, from: Option<&Elsewhere>) -> Value {
+    let mut v = serde_json::json!({ "date": m.date, "time": m.time, "author": m.author, "html": inline(ix, &m.text), "path": m.path, "line": m.line });
+    if let Some(e) = from {
+        v["scope"] = e.slug.clone().into();
+        v["worktree"] = e.worktree.clone().into();
+    }
+    v
+}
+
+/// What *All projects* reads from a project's own worktree: its card and its log lines,
+/// rendered there, since pages made on its branch are known only there.
+struct Theirs {
+    card: Option<Value>,
+    lines: Vec<(LogEntry, Value)>,
+}
+
+fn read_elsewhere(elsewhere: &[Elsewhere]) -> Vec<Theirs> {
+    std::thread::scope(|s| {
+        let handles: Vec<_> = elsewhere
+            .iter()
+            .map(|e| {
+                s.spawn(move || -> Option<Theirs> {
+                    let vault = Vault::open(e.root.clone()).ok()?;
+                    let ix = Index::open(&vault, false).ok()?;
+                    let m = Membership::of(&ix);
+                    let card = ix.entity(&e.project).map(|p| {
+                        let mut v = project_card(&ix, &p);
+                        v["worktree"] = e.worktree.clone().into();
+                        v
+                    });
+                    let lines = ix
+                        .log()
+                        .into_iter()
+                        .filter(|l| m.of_line(&l.text).contains(&e.project))
+                        .map(|l| {
+                            let v = line_json(&ix, &l, Some(e));
+                            (l, v)
+                        })
+                        .collect();
+                    Some(Theirs { card, lines })
+                })
+            })
+            .collect();
+        handles.into_iter().filter_map(|h| h.join().ok().flatten()).collect()
+    })
+}
+
+/// The served checkout's log lines with those of `theirs` it has not got, newest first;
+/// `limit` of them after `skip`, and how many in all.
+fn merged_log(ix: &Index, theirs: &[Theirs], skip: usize, limit: usize, keep: impl Fn(&LogEntry) -> bool) -> (usize, Vec<Value>) {
+    let key = |l: &LogEntry| (l.date.clone(), l.time.clone(), l.author.clone(), l.text.clone());
+    let own: Vec<LogEntry> = ix.log().into_iter().filter(|l| keep(l)).collect();
+    let seen: std::collections::HashSet<_> = own.iter().map(key).collect();
+    let mut all: Vec<(LogEntry, Option<&Value>)> = own.into_iter().map(|l| (l, None)).collect();
+    for t in theirs {
+        for (l, v) in &t.lines {
+            if !seen.contains(&key(l)) {
+                all.push((l.clone(), Some(v)));
+            }
+        }
+    }
+    all.sort_by(|(a, _), (b, _)| (&b.date, &b.time).cmp(&(&a.date, &a.time)));
+    let total = all.len();
+    let page = all
+        .into_iter()
+        .skip(skip)
+        .take(limit)
+        .map(|(l, v)| v.cloned().unwrap_or_else(|| line_json(ix, &l, None)))
+        .collect();
+    (total, page)
 }
 
 /// The page types the overview counts, in the order the app lists them.
@@ -1053,21 +1253,19 @@ const COLLECTIONS: [(&str, &str); 12] = [
 ];
 
 impl yajna_serve::pages::Pages for ServedPages {
-    fn overview(&self) -> Result<Value, String> {
+    fn overview(&self, elsewhere: &[Elsewhere]) -> Result<Value, String> {
         let (vault, ix) = self.index()?;
+        if let Some(p) = &self.project {
+            return self.scoped_overview(&vault, &ix, p);
+        }
+        let theirs = read_elsewhere(elsewhere);
         let projects: Vec<Value> = ix
             .entities("WHERE type = 'project'", &[])
             .iter()
             .map(|p| {
-                let count = |t: &str| ix.entities("WHERE type = ?1 AND project = ?2", &[&t.to_string(), &p.id]).len();
-                let phases = ix.entities("WHERE type = 'phase' AND project = ?1", &[&p.id]);
-                let done = phases.iter().filter(|ph| ph.status.as_deref() == Some("done")).count();
-                let active = phases.iter().find(|ph| ph.status.as_deref() == Some("active")).map(summary);
-                let mut v = summary(p);
-                v["experiments"] = count("experiment").into();
-                v["runs"] = count("run").into();
-                v["phases"] = serde_json::json!({ "done": done, "total": phases.len(), "active": active });
-                v
+                // a project worked on in a worktree of its own is counted there
+                let there = elsewhere.iter().zip(&theirs).find(|(e, _)| e.project == p.id);
+                there.and_then(|(_, t)| t.card.clone()).unwrap_or_else(|| project_card(&ix, p))
             })
             .collect();
         let collections: Vec<Value> = COLLECTIONS
@@ -1075,15 +1273,13 @@ impl yajna_serve::pages::Pages for ServedPages {
             .map(|(t, label)| serde_json::json!({ "type": t, "label": label, "count": ix.entities("WHERE type = ?1", &[&t.to_string()]).len() }))
             .filter(|c| c["count"].as_u64().unwrap_or(0) > 0)
             .collect();
-        let mut log = ix.log();
-        log.reverse();
-        log.truncate(12);
+        let (_, recent) = merged_log(&ix, &theirs, 0, 12, |_| true);
         Ok(serde_json::json!({
             "namespace": vault.namespace().ok(),
             "shape": vault.shape(),
             "projects": projects,
             "collections": collections,
-            "recent": log_json(&ix, &log),
+            "recent": recent,
             "tasks_open": ix.tasks(false).len(),
         }))
     }
@@ -1104,6 +1300,10 @@ impl yajna_serve::pages::Pages for ServedPages {
         // newest first; `entities` orders by creation itself
         let mut found = ix.entities(&sql, &params);
         found.reverse();
+        if let Some(p) = &self.project {
+            let m = Membership::of(&ix);
+            found.retain(|e| m.belongs(&e.id, p) || crate::scope::lab_wide(e));
+        }
         Ok(found
             .iter()
             .map(|e| {
@@ -1244,25 +1444,55 @@ impl yajna_serve::pages::Pages for ServedPages {
         Ok(Some(v))
     }
 
-    fn log(&self, skip: usize, limit: usize) -> Result<Value, String> {
+    fn log(&self, skip: usize, limit: usize, elsewhere: &[Elsewhere]) -> Result<Value, String> {
         let (_, ix) = self.index()?;
-        let mut all = ix.log();
-        all.reverse();
-        let total = all.len();
-        let page: Vec<LogEntry> = all.into_iter().skip(skip).take(limit).collect();
-        Ok(serde_json::json!({ "total": total, "entries": log_json(&ix, &page) }))
+        let (total, entries) = match &self.project {
+            Some(p) => {
+                let m = Membership::of(&ix);
+                merged_log(&ix, &[], skip, limit, |l| m.of_line(&l.text).contains(p))
+            }
+            None => merged_log(&ix, &read_elsewhere(elsewhere), skip, limit, |_| true),
+        };
+        Ok(serde_json::json!({ "total": total, "entries": entries }))
     }
 
     fn search(&self, q: &str, limit: usize) -> Result<Value, String> {
         let (_, ix) = self.index()?;
-        Ok(search(&ix, q, limit))
+        let m = self.project.as_ref().map(|_| Membership::of(&ix));
+        let scope = m.as_ref().zip(self.project.as_deref());
+        Ok(search(&ix, q, limit, scope))
+    }
+
+    fn projects(&self) -> Result<Value, String> {
+        let (vault, ix) = self.index()?;
+        if vault.is_project() {
+            return Ok(Value::Array(Vec::new()));
+        }
+        Ok(ix
+            .entities("WHERE type = 'project'", &[])
+            .iter()
+            .filter_map(|p| {
+                Some(serde_json::json!({
+                    "id": p.id,
+                    "slug": project_slug(&vault, &p.id)?,
+                    "title": p.title,
+                    "status": p.status,
+                    "folders": project_folders(&vault, &self.links, p),
+                }))
+            })
+            .collect())
     }
 
     fn tasks(&self, done: bool) -> Result<Value, String> {
         let (_, ix) = self.index()?;
+        let m = self.project.as_ref().map(|_| Membership::of(&ix));
         Ok(ix
             .tasks(done)
             .iter()
+            .filter(|t| match (&m, &self.project) {
+                (Some(m), Some(p)) => t.id.as_deref().is_some_and(|id| m.belongs(id, p)),
+                _ => true,
+            })
             .map(|t| {
                 let page = t.id.as_ref().and_then(|id| ix.entity(id)).map(|e| summary(&e));
                 serde_json::json!({ "done": t.done, "page": page, "path": t.path, "line": t.line, "section": t.section, "html": inline(&ix, &t.text) })

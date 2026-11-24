@@ -14,23 +14,41 @@ use serde_json::Value;
 
 use crate::App;
 
+/// A project's own worktree, read by the views of *All projects* so they show its current
+/// state rather than the served checkout's copy (ADR-0043).
+#[derive(Clone, Debug)]
+pub struct Elsewhere {
+    /// the worktree's notebook root
+    pub root: std::path::PathBuf,
+    /// the project's ID and slug
+    pub project: String,
+    pub slug: String,
+    /// the worktree's name, its branch
+    pub worktree: String,
+}
+
 /// The notebook side of the pages, implemented by the CLI. Every method runs on a blocking
 /// thread and answers JSON in the shapes `docs/files-viewer.md` 5.2 gives.
 pub trait Pages: Send + Sync {
     /// the notebook: its name and shape, its projects with their progress, how many pages
-    /// of each type it has, the latest log lines
-    fn overview(&self) -> Result<Value, String>;
+    /// of each type it has, the latest log lines; each project in `elsewhere` counted, and
+    /// its lines read, from its own worktree
+    fn overview(&self, elsewhere: &[Elsewhere]) -> Result<Value, String>;
     /// pages of a type, or of a project, or both; newest first
     fn list(&self, kind: Option<&str>, project: Option<&str>) -> Result<Value, String>;
     /// one page, `None` when no page has that ID
     fn page(&self, id: &str) -> Result<Option<Value>, String>;
-    /// log lines newest first, `limit` of them after skipping `skip`
-    fn log(&self, skip: usize, limit: usize) -> Result<Value, String>;
+    /// log lines newest first, `limit` of them after skipping `skip`, with the lines of
+    /// each project in `elsewhere` from its own worktree merged in
+    fn log(&self, skip: usize, limit: usize, elsewhere: &[Elsewhere]) -> Result<Value, String>;
     /// the checkboxes of the notebook, open ones, or all with `done`
     fn tasks(&self, done: bool) -> Result<Value, String>;
     /// the pages and log lines with every word of `q` in them, the best `limit` pages
     /// first, each with the passage of its text where the words are
     fn search(&self, q: &str, limit: usize) -> Result<Value, String>;
+    /// a lab's projects: `[{id, slug, title, status, folders: [{label, path}]}]`, the
+    /// folders as paths in the files view; empty in a `project` notebook (ADR-0043)
+    fn projects(&self) -> Result<Value, String>;
 }
 
 fn error(status: StatusCode, msg: impl Into<String>) -> Response {
@@ -50,7 +68,12 @@ async fn answer(app: App, f: impl FnOnce(&dyn Pages) -> Result<Option<Value>, St
 }
 
 pub(crate) async fn overview_handler(State(app): State<App>) -> Response {
-    answer(app, |p| p.overview().map(Some)).await
+    let wt = app.worktrees.clone();
+    answer(app, move |p| {
+        let elsewhere = wt.map(|w| w.elsewhere(p)).unwrap_or_default();
+        p.overview(&elsewhere).map(Some)
+    })
+    .await
 }
 
 #[derive(Deserialize)]
@@ -76,7 +99,12 @@ pub(crate) struct LogQuery {
 
 pub(crate) async fn log_handler(State(app): State<App>, Query(q): Query<LogQuery>) -> Response {
     let (skip, limit) = (q.skip.unwrap_or(0), q.limit.unwrap_or(100).clamp(1, 500));
-    answer(app, move |p| p.log(skip, limit).map(Some)).await
+    let wt = app.worktrees.clone();
+    answer(app, move |p| {
+        let elsewhere = wt.map(|w| w.elsewhere(p)).unwrap_or_default();
+        p.log(skip, limit, &elsewhere).map(Some)
+    })
+    .await
 }
 
 #[derive(Deserialize)]

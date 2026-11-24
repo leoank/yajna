@@ -121,8 +121,8 @@ fn token() -> Res<String> {
 
 /// What the server needs for one notebook: its site rendered into `out` (at once with
 /// `eager`, else on the first page request), the files viewer's roots, the preview's
-/// renderer and its reviews.
-fn notebook_config(vault: &Vault, out: PathBuf, eager: bool) -> Res<yajna_serve::Config> {
+/// renderer and its reviews; its pages scoped to `project` when one is given (ADR-0043).
+fn notebook_config(vault: &Vault, out: PathBuf, eager: bool, project: Option<&str>) -> Res<yajna_serve::Config> {
     let roots = roots(vault)?;
     let links = Arc::new(FileLinks {
         repo: vault.root.clone(),
@@ -173,14 +173,14 @@ fn notebook_config(vault: &Vault, out: PathBuf, eager: bool) -> Res<yajna_serve:
         notebook: vault.namespace().unwrap_or("notebook").to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
         reviews: Some(Arc::new(crate::review::Served::new(vault.root.clone()))),
-        pages: Some(Arc::new(crate::site::ServedPages::new(vault.root.clone(), pages_links))),
+        pages: Some(Arc::new(crate::site::ServedPages::new(vault.root.clone(), pages_links, project.map(str::to_string)))),
         token: None,
         // every worktree, each opened on its first request, its site rendered then
         worktrees: all_worktrees(vault)?.then(|| yajna_serve::worktrees::WorktreesConfig {
             root: vault.root.clone(),
-            open: Arc::new(|root: &Path| {
+            open: Arc::new(|root: &Path, project: Option<&str>| {
                 let v = Vault::open(root.to_path_buf())?;
-                notebook_config(&v, site_dir(&v), false)
+                notebook_config(&v, site_dir(&v), false, project)
             }),
         }),
     })
@@ -197,7 +197,7 @@ pub fn cmd_serve(
     let out = out
         .map(Path::to_path_buf)
         .unwrap_or_else(|| site_dir(vault));
-    let mut cfg = notebook_config(vault, out, true)?;
+    let mut cfg = notebook_config(vault, out, true, None)?;
     for r in &cfg.roots {
         let missing = if r.path.is_dir() { "" } else { " (missing)" };
         println!("files: {} -> {}{missing}", r.name, r.path.display());
@@ -238,7 +238,7 @@ pub fn cmd_serve_socket(socket: &Path) -> Res<i32> {
     let mut notebooks = Vec::new();
     for (namespace, path) in crate::anywhere::registered()? {
         let opened = Vault::open(path.clone()).and_then(|v| {
-            let cfg = notebook_config(&v, site_dir(&v), false)?;
+            let cfg = notebook_config(&v, site_dir(&v), false, None)?;
             Ok((v.shape().to_string(), cfg))
         });
         match opened {

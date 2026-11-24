@@ -22,9 +22,9 @@ use serde::Serialize;
 
 use crate::{App, Config};
 
-/// Makes the configuration of the notebook at a worktree's notebook root; run on a
-/// blocking thread.
-pub type Open = Arc<dyn Fn(&Path) -> Result<Config, String> + Send + Sync>;
+/// Makes the configuration of the notebook at a worktree's notebook root, scoped to a
+/// project when one is given (ADR-0043); run on a blocking thread.
+pub type Open = Arc<dyn Fn(&Path, Option<&str>) -> Result<Config, String> + Send + Sync>;
 
 /// How long a listing of the worktrees is used before git is asked again.
 const FRESH: Duration = Duration::from_secs(3);
@@ -52,16 +52,19 @@ pub struct Worktree {
 }
 
 pub(crate) struct Worktrees {
-    root: PathBuf,
-    open: Open,
+    pub(crate) root: PathBuf,
+    pub(crate) open: Open,
     /// for the routers of other worktrees: the served checkout's write rules
-    token: Option<String>,
-    local: bool,
+    pub(crate) token: Option<String>,
+    pub(crate) local: bool,
     listed: Mutex<Option<(Instant, Arc<Vec<Worktree>>)>>,
     routers: Mutex<HashMap<PathBuf, Router>>,
+    /// a project's scope in a worktree (ADR-0043), by the worktree's path and the project
+    pub(crate) scoped: Mutex<HashMap<(PathBuf, String), Router>>,
+    pub(crate) projects: Mutex<Option<(Instant, Arc<Vec<crate::projects::Project>>)>>,
 }
 
-fn real(p: &Path) -> PathBuf {
+pub(crate) fn real(p: &Path) -> PathBuf {
     std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf())
 }
 
@@ -78,7 +81,7 @@ pub fn encode(name: &str) -> String {
     out
 }
 
-fn decode(seg: &str) -> Option<String> {
+pub(crate) fn decode(seg: &str) -> Option<String> {
     let b = seg.as_bytes();
     let mut out = Vec::with_capacity(b.len());
     let mut i = 0;
@@ -146,6 +149,8 @@ impl Worktrees {
             local,
             listed: Mutex::new(None),
             routers: Mutex::new(HashMap::new()),
+            scoped: Mutex::new(HashMap::new()),
+            projects: Mutex::new(None),
         }
     }
 
@@ -178,6 +183,7 @@ impl Worktrees {
         // what was opened for a worktree that went goes with it
         let keep: Vec<PathBuf> = list.iter().map(|w| real(&w.path)).collect();
         self.routers.lock().unwrap_or_else(|e| e.into_inner()).retain(|p, _| keep.contains(p));
+        self.scoped.lock().unwrap_or_else(|e| e.into_inner()).retain(|(p, _), _| keep.contains(p));
         *self.listed.lock().unwrap_or_else(|e| e.into_inner()) = Some((Instant::now(), list.clone()));
         Ok(list)
     }
@@ -189,21 +195,7 @@ impl Worktrees {
             .iter()
             .map(|w| {
                 let mut v = serde_json::to_value(w).unwrap_or_default();
-                let counts = Command::new("git")
-                    .arg("-C")
-                    .arg(&w.path)
-                    .args(["status", "--porcelain=v2", "-z", "--untracked-files=all"])
-                    .env("GIT_OPTIONAL_LOCKS", "0")
-                    .output()
-                    .ok()
-                    .filter(|o| o.status.success())
-                    .map(|o| crate::git::parse_status(&o.stdout));
-                if let Some(s) = counts {
-                    v["changed"] = s.unstaged.len().into();
-                    v["staged"] = s.staged.len().into();
-                    v["untracked"] = s.untracked.len().into();
-                    v["conflicted"] = s.conflicted.len().into();
-                }
+                add_counts(&mut v, &w.path);
                 v
             })
             .collect())
@@ -218,7 +210,7 @@ impl Worktrees {
         if let Some(r) = self.routers.lock().unwrap_or_else(|e| e.into_inner()).get(&key) {
             return Ok(Some(r.clone()));
         }
-        let mut cfg = (self.open)(&w.path)?;
+        let mut cfg = (self.open)(&w.path, None)?;
         cfg.token = self.token.clone();
         // a worktree's own server does not list worktrees again
         cfg.worktrees = None;
@@ -243,7 +235,6 @@ pub(crate) async fn list_handler(State(app): State<App>) -> Response {
 /// `/w/<branch>/<rest>` to that worktree's router as `/<rest>`; `/w/<branch>` is
 /// redirected to the slash form, which relative links in its pages need.
 pub(crate) async fn dispatch(State(app): State<App>, req: Request) -> Response {
-    use tower::ServiceExt;
     let Some(wt) = app.worktrees.clone() else {
         return (StatusCode::NOT_FOUND, "this server serves its own checkout only\n").into_response();
     };
@@ -272,6 +263,32 @@ pub(crate) async fn dispatch(State(app): State<App>, req: Request) -> Response {
         Ok(Err(e)) => return (StatusCode::INTERNAL_SERVER_ERROR, format!("{name}: {e}\n")).into_response(),
         Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     };
+    forward(router, req, inner).await
+}
+
+/// How many files are changed, staged, untracked and conflicted in the worktree at `path`,
+/// added to its JSON; nothing when git cannot say.
+pub(crate) fn add_counts(v: &mut serde_json::Value, path: &Path) {
+    let counts = Command::new("git")
+        .arg("-C")
+        .arg(path)
+        .args(["status", "--porcelain=v2", "-z", "--untracked-files=all"])
+        .env("GIT_OPTIONAL_LOCKS", "0")
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| crate::git::parse_status(&o.stdout));
+    if let Some(s) = counts {
+        v["changed"] = s.unstaged.len().into();
+        v["staged"] = s.staged.len().into();
+        v["untracked"] = s.untracked.len().into();
+        v["conflicted"] = s.conflicted.len().into();
+    }
+}
+
+/// `req` to `router` as a request for `inner`, its query kept.
+pub(crate) async fn forward(router: Router, req: Request, inner: String) -> Response {
+    use tower::ServiceExt;
     let inner = match req.uri().query() {
         Some(q) => format!("{inner}?{q}"),
         None => inner,

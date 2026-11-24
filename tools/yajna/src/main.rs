@@ -15,6 +15,7 @@ mod phase;
 mod query;
 mod refs;
 mod reproduce;
+mod scope;
 mod rerun;
 mod review;
 mod serve;

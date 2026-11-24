@@ -5,12 +5,12 @@
 import { lazy, Suspense, useEffect } from 'react';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLive } from './live';
-import { ChevronRight, Download, File, FileCode2, Film, Folder, ImageIcon } from 'lucide-react';
-import { getJson } from './api';
-import { base } from './base';
+import { ArrowRight, ChevronRight, Download, File, FileCode2, Film, Folder, ImageIcon, Info } from 'lucide-react';
+import { getJson, useOverview, useProjects } from './api';
+import { at, base, scope } from './base';
 import { Link, navigate } from './router';
 import { Shell } from './Shell';
-import { Empty, Failed, Html, Sk, SkRows } from './ui';
+import { Empty, Failed, Folders, Html, Sk, SkRows } from './ui';
 
 const Code = lazy(() => import('./code'));
 
@@ -81,12 +81,80 @@ export function Files({ path }: { path: string }) {
         <Crumbs path={path} />
         <h1 className="title" style={{ wordBreak: 'break-all' }}>{title}</h1>
       </div>
+      <ElsewhereNote path={path} />
       {path ? <Entry path={path} /> : <Roots />}
     </Shell>
   );
 }
 
+/** Under *All projects*, a path in a project's folder that the project's own worktree has
+ * newer or uncommitted work in: say so, with a link to the same path there (ADR-0043). */
+function ElsewhereNote({ path }: { path: string }) {
+  const { data: pj } = useProjects();
+  if (scope || !path) return null;
+  const p = pj?.projects.find((x) => x.folders.some((f) => path === f.path || path.startsWith(`${f.path}/`)));
+  const home = p?.worktrees.find((w) => w.home && !w.current);
+  if (!p || !home) return null;
+  const n = (home.changed ?? 0) + (home.staged ?? 0) + (home.untracked ?? 0);
+  return (
+    <div className="banner">
+      <Info size={15} />
+      <span style={{ flex: 1, minWidth: 0 }}>
+        {p.title} is worked on in <b>{home.name}</b>
+        {home.ahead ? `, ${home.ahead} commits ahead of this copy` : ''}
+        {n ? `${home.ahead ? ' and' : ','} ${n} files uncommitted` : ''}.
+      </span>
+      <a className="btn small" href={at(p.url, `files/${path}`)}>
+        Open it there <ArrowRight size={13} />
+      </a>
+    </div>
+  );
+}
+
+/** Where Files opens (ADR-0043): in a project's scope its folders, under *All projects*
+ * each project's folders in its own scope; then the roots. */
 function Roots() {
+  const { data: ov } = useOverview();
+  const { data: pj } = useProjects();
+  const sc = ov?.scope;
+  const others = !sc ? (pj?.projects ?? []).filter((p) => p.folders.length) : [];
+  return (
+    <>
+      {sc && sc.folders.length > 0 && (
+        <>
+          <h2 className="section" style={{ marginTop: 0 }}>{sc.title}</h2>
+          <Folders folders={sc.folders} />
+        </>
+      )}
+      {others.length > 0 && (
+        <>
+          <h2 className="section" style={{ marginTop: 0 }}>Projects</h2>
+          <div className="card rows">
+            {others.map((p) => (
+              <div key={p.id} className="row" style={{ flexWrap: 'wrap', rowGap: 6 }}>
+                <span className="grow" style={{ minWidth: 160 }}>
+                  <div className="t">{p.title}</div>
+                  <div className="n2">{p.home ?? 'no worktree of its own'}</div>
+                </span>
+                <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {p.folders.map((f) => (
+                    <a key={f.path} className="chip" href={at(p.url, `files/${f.path}`)} title={f.path}>
+                      <Folder size={12} style={{ marginRight: 4 }} /> {f.label}
+                    </a>
+                  ))}
+                </span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+      {(sc?.folders.length || others.length) ? <h2 className="section">Roots</h2> : null}
+      <RootList />
+    </>
+  );
+}
+
+function RootList() {
   const { data, error, refetch } = useQuery({ queryKey: ['roots'], queryFn: () => getJson<Root[]>('/api/files/roots'), staleTime: Infinity });
   if (error && !data) return <Failed error={error} retry={refetch} />;
   if (!data) return <SkRows n={3} />;

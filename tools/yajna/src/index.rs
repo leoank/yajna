@@ -397,6 +397,16 @@ impl Index {
             .unwrap_or_default()
     }
 
+    /// Every link within this notebook: (src, dst).
+    pub fn local_links(&self) -> Vec<(String, String)> {
+        let Ok(mut st) = self.conn.prepare("SELECT DISTINCT src, dst FROM link WHERE ns IS NULL") else {
+            return Vec::new();
+        };
+        st.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+            .map(|rows| rows.flatten().collect())
+            .unwrap_or_default()
+    }
+
     /// Log entries mentioning `id`, oldest first.
     pub fn mentions(&self, id: &str) -> Vec<LogEntry> {
         let Ok(mut st) = self.conn.prepare(

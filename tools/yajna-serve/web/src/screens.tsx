@@ -3,14 +3,37 @@
 
 import { useState, type ReactElement } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronRight, FileCode2 } from 'lucide-react';
-import { fetchers, keys, useList, useOverview, usePage, type Page } from './api';
+import { ArrowRight, ChevronRight, FileCode2, GitBranch, Info } from 'lucide-react';
+import { fetchers, keys, useList, useOverview, usePage, useProjects, useWorktrees, type Overview as OverviewData, type Page, type ProjectScope } from './api';
+import { at, scope } from './base';
 import { Link } from './router';
-import { Shell } from './Shell';
-import { Empty, Failed, Html, Log, PageLink, PageRow, Sk, SkPage, SkRows, Status, typeLabel } from './ui';
+import { dirty, Shell } from './Shell';
+import { Empty, Failed, Folders, Html, Log, PageLink, PageRow, Sk, SkPage, SkRows, Status, typeLabel } from './ui';
 
 export function Overview() {
   const { data, error, refetch } = useOverview();
+  if (data?.scope) return <ProjectHome data={data} />;
+  return <LabOverview data={data} error={error} refetch={refetch} />;
+}
+
+/** Where a project is worked on, how far ahead of the served checkout, and what is
+ * uncommitted there. */
+function Where({ p }: { p?: ProjectScope }) {
+  const home = p?.worktrees.find((w) => w.home);
+  if (!home) return null;
+  const bits = [home.name];
+  if (home.ahead) bits.push(`${home.ahead} ahead`);
+  if (dirty(home)) bits.push(`${dirty(home)} uncommitted`);
+  return (
+    <span className="where" title="The worktree this project is worked on in">
+      <GitBranch size={12} /> <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{bits.join(' · ')}</span>
+    </span>
+  );
+}
+
+function LabOverview({ data, error, refetch }: { data?: OverviewData; error: Error | null; refetch: () => void }) {
+  const { data: pj } = useProjects();
+  const scopes = new Map((pj?.projects ?? []).map((p) => [p.id, p]));
   return (
     <Shell title="Overview">
       <div className="page-head">
@@ -23,11 +46,19 @@ export function Overview() {
         {data
           ? data.projects.map((p) => {
               const ph = p.phases;
-              return (
-                <PageLink key={p.id} id={p.id} className="card pcard">
+              const sc = scopes.get(p.id);
+              const body = (
+                <>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
                     <span className="id">{p.id}</span>
-                    <Status s={p.status} />
+                    <span style={{ display: 'flex', gap: 6 }}>
+                      {p.needs > 0 && (
+                        <span className="chip need" title="Draft conclusions and pages waiting for review">
+                          {p.needs} for you
+                        </span>
+                      )}
+                      <Status s={p.status} />
+                    </span>
                   </div>
                   <div className="pt">{p.title}</div>
                   <div className="stats">
@@ -45,6 +76,17 @@ export function Overview() {
                     </div>
                   )}
                   {ph.active && <div className="sub">Now: {ph.active.title}</div>}
+                  <Where p={sc} />
+                </>
+              );
+              // a lab's project opens as its scope (ADR-0043), else as its page
+              return sc ? (
+                <a key={p.id} href={at(sc.url)} className="card pcard">
+                  {body}
+                </a>
+              ) : (
+                <PageLink key={p.id} id={p.id} className="card pcard">
+                  {body}
                 </PageLink>
               );
             })
@@ -58,6 +100,92 @@ export function Overview() {
       </div>
       <h2 className="section">Recently</h2>
       <div className="card pad">{data ? data.recent.length ? <Log lines={data.recent} /> : <Empty>Nothing logged yet.</Empty> : <SkRows n={4} />}</div>
+    </Shell>
+  );
+}
+
+/** A project's home in its scope (ADR-0043): the project, what waits for a human, its
+ * folders, what is uncommitted, its latest lines. */
+function ProjectHome({ data }: { data: OverviewData }) {
+  const sc = data.scope!;
+  const card = data.projects[0];
+  const { data: pj } = useProjects();
+  const { data: wts } = useWorktrees();
+  const mine = pj?.projects.find((p) => p.id === sc.id);
+  const shown = mine?.worktrees.find((w) => (scope?.worktree ? w.name === scope.worktree : w.home)) ?? wts?.find((w) => w.current);
+  const needs = data.needs ?? [];
+  const ph = card?.phases;
+  return (
+    <Shell title={sc.title}>
+      <div className="page-head">
+        <div className="crumbs">
+          <span className="type">project</span>
+          <span className="id">{sc.id}</span>
+        </div>
+        <h1 className="title">{sc.title}</h1>
+        <div className="head-row">
+          {card && <Status s={card.status} />}
+          <Where p={mine} />
+          <PageLink id={sc.id} className="btn small">
+            Project page <ArrowRight size={13} />
+          </PageLink>
+        </div>
+      </div>
+      {card && (
+        <div className="card pad" style={{ marginBottom: 22 }}>
+          <div className="stats" style={{ display: 'flex', gap: 18, flexWrap: 'wrap', fontSize: 13 }}>
+            <Link to="c/experiment">{card.experiments} experiments</Link>
+            <Link to="c/run">{card.runs} runs</Link>
+            <Link to="tasks">{data.tasks_open} open tasks</Link>
+            {shown && (
+              <Link to="changes">
+                {dirty(shown)} uncommitted in {shown.name}
+              </Link>
+            )}
+          </div>
+          {ph && ph.total > 0 && (
+            <div style={{ marginTop: 14 }}>
+              <div className="meter" title={`${ph.done} of ${ph.total} phases done`}>
+                <div style={{ width: `${(100 * ph.done) / ph.total}%` }} />
+              </div>
+              <div className="sub" style={{ marginTop: 8, fontSize: 13 }}>
+                {ph.done}/{ph.total} phases{ph.active && <> · now <PageLink id={ph.active.id}>{ph.active.title}</PageLink></>}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+      <h2 className="section">
+        Needs you {needs.length > 0 && <span className="n">{needs.length}</span>}
+      </h2>
+      {needs.length ? (
+        <div className="card rows" style={{ marginBottom: 6 }}>
+          {needs.map((n) => (
+            <PageLink key={n.id} id={n.id} className="row">
+              <span className="grow">
+                <div className="id">{n.id}</div>
+                <div className="t">{n.title}</div>
+              </span>
+              <span className="need-chips">
+                <span className="chip need">{n.why}</span>
+                <Status s={n.status} outcome={n.outcome} />
+              </span>
+            </PageLink>
+          ))}
+        </div>
+      ) : (
+        <div className="card pad muted" style={{ fontSize: 13 }}>
+          Nothing waiting: no draft conclusions or pages under review.
+        </div>
+      )}
+      {sc.folders.length > 0 && (
+        <>
+          <h2 className="section">Folders</h2>
+          <Folders folders={sc.folders} />
+        </>
+      )}
+      <h2 className="section">Recently</h2>
+      <div className="card pad">{data.recent.length ? <Log lines={data.recent} /> : <Empty>Nothing logged about this project yet.</Empty>}</div>
     </Shell>
   );
 }
@@ -149,6 +277,11 @@ export function PageView({ id }: { id: string }) {
   // the previous page stays while this one is read; it is dimmed, not mistaken for this one
   const shown = p && p.id === id ? p : undefined;
   const [tab, setTab] = useState<'page' | 'tree'>('page');
+  const { data: pj } = useProjects();
+  // under the served checkout, a page of a project worked on in a worktree ahead of it is
+  // an old copy (ADR-0043)
+  const ahead = !scope && shown?.project ? pj?.projects.find((x) => x.id === shown.project) : undefined;
+  const aheadHome = ahead?.worktrees.find((w) => w.home && !w.current && (w.ahead ?? 0) > 0);
   return (
     <Shell title={shown?.title ?? id}>
       {error && !shown ? (
@@ -191,6 +324,17 @@ export function PageView({ id }: { id: string }) {
               </span>
             </div>
           </div>
+          {ahead && aheadHome && (
+            <div className="banner">
+              <Info size={15} />
+              <span style={{ flex: 1, minWidth: 0 }}>
+                {ahead.title} is worked on in <b>{aheadHome.name}</b>, {aheadHome.ahead} commits ahead of this copy.
+              </span>
+              <a className="btn small" href={at(ahead.url, `p/${shown.id}`)}>
+                Open the current one <ArrowRight size={13} />
+              </a>
+            </div>
+          )}
           {shown.tree && (
             <div className="segs" style={{ marginBottom: 16 }}>
               <button className={tab === 'page' ? 'on' : ''} onClick={() => setTab('page')}>
@@ -392,13 +536,27 @@ export function Tasks() {
 
 export function Reviews() {
   const { data, error, refetch } = useQuery({ queryKey: keys.reviews, queryFn: fetchers.reviews });
+  const [everyone, setEveryone] = useState(false);
   const order = (s: string) => (s === 'open' || s === 'changes_requested' ? 0 : 1);
-  const all = [...(data ?? [])].sort((a, b) => order(a.status) - order(b.status) || b.id.localeCompare(a.id));
+  // in a project's scope, the reviews of its branches (ADR-0043)
+  const mine = (r: { ref: string }) => !scope || everyone || r.ref.startsWith(`${scope.slug}/`);
+  const all = [...(data ?? [])].filter(mine).sort((a, b) => order(a.status) - order(b.status) || b.id.localeCompare(a.id));
+  const hidden = (data?.length ?? 0) - all.length;
   return (
     <Shell title="Reviews">
       <div className="page-head">
         <h1 className="title">Reviews</h1>
-        <div className="sub">Reviews of every worktree, unfinished first.</div>
+        <div className="sub">
+          {scope && !everyone ? `Reviews of ${scope.slug}’s branches, unfinished first.` : 'Reviews of every worktree, unfinished first.'}
+          {scope && (hidden > 0 || everyone) && (
+            <>
+              {' '}
+              <button className="linkish" style={{ font: "inherit" }} onClick={() => setEveryone(!everyone)}>
+                {everyone ? `Only ${scope.slug}’s` : `Show all (${hidden} more)`}
+              </button>
+            </>
+          )}
+        </div>
       </div>
       {error && !data ? <Failed error={error} retry={refetch} /> : !data ? <SkRows /> : !all.length ? <Empty>No reviews yet.</Empty> : (
         <div className="card rows">

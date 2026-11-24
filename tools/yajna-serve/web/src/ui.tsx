@@ -2,9 +2,9 @@
 // whose links stay in the app, and the log's timeline.
 
 import { useEffect, useMemo, useRef, type ReactNode } from 'react';
-import { RefreshCw } from 'lucide-react';
+import { Folder, RefreshCw } from 'lucide-react';
 import { ApiError, prefetchPage, type LogLine, type Summary } from './api';
-import { base } from './base';
+import { base, notebookBase } from './base';
 import { Link, navigate, routeOfHref } from './router';
 
 /** What a status means, as a colour: done or supported, running, waiting, failed. */
@@ -163,7 +163,7 @@ export function Marked({ text, query }: { text: string; query?: string }) {
 /** The rendered HTML with its relative images served from the files API and its relative
  * links opening in the files view (with `dir`), and the words of `mark` marked in its
  * text; parsed in a template, so nothing loads before it is rewritten. */
-function rewrite(html: string, dir?: string, mark?: string): string {
+function rewrite(html: string, dir?: string, mark?: string, elsewhere?: string): string {
   const t = document.createElement('template');
   t.innerHTML = html;
   const re = mark ? wordsOf(mark) : null;
@@ -175,6 +175,13 @@ function rewrite(html: string, dir?: string, mark?: string): string {
       const parts = (node.data ?? '').split(re);
       if (parts.length < 2) continue;
       node.replaceWith(...parts.map((p, i) => (i % 2 ? Object.assign(document.createElement('mark'), { textContent: p }) : document.createTextNode(p))));
+    }
+  }
+  // links of a line read in a project's own worktree open there (ADR-0043)
+  if (elsewhere) {
+    for (const a of t.content.querySelectorAll('a[href]')) {
+      const to = routeOfHref(a.getAttribute('href') ?? '');
+      if (to) a.setAttribute('href', `${elsewhere}/${to}`);
     }
   }
   if (!dir) return t.innerHTML;
@@ -199,8 +206,8 @@ function rewrite(html: string, dir?: string, mark?: string): string {
 /** HTML the server rendered (yajna's own markdown renderer, raw HTML shown as text); its
  * links to pages and files open in the app. With `dir`, the files-view directory the
  * markdown came from, its relative images and links are taken from there. */
-export function Html({ html, className = 'prose', dir, mark }: { html: string; className?: string; dir?: string; mark?: string }) {
-  const shown = useMemo(() => (dir || mark ? rewrite(html, dir, mark) : html), [html, dir, mark]);
+export function Html({ html, className = 'prose', dir, mark, elsewhere }: { html: string; className?: string; dir?: string; mark?: string; elsewhere?: string }) {
+  const shown = useMemo(() => (dir || mark || elsewhere ? rewrite(html, dir, mark, elsewhere) : html), [html, dir, mark, elsewhere]);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const el = ref.current;
@@ -251,8 +258,11 @@ export function Log({ lines, mark }: { lines: LogLine[]; mark?: string }) {
             <div className="log-line" key={i}>
               <div className="time">{l.time}</div>
               <div>
-                <Html html={l.html} className="what" mark={mark} />
-                <div className="who">{l.author}</div>
+                <Html html={l.html} className="what" mark={mark} elsewhere={l.scope ? `${notebookBase}/project/${encodeURIComponent(l.scope)}` : undefined} />
+                <div className="who">
+                  {l.author}
+                  {l.worktree && <span title="Read from the project's own worktree"> · {l.worktree}</span>}
+                </div>
               </div>
             </div>
           ))}
@@ -278,4 +288,32 @@ export function PageRow({ p }: { p: Summary }) {
 
 export function Empty({ children }: { children: ReactNode }) {
   return <div className="empty">{children}</div>;
+}
+
+/** A project's folders in the files view, each a card. */
+export function Folders({ folders, href }: { folders: { label: string; path: string }[]; href?: (path: string) => string }) {
+  return (
+    <div className="folders">
+      {folders.map((f) => {
+        const inner = (
+          <>
+            <Folder size={18} className="muted" />
+            <span style={{ minWidth: 0 }}>
+              <div className="t">{f.label}</div>
+              <div className="n2">{f.path}</div>
+            </span>
+          </>
+        );
+        return href ? (
+          <a key={f.path} className="card folder" href={href(f.path)}>
+            {inner}
+          </a>
+        ) : (
+          <Link key={f.path} className="card folder" to={`files/${f.path}`}>
+            {inner}
+          </Link>
+        );
+      })}
+    </div>
+  );
 }
